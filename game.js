@@ -31,6 +31,8 @@ G.onTap = (elm, fn) => {
     ev.stopPropagation(); G.help && G.help.poke(); fn(ev);
   });
 };
+// 아이콘 그림 (9/29: 이모지 대신 그림). 지금은 임시 그림이고, 선생님 그림이 오면 assets/ui/icons/ 의 같은 이름 파일만 바꿈
+G.icon = (name, cls = '') => `<img class="ico${cls ? ' ' + cls : ''}" src="${G.asset('assets/ui/icons/' + name + '.png')}" alt="">`;
 G.svgStar = (fill, stroke, sw = 6) => `<svg viewBox="0 0 100 100"><path d="M50 6 L62 37 L95 38 L69 58 L78 91 L50 72 L22 91 L31 58 L5 38 L38 37 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/></svg>`;
 
 // ---------- 화면 크기: 기준 1920x1080, 비율이 달라도 검은 띠 없이 채움 ----------
@@ -171,7 +173,7 @@ G.audio = (() => {
   function tts(text, fin) {
     try {
       if (!window.speechSynthesis) return false;
-      const u = new SpeechSynthesisUtterance(text.replace(/[「」]/g, '')); u.lang = 'ko-KR'; u.rate = 0.9; u.volume = S().volume ?? 0.9;
+      const u = new SpeechSynthesisUtterance(text.replace(/[「」“”]/g, '')); u.lang = 'ko-KR'; u.rate = 0.9; u.volume = S().volume ?? 0.9;
       const ko = speechSynthesis.getVoices().find(v => /ko/i.test(v.lang)); if (ko) u.voice = ko;
       u.onend = fin; u.onerror = () => G.wait(1).then(fin);
       speechSynthesis.speak(u); G.wait(Math.max(4, text.length * 0.35)).then(fin); return true;
@@ -240,13 +242,11 @@ G.audio = (() => {
 'use strict';
 G.save = (() => {
   const S = {};
-  const PLACE_ICON = { home: '🏠', plaza: '⛲', market: '🍎', library: '📚', forest: '🌲' };
+  const PLACES = ['home', 'plaza', 'market', 'library', 'forest'];   // 칸에 보이는 마지막 장소 그림 (assets/ui/icons/place_*.png)
   S.count = () => Math.max(12, Math.min(24, (G.settings && G.settings.slotCount) || 12));
-  // 13번째 칸부터는 그림을 다시 쓰고 "2"를 붙임
-  S.picture = (slot) => { const P = G.D.pictures; const p = P[(slot - 1) % P.length]; return { ...p, round: Math.floor((slot - 1) / P.length) + 1 }; };
   S.load = (slot) => G.store.get('slot' + slot, null);
   S.fresh = (slot) => ({
-    slot, picture: S.picture(slot).id, name: '', stars: 0, place: 'home', chapter: 'start',
+    slot, name: '', stars: 0, place: 'home', chapter: 'start',
     done: [], items: [], mood: 0, env: { board: false, guide: false }, seenCutscenes: [],
     quest: 0, cleared: [], visited: [], seen: [], started: false, updated: new Date().toISOString(),
   });
@@ -260,32 +260,31 @@ G.save = (() => {
     return ok;
   };
 
-  // ---- U2 내 그림 고르기: 고른 칸 번호를 돌려줌 ----
+  // ---- U2 저장 칸 고르기: 번호 칸 (9/29 선생님 요청으로 그림 고르기를 뺌). 고른 칸 번호를 돌려줌 ----
   S.screen = () => new Promise((done) => {
     const ov = G.$('#overlay'); ov.innerHTML = '';
     const scr = G.el('div', 'slots-screen', ov);
     const head = G.el('div', 's-head', scr);
-    const h = G.el('h2', '', head, '내 그림을 눌러 주세요');
-    const say = G.btn('pill round', '🔊', head, () => G.audio.voice('S92_pick_slot'), '다시 듣기');
-    say.style.cssText = 'width:calc(var(--bu)*100);height:calc(var(--bu)*100);min-width:0;min-height:0;font-size:calc(var(--u)*44)';
+    G.el('h2', '', head, G.D.dialogues.S92_pick_slot ? G.D.dialogues.S92_pick_slot.text.replace(/\.$/, '') : '내 번호를 눌러 주세요');
+    const say = G.btn('pill round', G.icon('icon_sound'), head, () => G.audio.voice('S92_pick_slot'), '다시 듣기');
+    say.style.cssText = 'width:calc(var(--bu)*100);height:calc(var(--bu)*100);min-width:0;min-height:0';
     const grid = G.el('div', 'slots-grid', scr);
     let busy = false;
     for (let i = 1; i <= S.count(); i++) {
-      const pic = S.picture(i), data = S.load(i);
+      const data = S.load(i);
       const card = G.el('button', 'slot-card' + (data ? '' : ' empty'), grid); card.type = 'button';
-      card.setAttribute('aria-label', pic.name + (data && data.name ? ' ' + data.name : ''));
-      G.el('div', 'emo', card, pic.emoji);
-      G.el('div', 'nm', card, data && data.name ? esc(data.name) : pic.name + (pic.round > 1 ? ' ' + pic.round : ''));
+      card.setAttribute('aria-label', i + '번' + (data && data.name ? ' ' + data.name : ''));
+      G.el('div', 'bn', card, String(i));
+      G.el('div', 'nm', card, data ? (data.name ? esc(data.name) : '이어 하기') : '새로 하기');
       if (data) {
-        G.el('div', 'meta', card, '⭐ ' + (data.stars || 0) + '/8');
-        G.el('div', 'pl', card, PLACE_ICON[data.place] || '🏠');
+        G.el('div', 'meta', card, G.icon('icon_star') + (data.stars || 0) + '/8');
+        card.insertAdjacentHTML('beforeend', G.icon('place_' + (PLACES.includes(data.place) ? data.place : 'home'), 'pl'));
       }
-      G.el('div', 'num', card, String(i));
       G.onTap(card, async () => {
         if (busy) return; busy = true;
         grid.querySelectorAll('.picked').forEach(e => e.classList.remove('picked')); card.classList.add('picked');
-        G.audio.sfx('sfx_tap', 0.7);
-        await G.audio.voice(pic.voice);
+        G.audio.stopVoice(); G.audio.sfx('sfx_tap', 0.7);
+        await G.wait(0.35);
         done({ slot: i, data: S.load(i) });
       });
     }
@@ -312,8 +311,8 @@ G.save = (() => {
     const inp = G.el('input', '', row); inp.type = 'text'; inp.maxLength = 8; inp.placeholder = '이름'; inp.autocomplete = 'off'; inp.enterKeyHint = 'done';
     const br = G.el('div', 'btn-row', row);
     const finish = (name) => { m.remove(); G.onResize = null; done(name); };
-    G.btn('pill gold', '<span class="ic">▶</span> 건너뛰기', br, () => { G.audio.voice('S92_btn_skip'); finish(''); }).style.minWidth = 'calc(var(--u)*360)';
-    G.btn('pill', '✔ 다 썼어요', br, () => finish(inp.value.trim().slice(0, 8)));
+    G.btn('pill gold', G.icon('icon_skip') + ' 건너뛰기', br, () => { G.audio.voice('S92_btn_skip'); finish(''); }).style.minWidth = 'calc(var(--u)*360)';
+    G.btn('pill', G.icon('icon_ok') + ' 다 썼어요', br, () => finish(inp.value.trim().slice(0, 8)));
     inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') finish(inp.value.trim().slice(0, 8)); if (e.key === 'Escape') G.teacher.toggle(); });
     G.audio.voice('S92_name');
   });
@@ -346,7 +345,7 @@ G.hud = (() => {
     G.onTap(q, () => { if (np) G.audio.voice('S92_now_' + np.id); });
     return q;
   }
-  function bagBtn() { return G.btn('pill', '<span class="ic">🎒</span> 가방', tr, () => { G.audio.voice('S92_btn_bag'); H.bag(); }, '가방'); }
+  function bagBtn() { return G.btn('pill', G.icon('icon_bag') + ' 가방', tr, () => { G.audio.voice('S92_btn_bag'); H.bag(); }, '가방'); }
   function lumiBtn(onTap) {
     const b = G.el('button', 'lumi-btn', bl); b.type = 'button'; b.setAttribute('aria-label', '루미 도움');
     const im = G.el('img', '', b); im.src = G.asset('assets/chars/lumi.png'); im.alt = '';
@@ -368,7 +367,7 @@ G.hud = (() => {
     taskEl = G.el('button', 'quest tasks', tl); taskEl.type = 'button';
     G.onTap(taskEl, () => G.audio.voice('S03_rumi_03'));
     H.tasks(def);
-    G.btn('pill', '<span class="ic">🗺️</span> 지도로', tr, () => { G.audio.voice('S92_btn_map'); onMap(); }, '지도로');
+    G.btn('pill', G.icon('icon_map') + ' 지도로', tr, () => { G.audio.voice('S92_btn_map'); onMap(); }, '지도로');
     bagBtn();
     lumiBtn(() => G.help.now());
   };
@@ -383,7 +382,7 @@ G.hud = (() => {
   // ---- 건너뛰기 (지도 이동·연출) ----
   H.skip = (fn) => {
     br.innerHTML = ''; if (!fn) return;
-    G.btn('pill skip', '건너뛰기 <span class="ic">⏩</span>', br, () => { G.audio.voice('S92_btn_skip'); br.innerHTML = ''; fn(); }, '건너뛰기');
+    G.btn('pill skip', '건너뛰기 ' + G.icon('icon_skip'), br, () => { G.audio.voice('S92_btn_skip'); br.innerHTML = ''; fn(); }, '건너뛰기');
   };
 
   // ---- 루미 말풍선: 대사를 읽어 주고 끝나면 사라짐 (대화창을 열지 않음) ----
@@ -402,16 +401,16 @@ G.hud = (() => {
     const ov = G.$('#overlay');
     const m = G.el('div', 'modal', ov); const sh = G.el('div', 'sheet', m);
     G.busy++;
-    G.el('h3', '', sh, '🎒 가방');
+    G.el('h3', '', sh, G.icon('icon_bag') + ' 가방');
     const slots = G.el('div', 'bag-slots', sh);
     const nm = G.el('div', 'bag-name', sh, G.st.items.length ? '' : '아직 가방이 비어 있어요');
     for (let i = 0; i < 5; i++) {
       const it = G.D.items.find(x => x.id === G.st.items[i]);
-      const s = G.el('button', 'bag-slot' + (it ? ' has' : ''), slots, it ? it.icon : ''); s.type = 'button';
+      const s = G.el('button', 'bag-slot' + (it ? ' has' : ''), slots, it ? G.icon(it.icon) : ''); s.type = 'button';
       if (it) G.onTap(s, () => { nm.textContent = it.name; G.audio.voice(it.voice); });
     }
     const row = G.el('div', 'btn-row', sh);
-    G.btn('pill gold', '✔ 닫기', row, () => { m.remove(); G.busy = Math.max(0, G.busy - 1); G.audio.stopVoice(); });
+    G.btn('pill gold', G.icon('icon_ok') + ' 닫기', row, () => { m.remove(); G.busy = Math.max(0, G.busy - 1); G.audio.stopVoice(); });
   };
   return H;
 })();
@@ -547,7 +546,7 @@ G.mapPath = (from, to) => {
 
 /* ---- dialogue.js ---- */
 // dialogue.js — 대화창(U5)과 선택지(U6)
-// 음성이 끝나야 [다음]이 켜짐. 대화창 바깥을 눌러도 [다음]과 같음. [🔊]는 언제나 누를 수 있음
+// 음성이 끝나야 [다음]이 켜짐. 대화창 바깥을 눌러도 [다음]과 같음. [다시 듣기]는 언제나 누를 수 있음
 // 인물 그림: 왼쪽 = 주인공 + 루미, 오른쪽 = 상대. 말하는 사람은 밝게, 듣는 사람은 조금 어둡게 (기획안 16-10)
 'use strict';
 G.dialog = (() => {
@@ -573,8 +572,9 @@ G.dialog = (() => {
     box = G.el('div', 'dlg-box', wrap);
     nameEl = G.el('div', 'dlg-name', box);
     textEl = G.el('div', 'dlg-text', box);
-    replayBtn = G.btn('pill dlg-replay', '🔊', box, () => { if (curId) speak(curId); }, '다시 듣기');
-    nextBtn = G.btn('pill gold dlg-next wait', '다음 <span class="ic">▶</span>', box, () => press(), '다음');
+    const btns = G.el('div', 'dlg-btns', box);   // 9/29: 버튼을 옆으로 나란히 놓아 대화창을 낮게
+    replayBtn = G.btn('pill dlg-replay', G.icon('icon_sound'), btns, () => { if (curId) speak(curId); }, '다시 듣기');
+    nextBtn = G.btn('pill gold dlg-next wait', '다음 ' + G.icon('icon_next'), btns, () => press(), '다음');
     choicesEl = null;
     // 루미 눈 깜박임
     let t = 0, next = 2.5 + Math.random() * 2;
@@ -641,7 +641,7 @@ G.dialog = (() => {
     const one = options.length === 1 || (G.settings && G.settings.choiceOne);
     let armed = -1;
     options.forEach((o, i) => {
-      const b = G.btn('pill gold choice', (o.icon ? `<span class="ic">${o.icon}</span> ` : '') + o.label, choicesEl, async () => {
+      const b = G.btn('pill gold choice', (o.icon ? G.icon(o.icon) + ' ' : '') + o.label, choicesEl, async () => {
         if (one || armed === i) {
           choicesEl.remove(); choicesEl = null; nextBtn.style.visibility = '';
           G.audio.sfx('sfx_tap', 0.6);
@@ -716,7 +716,7 @@ G.cut = (() => {
     const showSkip = () => {
       if (done || c.skipped || (G.settings && G.settings.hideSkip)) return;
       skipBox.innerHTML = '';
-      G.btn('pill skip', '건너뛰기 <span class="ic">⏩</span>', skipBox, () => { skipBox.innerHTML = ''; G.audio.voice('S92_btn_skip'); c.skip(); }, '건너뛰기');
+      G.btn('pill skip', '건너뛰기 ' + G.icon('icon_skip'), skipBox, () => { skipBox.innerHTML = ''; G.audio.voice('S92_btn_skip'); c.skip(); }, '건너뛰기');
       c.skipShown = true;
     };
     if (seen) showSkip(); else c.wait(2).then(showSkip);
@@ -1077,11 +1077,11 @@ G.map = (() => {
   function notReady(p) {
     const ov = G.$('#overlay'); const m = G.el('div', 'modal', ov); const sh = G.el('div', 'sheet placeholder', m);
     G.busy++;
-    G.el('div', 'big', sh, p.id === 'market' ? '🍎' : p.id === 'library' ? '📚' : '🌲');
+    G.el('div', '', sh, G.icon('place_' + p.id, 'big'));
     G.el('h3', '', sh, p.name);
     G.el('p', '', sh, p.name + ' 장면은 다음 프로토타입에서 이어져요.');
     const row = G.el('div', 'btn-row', sh);
-    G.btn('pill gold', '<span class="ic">🗺️</span> 지도로', row, () => { m.remove(); G.busy = Math.max(0, G.busy - 1); G.audio.voice('S92_btn_map'); });
+    G.btn('pill gold', G.icon('icon_map') + ' 지도로', row, () => { m.remove(); G.busy = Math.max(0, G.busy - 1); G.audio.voice('S92_btn_map'); });
     G.audio.voice(p.voice.replace('.mp3', ''));
   }
 
@@ -1425,35 +1425,34 @@ G.teacher = (() => {
     const p = G.el('div', 't-panel', bg);
     const h = G.el('h2', '', p, '<span>교사용 설정</span>');
     tb('닫기 (ESC)', h, () => T.close(), 'on t-close');
-    const cur = G.st ? G.save.picture(G.st.slot) : null;
-    G.el('div', 't-help', p, '게임은 잠시 멈춰 있어요. ' + (cur ? `지금 칸: ${cur.emoji} ${G.st.slot}번${G.st.name ? ' (' + G.save.esc(G.st.name) + ')' : ''}` : '아직 칸을 고르지 않았어요.') + ' · 프로토타입 1');
+    G.el('div', 't-help', p, '게임은 잠시 멈춰 있어요. ' + (G.st ? `지금 칸: ${G.st.slot}번${G.st.name ? ' (' + G.save.esc(G.st.name) + ')' : ''}` : '아직 칸을 고르지 않았어요.') + ' (프로토타입 1)');
 
-    let s = sec(p, '① 음성·음량');
+    let s = sec(p, '1. 음성과 음량');
     let r = row(s);
-    tb(G.settings.voiceOn ? '🔊 음성 켜짐' : '🔇 음성 꺼짐', r, () => set('voiceOn', !G.settings.voiceOn), G.settings.voiceOn ? 'on' : '');
+    tb(G.settings.voiceOn ? '음성 켜짐' : '음성 꺼짐', r, () => set('voiceOn', !G.settings.voiceOn), G.settings.voiceOn ? 'on' : '');
     const lab = G.el('label', '', r, '음량 '); const rg = G.el('input', '', lab); rg.type = 'range'; rg.min = 0; rg.max = 100; rg.value = Math.round(G.settings.volume * 100);
     const vv = G.el('span', '', lab, rg.value + '%');
     rg.addEventListener('input', () => { G.settings.volume = rg.value / 100; vv.textContent = rg.value + '%'; G.applySettings(); });
 
-    s = sec(p, '② 글자 크기');
+    s = sec(p, '2. 글자 크기');
     choice(s, 'textBig', [[false, '보통'], [true, '크게']]);
 
-    s = sec(p, '③ 도움 시간 (루미가 알려 주기까지)');
-    choice(s, 'help', [['short', '짧게 20·40·60초'], ['normal', '보통 30·60·90초'], ['long', '길게 45·90·135초'], ['off', '끄기']]);
-    G.el('div', 't-note', s, '1단계 질문 → 2단계 화살표 → 3단계 반짝이는 길. [루미] 버튼을 누르면 바로 3단계.');
+    s = sec(p, '3. 도움 시간 (루미가 알려 주기까지)');
+    choice(s, 'help', [['short', '짧게 20, 40, 60초'], ['normal', '보통 30, 60, 90초'], ['long', '길게 45, 90, 135초'], ['off', '끄기']]);
+    G.el('div', 't-note', s, '1단계 질문, 2단계 화살표, 3단계 반짝이는 길. [루미] 버튼을 누르면 바로 3단계.');
 
-    s = sec(p, '④ 선택지 누르기');
+    s = sec(p, '4. 선택지 누르기');
     choice(s, 'choiceOne', [[false, '두 번 누르면 선택 (읽어 주고 확인)'], [true, '한 번 누르면 선택']]);
 
-    s = sec(p, '⑤ 챕터 바로 가기');
+    s = sec(p, '5. 챕터 바로 가기');
     r = row(s);
     for (const ch of G.D.story.chapters) {
       const b = tb(ch.label, r, () => { T.close(() => G.flow.chapter(ch.id)); });
       if (!ch.ready || !G.st) b.disabled = true;
     }
-    G.el('div', 't-note', s, G.st ? '고른 곳 앞까지의 할 일·아이템·마을 단계가 채워진 채로 시작해요. ④~⑦은 다음 프로토타입에서 열려요.' : '먼저 「내 그림」을 고른 뒤에 쓸 수 있어요.');
+    G.el('div', 't-note', s, G.st ? '고른 곳 앞까지의 할 일, 아이템, 마을 단계가 채워진 채로 시작해요. 4~7은 다음 프로토타입에서 열려요.' : '먼저 저장 칸 번호를 고른 뒤에 쓸 수 있어요.');
 
-    s = sec(p, '⑥ 연출');
+    s = sec(p, '6. 연출');
     r = row(s); G.el('span', '', r, '다시 보기:');
     for (const [id, label] of [['C1', 'C1 인트로'], ['C2', 'C2 광장 도착'], ['C7', 'C7 장소 완료']]) tb(label, r, () => T.close(() => { if (!G.cut.active) G.cut.play(id, { replay: true }); }));
     r = row(s); G.el('span', '', r, '움직임 줄이기:');
@@ -1462,8 +1461,8 @@ G.teacher = (() => {
     r = row(s);
     tb(G.settings.hideSkip ? '건너뛰기 버튼 숨김' : '건너뛰기 버튼 보임', r, () => set('hideSkip', !G.settings.hideSkip), G.settings.hideSkip ? 'on' : '');
 
-    s = sec(p, '⑦ 저장 칸');
-    G.el('div', 't-note', s, `지금 ${G.save.count()}칸. 저장은 이 기기·이 브라우저에만 돼요. 학교 PC가 초기화되면 ⑤ 챕터 바로 가기로 이어 하세요.`);
+    s = sec(p, '7. 저장 칸');
+    G.el('div', 't-note', s, `지금 ${G.save.count()}칸. 저장은 이 기기, 이 브라우저에만 돼요. 학교 PC가 초기화되면 5. 챕터 바로 가기로 이어 하세요.`);
     r = row(s);
     tb('칸 4개 늘리기', r, () => set('slotCount', Math.min(24, G.save.count() + 4))).disabled = G.save.count() >= 24;
     tb('늘린 칸 줄이기', r, () => set('slotCount', Math.max(12, G.save.count() - 4))).disabled = G.save.count() <= 12;
@@ -1471,27 +1470,26 @@ G.teacher = (() => {
     let any = false;
     for (let i = 1; i <= G.save.count(); i++) {
       const d = G.save.load(i); if (!d) continue; any = true;
-      const pic = G.save.picture(i);
-      const b = tb(`${pic.emoji} ${i}번${d.name ? ' ' + G.save.esc(d.name) : ''}`, r, () => confirmDel(s, i, pic));
+      const b = tb(`${i}번${d.name ? ' ' + G.save.esc(d.name) : ''}`, r, () => confirmDel(s, i));
       if (G.st && G.st.slot === i) { b.disabled = true; b.title = '지금 쓰는 칸'; }
     }
     if (!any) G.el('span', 't-note', r, '지울 칸이 없어요.');
     else if (G.st) G.el('div', 't-note', s, '지금 쓰는 칸은 지울 수 없어요.');
 
-    s = sec(p, '⑧ 가벼운 모드');
-    choice(s, 'light', [[false, '끄기'], [true, '켜기 (느린 태블릿용: 빛·반짝이 효과 줄임)']]);
+    s = sec(p, '8. 가벼운 모드');
+    choice(s, 'light', [[false, '끄기'], [true, '켜기 (느린 태블릿용: 빛과 반짝이 효과 줄임)']]);
 
-    s = sec(p, '⑨ 화면');
+    s = sec(p, '9. 화면');
     r = row(s);
     const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
     tb(fsOn ? '전체 화면 끄기' : '전체 화면', r, () => { wantFs = false; fullscreen(!fsOn).then(render); });
-    G.el('div', 't-note', s, '전체 화면에서는 ESC를 한 번 더 눌러야 이 설정이 열려요 (브라우저 규칙). 아이폰은 「홈 화면에 추가」로 쓰면 전체 화면이 돼요.');
+    G.el('div', 't-note', s, '전체 화면에서는 ESC를 한 번 더 눌러야 이 설정이 열려요 (브라우저 규칙). 아이폰은 “홈 화면에 추가”로 쓰면 전체 화면이 돼요.');
     const pn = layer.querySelector('.t-panel'); if (pn) pn.scrollTop = scroll;
   }
-  function confirmDel(s, i, pic) {
+  function confirmDel(s, i) {
     const box = G.el('div', 't-row', s);
     box.style.cssText = 'background:#fde9e2;border-radius:14px;padding:8px 12px';
-    G.el('span', '', box, `${pic.emoji} ${i}번 칸을 정말 지울까요? 되돌릴 수 없어요.`);
+    G.el('span', '', box, `${i}번 칸을 정말 지울까요? 되돌릴 수 없어요.`);
     tb('지우기', box, () => { G.save.del(i); render(); }, 'warn');
     tb('그만두기', box, () => box.remove());
     box.scrollIntoView && box.scrollIntoView({ block: 'nearest' });
@@ -1507,9 +1505,9 @@ G.teacher = (() => {
 })();
 
 /* ---- main.js ---- */
-// main.js — 시작과 흐름: 타이틀(U1) → 내 그림 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
+// main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '프로토타입 1 · 2026-09-29';
+G.VERSION = '프로토타입 1 (2026-09-29 고침)';
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
@@ -1541,7 +1539,7 @@ G.flow = (() => {
     const m = G.el('div', 't-main', t);
     G.el('h1', '', m, '별이 사라진 마을'); G.el('div', 't-sub', m, '길의 별');
     const lu = G.el('img', 't-lumi', t); lu.src = G.asset('assets/chars/lumi_big.png'); lu.alt = '';
-    const b = G.btn('pill gold t-start', '<span class="ic">⭐</span> 시작하기', t, () => F.start(), '시작하기');
+    const b = G.btn('pill gold t-start', G.icon('icon_star') + ' 시작하기', t, () => F.start(), '시작하기');
     if (G.isTouch) G.el('div', 't-note', t, '소리가 안 들리면 옆의 무음 스위치를 확인해 주세요.');
     G.el('div', 't-ver', t, G.VERSION + '<br>선생님 설정: ESC 또는 왼쪽 위 3초 누르기');
     setTimeout(() => { try { b.focus({ preventScroll: true }); } catch (e) { } }, 100);
@@ -1590,7 +1588,7 @@ G.flow = (() => {
     await G.dialog.play(S.meet_lumi, { keep: true });
     if (g !== G.gen) return;
     const L = G.D.dialogues[S.accept.button];
-    await G.dialog.choose([{ label: L.text, icon: '👍', voice: S.accept.button }], true);
+    await G.dialog.choose([{ label: L.text, icon: 'icon_good', voice: S.accept.button }], true);
     if (g !== G.gen) return;
     G.dialog.onLine = (id) => {
       if (id === S.after_accept[S.after_accept.length - 1] && !G.st.done.includes('meet_lumi')) {
