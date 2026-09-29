@@ -548,6 +548,7 @@ G.mapPath = (from, to) => {
 // dialogue.js — 대화창(U5)과 선택지(U6)
 // 음성이 끝나야 [다음]이 켜짐. 대화창 바깥을 눌러도 [다음]과 같음. [다시 듣기]는 언제나 누를 수 있음
 // 인물 그림: 왼쪽 = 주인공 + 루미, 오른쪽 = 상대. 말하는 사람은 밝게, 듣는 사람은 조금 어둡게 (기획안 16-10)
+// 9/29: 선생님 캐릭터 일러스트. 대사마다 동작 그림을 바꿈 (data/poses.json, 적지 않으면 기본 01)
 'use strict';
 G.dialog = (() => {
   const Dl = { active: false };
@@ -562,11 +563,11 @@ G.dialog = (() => {
     hit.addEventListener('click', () => { if (!G.paused && !G._suppressClick) press(); });
     const P = G.D.portraits;
     pgL = G.el('div', 'pgroup L enter', wrap);
-    heroImg = G.el('img', 'pmain', pgL); heroImg.src = G.asset(P.hero.img); heroImg.alt = '';
-    lumiImg = G.el('img', 'plumi', pgL); lumiImg.src = G.asset(P.lumi.img); lumiImg.alt = '';
+    heroImg = portrait(pgL, 'pmain', 'hero');
+    lumiImg = portrait(pgL, 'plumi', 'lumi');
     if (partner && P[partner]) {
       pgR = G.el('div', 'pgroup R enter', wrap);
-      partnerImg = G.el('img', 'pmain', pgR); partnerImg.src = G.asset(P[partner].img); partnerImg.alt = '';
+      partnerImg = portrait(pgR, 'pmain', partner);
     } else { pgR = null; partnerImg = null; }
     requestAnimationFrame(() => requestAnimationFrame(() => { pgL.classList.remove('enter'); pgR && pgR.classList.remove('enter'); }));
     box = G.el('div', 'dlg-box', wrap);
@@ -576,11 +577,24 @@ G.dialog = (() => {
     replayBtn = G.btn('pill dlg-replay', G.icon('icon_sound'), btns, () => { if (curId) speak(curId); }, '다시 듣기');
     nextBtn = G.btn('pill gold dlg-next wait', '다음 ' + G.icon('icon_next'), btns, () => press(), '다음');
     choicesEl = null;
-    // 루미 눈 깜박임
-    let t = 0, next = 2.5 + Math.random() * 2;
-    blinkOff = G.every(dt => {
-      t += dt; if (t > next) { lumiImg.src = G.asset(P.lumi.blink); if (t > next + 0.14) { lumiImg.src = G.asset(P.lumi.img); t = 0; next = 2.5 + Math.random() * 2.5; } }
-    });
+    // 루미 눈 깜박임 (깜박임 그림이 있을 때만)
+    if (P.lumi.blink) {
+      let t = 0, next = 2.5 + Math.random() * 2;
+      blinkOff = G.every(dt => {
+        t += dt; if (t > next) { lumiImg.src = G.asset(P.lumi.blink); if (t > next + 0.14) { lumiImg.src = G.asset(P.lumi.img); t = 0; next = 2.5 + Math.random() * 2.5; } }
+      });
+    }
+  }
+  function portrait(parent, cls, key) {
+    const P = G.D.portraits[key], img = G.el('img', cls, parent); img.alt = ''; img.dataset.who = key;
+    if (P.scale && cls === 'pmain') img.style.setProperty('--ps', P.scale);
+    Object.values(P.poses || {}).forEach(src => { const pre = new Image(); pre.src = G.asset(src); });   // 동작이 바뀔 때 깜박이지 않게 미리 읽음
+    setPose(img, P.img); return img;
+  }
+  function setPose(img, src) { if (img && img.dataset.src !== src) { img.dataset.src = src; img.src = G.asset(src); } }
+  function poseFor(key, id) {
+    const P = G.D.portraits[key], q = ((G.D.poses || {})[id] || {})[key];
+    return (q && P.poses && P.poses[q]) || P.img;
   }
   function setSpeaker(sp) {
     const inL = sp === 'hero' || sp === 'lumi';
@@ -600,6 +614,8 @@ G.dialog = (() => {
     curId = id;
     nameEl.textContent = L.name || ''; nameEl.style.setProperty('--band', BAND[L.speaker] || 'var(--star)');
     textEl.textContent = L.text; setSpeaker(L.speaker);
+    setPose(heroImg, poseFor('hero', id)); setPose(lumiImg, poseFor('lumi', id));
+    if (partnerImg) setPose(partnerImg, poseFor(Dl.partner, id));
     return L;
   }
 
