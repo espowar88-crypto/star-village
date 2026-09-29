@@ -601,6 +601,8 @@ G.dialog = (() => {
     const P = G.D.portraits[key], img = G.el('img', cls, parent); img.alt = ''; img.dataset.who = key; img.dataset.side = side;
     if (P.scale && cls === 'pmain') img.style.setProperty('--ps', P.scale);
     Object.values(P.poses || {}).forEach(src => { const pre = new Image(); pre.src = G.asset(src); });   // 동작이 바뀔 때 깜박이지 않게 미리 읽음
+    // 9/29 밤: 그림의 가로:세로를 원본 그대로 고정 (어떤 브라우저에서도 가로로 눌리지 않게)
+    img.addEventListener('load', () => { if (img.naturalWidth) img.style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight; });
     setPose(img, '01'); return img;
   }
   // 동작 그림 바꾸기. 그림이 보는 쪽(face)과 선 자리(side)를 맞춰 뒤집음: 왼쪽 자리는 오른쪽을, 오른쪽 자리는 왼쪽을 보게

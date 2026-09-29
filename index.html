@@ -184,13 +184,14 @@ img { -webkit-user-drag: none; user-select: none; pointer-events: none; }
 #portraits.look { background: transparent; }   /* "눌러 봐" 대사: 그림이 아래로 비켜서 누를 곳이 다 보임 */
 #portraits.look .pgroup { opacity: 0; transform: translateX(-50%) translateY(calc(var(--u) * 40)); }
 #portraits:empty { display: none; }
-.pgroup { position: absolute; bottom: 0; height: var(--ph); transform: translateX(-50%); transition: opacity .3s, transform .3s; display: flex; align-items: flex-end; }
+.pgroup { position: absolute; bottom: 0; height: var(--ph); width: max-content; transform: translateX(-50%); transition: opacity .3s, transform .3s; display: flex; align-items: flex-end; }   /* 9/29 밤: 폭을 그림 폭 그대로 (오른쪽 무리가 화면 끝에 눌려 가로로 줄어들던 문제) */
 .pgroup.L { left: calc(var(--sal) + 25%); }
 .pgroup.R { left: calc(75% - var(--sar)); }
-.pgroup img { display: block; transition: filter .25s, transform .25s; transform-origin: 50% 100%; transform: scaleX(var(--fx, 1)); }
+.pgroup img { display: block; flex: none; transition: filter .25s, transform .25s; transform-origin: 50% 100%; transform: scaleX(var(--fx, 1)); }
 .pgroup img.flip { --fx: -1; }   /* 그림을 좌우로 뒤집어 상대 쪽을 보게 */
 .pgroup .pmain { height: calc(100% * var(--ps, 1)); width: auto; }   /* --ps: 인물 크기 (주인공은 어린이라 0.9) */
-.pgroup .plumi { position: absolute; height: 40%; width: auto; left: 66%; top: 0; transform-origin: 50% 50%; animation: pbob 2.4s ease-in-out infinite; }   /* 상대가 있을 때: 주인공 어깨 옆 */
+.pgroup .pmain { position: relative; z-index: 1; }
+.pgroup .plumi { position: absolute; z-index: 0; height: 38%; width: auto; left: -7%; top: 0; transform-origin: 50% 50%; animation: pbob 2.4s ease-in-out infinite; }   /* 상대가 있을 때: 주인공 뒤통수 쪽 (9/29 밤 선생님 요청: 앞쪽이 아니라 머리 뒤에서 상대 쪽을 봄) */
 .pgroup.solo .plumi { position: static; margin-bottom: calc(var(--sab) + var(--u) * 54 + var(--dlgH));   /* 상대가 없을 때: 오른쪽에서 주인공과 마주 봄. 대화창 위에 떠 있음 */
   height: min(56%, calc(100% - var(--sab) - var(--u) * 54 - var(--dlgH) - 3%)); }
 @keyframes pbob { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(var(--u) * -12); } }   /* 둥실둥실 (뒤집기·말할 때 커지기와 겹치지 않게 translate로) */
