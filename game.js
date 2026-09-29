@@ -549,26 +549,38 @@ G.mapPath = (from, to) => {
 // 음성이 끝나야 [다음]이 켜짐. 대화창 바깥을 눌러도 [다음]과 같음. [다시 듣기]는 언제나 누를 수 있음
 // 인물 그림: 왼쪽 = 주인공 + 루미, 오른쪽 = 상대. 말하는 사람은 밝게, 듣는 사람은 조금 어둡게 (기획안 16-10)
 // 9/29: 선생님 캐릭터 일러스트. 대사마다 동작 그림을 바꿈 (data/poses.json, 적지 않으면 기본 01)
+// 9/29 밤: 상반신 위주로 크게, 서로 마주 보게 (왼쪽 인물은 오른쪽을, 오른쪽 인물은 왼쪽을 봄)
+//   상대가 없으면 주인공(왼쪽)과 루미(오른쪽)가 마주 봄. 상대가 있으면 루미는 주인공 어깨 옆에서 상대 쪽을 봄
+//   인물 그림은 #portraits 층(장면 바로 위, 버튼·할 일 표시·대화창보다 아래)에만 그려 버튼을 가리지 않음
 'use strict';
 G.dialog = (() => {
   const Dl = { active: false };
   const BAND = { lumi: '#FFD66B', hero: '#7FB77E', chief: '#A0764F', post: '#5B8FD0', villager: '#B58BC4', nar: '', ui: '' };
   let wrap, box, nameEl, textEl, nextBtn, replayBtn, pgL, pgR, heroImg, lumiImg, partnerImg, choicesEl;
-  let ready = false, vtok = 0, curId = null, waiter = null, blinkOff = null;
+  let ready = false, vtok = 0, curId = null, waiter = null, blinkOff = null, lastLine = false;
 
   function build(partner) {
     const root = G.$('#dialog'); root.innerHTML = '';
     wrap = G.el('div', 'dlg-wrap', root);
     const hit = G.el('div', 'dlg-hit', wrap);
-    hit.addEventListener('click', () => { if (!G.paused && !G._suppressClick) press(); });
-    const P = G.D.portraits;
-    pgL = G.el('div', 'pgroup L enter', wrap);
-    heroImg = portrait(pgL, 'pmain', 'hero');
-    lumiImg = portrait(pgL, 'plumi', 'lumi');
+    hit.addEventListener('click', (e) => {
+      if (G.paused || G._suppressClick) return;
+      const through = lastLine && ready;   // 마지막 대사에서 장면 속 누를 곳(장소·반짝이는 곳)을 누르면 대화를 닫고 그곳을 바로 누름
+      press();
+      if (through) setTimeout(() => tapThrough(e.clientX, e.clientY), 80);
+    });
+    const P = G.D.portraits, pr = G.$('#portraits'); pr.innerHTML = ''; pr.classList.add('on');
+    pgL = G.el('div', 'pgroup L enter', pr);
+    heroImg = portrait(pgL, 'pmain', 'hero', 'L');
     if (partner && P[partner]) {
-      pgR = G.el('div', 'pgroup R enter', wrap);
-      partnerImg = portrait(pgR, 'pmain', partner);
-    } else { pgR = null; partnerImg = null; }
+      lumiImg = portrait(pgL, 'plumi', 'lumi', 'L');
+      pgR = G.el('div', 'pgroup R enter', pr);
+      partnerImg = portrait(pgR, 'pmain', partner, 'R');
+    } else {
+      pgR = G.el('div', 'pgroup R solo enter', pr);
+      lumiImg = portrait(pgR, 'plumi', 'lumi', 'R');
+      partnerImg = null;
+    }
     requestAnimationFrame(() => requestAnimationFrame(() => { pgL.classList.remove('enter'); pgR && pgR.classList.remove('enter'); }));
     box = G.el('div', 'dlg-box', wrap);
     nameEl = G.el('div', 'dlg-name', box);
@@ -585,16 +597,25 @@ G.dialog = (() => {
       });
     }
   }
-  function portrait(parent, cls, key) {
-    const P = G.D.portraits[key], img = G.el('img', cls, parent); img.alt = ''; img.dataset.who = key;
+  function portrait(parent, cls, key, side) {
+    const P = G.D.portraits[key], img = G.el('img', cls, parent); img.alt = ''; img.dataset.who = key; img.dataset.side = side;
     if (P.scale && cls === 'pmain') img.style.setProperty('--ps', P.scale);
     Object.values(P.poses || {}).forEach(src => { const pre = new Image(); pre.src = G.asset(src); });   // 동작이 바뀔 때 깜박이지 않게 미리 읽음
-    setPose(img, P.img); return img;
+    setPose(img, '01'); return img;
   }
-  function setPose(img, src) { if (img && img.dataset.src !== src) { img.dataset.src = src; img.src = G.asset(src); } }
-  function poseFor(key, id) {
-    const P = G.D.portraits[key], q = ((G.D.poses || {})[id] || {})[key];
-    return (q && P.poses && P.poses[q]) || P.img;
+  // 동작 그림 바꾸기. 그림이 보는 쪽(face)과 선 자리(side)를 맞춰 뒤집음: 왼쪽 자리는 오른쪽을, 오른쪽 자리는 왼쪽을 보게
+  function setPose(img, q) {
+    if (!img) return;
+    const P = G.D.portraits[img.dataset.who], src = (P.poses && P.poses[q]) || P.img;
+    if (img.dataset.src !== src) { img.dataset.src = src; img.src = G.asset(src); }
+    const face = (P.faces || {})[q] || P.face || 'L';
+    img.classList.toggle('flip', face === img.dataset.side);
+  }
+  function poseFor(key, id) { return ((G.D.poses || {})[id] || {})[key] || '01'; }
+  function tapThrough(x, y) {
+    if (Dl.active || G.busy > 0 || G.paused) return;
+    const t = document.elementFromPoint(x, y), b = t && t.closest('#world .place, #world .hot');
+    if (b) b.click();
   }
   function setSpeaker(sp) {
     const inL = sp === 'hero' || sp === 'lumi';
@@ -614,6 +635,8 @@ G.dialog = (() => {
     curId = id;
     nameEl.textContent = L.name || ''; nameEl.style.setProperty('--band', BAND[L.speaker] || 'var(--star)');
     textEl.textContent = L.text; setSpeaker(L.speaker);
+    // "…을 눌러 봐" 대사에서는 인물 그림이 비켜서 장면 속 누를 곳(장소·반짝이는 곳)을 가리지 않음. 마지막 대사면 그곳을 바로 눌러도 됨
+    G.$('#portraits').classList.toggle('look', /눌러/.test(L.text));
     setPose(heroImg, poseFor('hero', id)); setPose(lumiImg, poseFor('lumi', id));
     if (partnerImg) setPose(partnerImg, poseFor(Dl.partner, id));
     return L;
@@ -627,6 +650,7 @@ G.dialog = (() => {
     G.audio.preload(ids.slice(0, 3));
     for (let i = 0; i < ids.length; i++) {
       G.audio.preload(ids.slice(i + 1, i + 3));
+      lastLine = i === ids.length - 1 && !opts.keep;
       show(ids[i]); if (Dl.onLine) Dl.onLine(ids[i]);
       await new Promise(res => { waiter = res; speak(ids[i]); });
     }
@@ -642,16 +666,17 @@ G.dialog = (() => {
   }
   Dl.close = () => {
     if (!Dl.active) return;
-    Dl.active = false; G.busy = Math.max(0, G.busy - 1); waiter = null; curId = null; vtok++;
+    Dl.active = false; G.busy = Math.max(0, G.busy - 1); waiter = null; curId = null; vtok++; lastLine = false;
     G.audio.stopVoice(); if (blinkOff) blinkOff(); blinkOff = null;
     G.$('#dialog').innerHTML = ''; G.$('#game').classList.remove('talking');
+    const pr = G.$('#portraits'); pr.innerHTML = ''; pr.classList.remove('on');
     if (Dl.onSpeaker) Dl.onSpeaker(null);
   };
 
   // ---- 선택지 (U6): 처음 누르면 읽어 주고 테두리, 한 번 더 누르면 선택. 버튼이 하나면 바로 선택 ----
   // opts: [{label, icon, voice}] → 고른 번호. 고른 말은 주인공 대사로 한 번 나옴
   Dl.choose = (options, keep) => new Promise((done) => {
-    open(Dl.partner);
+    open(Dl.partner); lastLine = false;
     nextBtn.style.visibility = 'hidden';
     choicesEl = G.el('div', 'choices', wrap);
     const one = options.length === 1 || (G.settings && G.settings.choiceOne);
