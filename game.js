@@ -34,9 +34,14 @@ G.onTap = (elm, fn) => {
 // 아이콘 그림 (9/29: 이모지 대신 그림). 지금은 임시 그림이고, 선생님 그림이 오면 assets/ui/icons/ 의 같은 이름 파일만 바꿈
 G.icon = (name, cls = '') => `<img class="ico${cls ? ' ' + cls : ''}" src="${G.asset('assets/ui/icons/' + name + '.png')}" alt="">`;
 // 9/30 새 세계관: 별 모양은 진짜 별(8개 + 마지막 별)에만 씀. 할 일 표시는 동그라미, 장소 표시는 동그란 핀, 반짝이는 4갈래 빛
-G.svgDot = (done) => done
+// 9/30 선생님: 코드로 그린 그림은 최소화 → 그림 파일(assets/ui/art/<이름>)이 있으면 그 주소, 없으면 null (코드 그림을 씀)
+G.art = (name) => { const p = ((G.D.story || {}).art || {})[name]; return p ? G.asset(p) : null; };
+G.artImg = (name, cls = '') => { const u = G.art(name); return u ? `<img class="art ${cls}" src="${u}" alt="" draggable="false">` : null; };
+G.svgDot = (done) => G.artImg(done ? 'mark_done' : 'mark_todo') || (done
   ? '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#FFD66B" stroke="#C98F14" stroke-width="9"/><path d="M31 51 L45 64 L70 37" fill="none" stroke="#FFF8EC" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-  : '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="rgba(255,248,236,.9)" stroke="#C98F14" stroke-width="9"/></svg>';
+  : '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="rgba(255,248,236,.9)" stroke="#C98F14" stroke-width="9"/></svg>');
+G.sparkle = (fill = '#FFF1B8', stroke = '#FFD66B', sw = 4) => G.artImg('sparkle') || G.svgTwinkle(fill, stroke, sw);
+G.arrowHtml = () => G.artImg('hint_arrow') || '<svg viewBox="0 0 90 110"><path d="M45 104 L8 58 H30 V6 H60 V58 H82 Z" fill="#FFD66B" stroke="#8a5a0a" stroke-width="5" stroke-linejoin="round"/></svg>';
 G.svgPin = (fill, stroke, sw = 6) => `<svg viewBox="0 0 100 100"><path d="M50 96 C38 76 16 62 16 40 A34 34 0 1 1 84 40 C84 62 62 76 50 96 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/><circle cx="50" cy="40" r="13" fill="${stroke}" opacity=".55"/></svg>`;
 G.svgTwinkle = (fill, stroke, sw = 4) => `<svg viewBox="0 0 100 100"><path d="M50 4 C54 38 62 46 96 50 C62 54 54 62 50 96 C46 62 38 54 4 50 C38 46 46 38 50 4 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/></svg>`;
 G.svgStar = (fill, stroke, sw = 6) => `<svg viewBox="0 0 100 100"><path d="M50 6 L62 37 L95 38 L69 58 L78 91 L50 72 L22 91 L31 58 L5 38 L38 37 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/></svg>`;
@@ -81,6 +86,9 @@ G.tween = (a, b, dur, fn, ease = 'io') => new Promise(res => {
   const off = G.every(dt => { t += dt; const k = Math.min(1, t / dur); fn(a + (b - a) * G.ease[ease](k)); if (k >= 1) { off(); res(); } });
 });
 // 빠르게 모드 (교사용 설정, 9/30): 음성을 기다리지 않고 [다음]·[건너뛰기]가 바로 켜짐. 선생님이 시연하거나 확인할 때
+// 9/30 난이도 (선생님 설정): easy 쉽게(9/29까지의 난이도) / normal 보통(기본) / hard 어렵게
+G.level = () => (G.settings && G.settings.level) || 'normal';
+G.lv = (min) => ({ easy: 0, normal: 1, hard: 2 })[G.level()] >= ({ easy: 0, normal: 1, hard: 2 })[min || 'easy'];
 G.fast = () => !!(G.settings && G.settings.fast);
 G.reduced = () => G.settings && (G.settings.reduceMotion || (G.settings.reduceAuto && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches));
 
@@ -156,10 +164,11 @@ G.audio = (() => {
   A.preload = (ids) => { if (!A.ready) return; for (const id of ids) loadBuf(G.voiceUrl(id)).catch(() => { }); };
 
   // ---- 대사 음성: 끝나면 resolve. 파일이 없으면 브라우저 음성 → 그것도 안 되면 3초 ----
-  let cur = null;
-  A.stopVoice = () => { if (cur) { try { cur.stop(); } catch (e) { } cur = null; } try { speechSynthesis.cancel(); } catch (e) { } };
+  let cur = null, vseq = 0;
+  A.stopVoice = () => { vseq++; if (cur) { try { cur.stop(); } catch (e) { } cur = null; } try { speechSynthesis.cancel(); } catch (e) { } };
+  // 9/30: 음성 파일을 불러오는 사이에 다음 음성이 시작되면, 늦게 도착한 앞 음성은 틀지 않음 (음성 두 개가 겹치던 문제)
   A.voice = (id, textFallback) => new Promise(async (done) => {
-    A.stopVoice();
+    A.stopVoice(); const my = vseq;
     const line = G.D.dialogues && G.D.dialogues[id];
     const text = textFallback || (line && line.text) || '';
     let finished = false; const fin = () => { if (finished) return; finished = true; A.speaking = Math.max(0, A.speaking - 1); if (!A.speaking) duck(false); done(); };
@@ -168,12 +177,14 @@ G.audio = (() => {
     if (!A.ready) { await G.wait(1.5); return fin(); }
     try {
       const buf = await loadBuf(G.voiceUrl(id));
+      if (my !== vseq) return fin();
       const src = A.ctx.createBufferSource(); src.buffer = buf; src.connect(gVoice); cur = src;
       src.onended = () => { if (cur === src) cur = null; fin(); };
       src.start();
       // 혹시 끝 알림이 안 오면 (탭 전환 등) 길이+1.5초 뒤 진행
       G.wait(buf.duration + 1.5).then(fin);
     } catch (e) {
+      if (my !== vseq) return fin();
       if (text && tts(text, fin)) return;
       await G.wait(3); fin();
     }
@@ -191,6 +202,8 @@ G.audio = (() => {
     if (!A.ready) return; const t = A.ctx.currentTime;
     gMusic.gain.cancelScheduledValues(t); gMusic.gain.setValueAtTime(gMusic.gain.value, t);
     gMusic.gain.linearRampToValueAtTime(on ? VOL.duck : VOL.music, t + 0.4);
+    gAmb.gain.cancelScheduledValues(t); gAmb.gain.setValueAtTime(gAmb.gain.value, t);
+    gAmb.gain.linearRampToValueAtTime(on ? VOL.amb * 0.3 : VOL.amb, t + 0.3);
     if (musicEl && !musicNode) musicEl.volume = (on ? VOL.duck : VOL.music) * (S().volume ?? 0.9);
   }
 
@@ -237,7 +250,7 @@ G.audio = (() => {
       try {
         const buf = await loadBuf(G.asset('assets/audio/' + n + '.mp3')); if (!ambs[n]) continue;
         const s = A.ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.connect(g); s.start(); ambs[n].s = s;
-        g.gain.linearRampToValueAtTime(n === 'amb_crickets' ? 0.5 : 1, A.ctx.currentTime + 1.2);
+        g.gain.linearRampToValueAtTime(n === 'amb_crickets' ? 0.5 : n === 'amb_market' ? 0.6 : 1, A.ctx.currentTime + 1.2);
       } catch (e) { }
     }
   };
@@ -338,7 +351,7 @@ G.hud = (() => {
     root = G.$('#hud'); root.innerHTML = '';
     tl = G.el('div', 'hud-tl', root); tr = G.el('div', 'hud-tr', root); bl = G.el('div', 'hud-bl', root); br = G.el('div', 'hud-br', root);
     bubble = G.el('div', 'bubble', root); bubble.style.display = 'none';
-    const sv = G.el('div', 'saved', root); sv.id = 'savedStar'; sv.innerHTML = G.svgTwinkle('#FFD66B', '#FFF6D6', 6);
+    const sv = G.el('div', 'saved', root); sv.id = 'savedStar'; sv.innerHTML = G.sparkle('#FFD66B', '#FFF6D6', 6);
   };
   H.clear = () => { if (!root) H.init(); tl.innerHTML = tr.innerHTML = bl.innerHTML = br.innerHTML = ''; H.hideBubble(); taskEl = null; };
   H.hide = (on) => { if (!root) H.init(); root.style.visibility = on ? 'hidden' : ''; };
@@ -415,10 +428,23 @@ G.hud = (() => {
     for (let i = 0; i < 5; i++) {
       const it = G.D.items.find(x => x.id === G.st.items[i]);
       const s = G.el('button', 'bag-slot' + (it ? ' has' : ''), slots, it ? G.icon(it.icon) : ''); s.type = 'button';
-      if (it) G.onTap(s, () => { nm.textContent = it.name; G.audio.voice(it.voice); });
+      if (it) G.onTap(s, () => { nm.textContent = it.name; G.audio.sfx('sfx_page', 0.4); H.itemPop(it); });
     }
     const row = G.el('div', 'btn-row', sh);
     G.btn('pill gold', G.icon('icon_ok') + ' 닫기', row, () => { m.remove(); G.busy = Math.max(0, G.busy - 1); G.audio.stopVoice(); });
+  };
+  // ---- 9/30 선생님: 가방의 아이템을 누르면 큰 그림이 팝업 (마을 지도·촉각 지도 등). 그림 파일 art/popup_<id>가 없으면 아이콘을 크게 ----
+  H.itemPop = (it) => {
+    const ov = G.$('#overlay');
+    const m = G.el('div', 'modal item-pop', ov); const sh = G.el('div', 'sheet', m);
+    const big = G.art('popup_' + it.id);
+    const pic = G.el('div', 'item-pop-pic' + (big ? ' art' : ''), sh, big ? `<img src="${big}" alt="">` : G.icon(it.icon));
+    G.el('div', 'get-title', sh, it.name);
+    G.el('div', 'get-desc', sh, G.txt(it.voice));
+    pic.animate && pic.animate([{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 350, easing: 'ease-out' });
+    G.audio.voice(it.voice);
+    const row = G.el('div', 'btn-row', sh);
+    G.btn('pill gold', G.icon('icon_ok') + ' 닫기', row, () => { m.remove(); G.audio.stopVoice(); }, '닫기');
   };
   return H;
 })();
@@ -504,8 +530,8 @@ G.mapView = (parent, o = {}) => {
     if (k.state !== state) {
       k.state = state; k.m.className = 'marker ' + state;
       k.m.innerHTML = state === 'hidden' ? '' :
-        state === 'locked' ? G.svgPin('rgba(190,196,214,.55)', 'rgba(90,96,120,.8)', 5) :
-        state === 'done' ? G.svgPin('#FFE9A8', '#C98F14', 6) : G.svgPin('#FFD66B', '#FFF6D6', 6);   // 9/30: 장소 표시는 동그란 핀
+        state === 'locked' ? (G.artImg('map_pin', 'pin-locked') || G.svgPin('rgba(190,196,214,.55)', 'rgba(90,96,120,.8)', 5)) :
+        state === 'done' ? (G.artImg('map_pin_done') || G.svgPin('#FFE9A8', '#C98F14', 6)) : (G.artImg('map_pin') || G.svgPin('#FFD66B', '#FFF6D6', 6));   // 9/30: 장소 표시는 동그란 핀
       if (state === 'done') k.m.style.transform = 'scale(.62)'; else k.m.style.transform = '';
     }
     k.lb.style.display = showLabel && state !== 'hidden' ? '' : 'none';
@@ -760,7 +786,7 @@ G.braille = (() => {
 /* ---- stars.js ---- */
 // stars.js — 하늘의 별 9개 (9/30 새 세계관): 주제 별 8개 + 마지막 별. 별마다 모양과 색, 하는 일이 다름
 // 하는 일은 사람의 몸을 고치는 것이 아니라 "마을이 모두에게 맞는 방법을 쓰게 돕는 것" (기획안 2장 표현 원칙)
-// 지금은 SVG로 그린 임시 그림. 선생님 그림이 오면 assets/ui/stars/star_<id>.png 로 바꿈 (img가 있으면 그림을 씀)
+// 9/30 선생님 그림 assets/ui/stars/star_<id>.png (gen_data가 story.starImgs에 적음). 그림이 없는 별만 아래 SVG 임시 그림
 'use strict';
 G.STARS = (() => {
   const OUT = '#FFF6D6';
@@ -797,8 +823,8 @@ G.STARS = (() => {
   ];
   // 별 하나를 그림으로 (선생님 그림이 있으면 그 그림)
   G.starSvg = (s) => {
-    const img = window.EMBED && window.EMBED['assets/ui/stars/star_' + s.id + '.png'];
-    if (img) return `<img src="${img}" alt="">`;
+    const has = ((G.D.story || {}).starImgs || []).includes(s.id);
+    if (has) return `<img src="${G.asset('assets/ui/stars/star_' + s.id + '.png')}" alt="" draggable="false">`;
     return `<svg viewBox="0 0 100 100">${s.svg}</svg>`;
   };
   return S;
@@ -841,7 +867,7 @@ G.cut = (() => {
 
   // ---- 연출 틀: 겹 하나 만들고, 건너뛰기, 본 연출 기록 ----
   C.play = async (id, opts = {}) => {
-    const fn = SCRIPTS[id]; if (!fn) return;
+    const fn = SCRIPTS[id] || (id.startsWith('CH:') ? SCRIPTS.CH : null); if (!fn) return;
     const ov = G.$('#overlay');
     const root = G.el('div', 'cut', ov);
     const c = ctx(root); C.active = c;
@@ -871,7 +897,7 @@ G.cut = (() => {
 
   const fadeIn = (c, el, d = 0.8) => c.tween(0, 1, d, v => el.style.opacity = v);
   const fadeOut = (c, el, d = 0.6) => c.tween(1, 0, d, v => el.style.opacity = v);
-  const sparkSvg = G.svgTwinkle('#FFF1B8', '#FFD66B', 4);
+  const sparkSvg = G.sparkle();
 
   // 반짝이 가루가 한 점에서 퍼짐 (화면 좌표)
   function burst(c, root, x, y, n = 14) {
@@ -944,17 +970,41 @@ G.cut = (() => {
       pop(road.el); c.sfx('sfx_chime', 0.4);
       await c.wait(0.6);
       // (5) 별이 하나둘 떨어짐 → 마지막 별까지
+      // 9/30 선생님: 떨어질 때 빙글빙글 돌고, 지나간 자리에 별 잔상과 반짝이는 별의 길이 잠시 남음 (선 하나만 있던 것을 바꿈)
+      const trail = G.el('div', 'layer', V.el); trail.style.zIndex = 1;
+      const tw = (col) => G.sparkle('#FFFDF2', col, 5);
       const fall = (q, i) => new Promise(async (res) => {
         if (!c.rm && !c.skipped) await c.tween(0, 1, 0.8, k => { q.el.style.transform = `rotate(${Math.sin(k * Math.PI * 6) * 16}deg)`; });
         c.sfx('sfx_starfall', 0.35);
-        const tail = G.el('div', 'stail', starL), to = [500 + ((i * 397) % 1900), 250 + ((i * 211) % 600)], p1 = [(q.at[0] + to[0]) / 2 + 300, q.at[1] + 200];
-        await c.tween(0, 1, c.rm ? 0.3 : 1.6, k => {
+        const to = [500 + ((i * 397) % 1900), 250 + ((i * 211) % 600)], p1 = [(q.at[0] + to[0]) / 2 + 300, q.at[1] + 200];
+        const sz = parseFloat(q.el.style.width), col = q.s.color, spin = (i % 2 ? -1 : 1) * (q.s.big ? 900 : 720);
+        const many = !(c.rm || c.light || c.skipped);
+        let lastG = -1, lastS = -1;
+        await c.tween(0, 1, c.rm ? 0.3 : 1.9, k => {
           const u = 1 - k, x = u * u * q.at[0] + 2 * u * k * p1[0] + k * k * to[0], y = u * u * q.at[1] + 2 * u * k * p1[1] + k * k * to[1];
-          q.el.style.left = x + 'px'; q.el.style.top = y + 'px'; q.el.style.transform = `scale(${1 - 0.6 * k})`; q.el.style.opacity = k < 0.7 ? 1 : (1 - k) / 0.3;
-          const dx = 2 * u * (p1[0] - q.at[0]) + 2 * k * (to[0] - p1[0]), dy = 2 * u * (p1[1] - q.at[1]) + 2 * k * (to[1] - p1[1]);
-          Object.assign(tail.style, { left: x + 'px', top: y + 'px', transform: `rotate(${Math.atan2(dy, dx)}rad)`, opacity: q.el.style.opacity });
+          const sc = 1 - 0.55 * k, rot = c.rm ? 0 : spin * k, op = k < 0.75 ? 1 : (1 - k) / 0.25;
+          q.el.style.left = x + 'px'; q.el.style.top = y + 'px'; q.el.style.transform = `rotate(${rot}deg) scale(${sc})`; q.el.style.opacity = op;
+          if (c.skipped) return;
+          // 별 잔상: 지나간 자리에 같은 별이 옅게 남았다가 사라짐
+          if (many && k - lastG > 0.045 && k < 0.9) {
+            lastG = k;
+            const g = G.el('div', 'sghost', trail, q.el.innerHTML);
+            Object.assign(g.style, { left: x + 'px', top: y + 'px', width: sz + 'px', height: sz + 'px', margin: (-sz / 2) + 'px 0 0 ' + (-sz / 2) + 'px', transform: `rotate(${rot}deg) scale(${sc})` });
+            c.tween(0.55, 0, 0.55, v => g.style.opacity = v * op).then(() => g.remove());
+          }
+          // 반짝이는 별의 길: 작은 반짝이가 뿌려져 잠시 반짝이다 천천히 사라짐
+          if (k - lastS > (many ? 0.018 : 0.08) && k < 0.95) {
+            lastS = k;
+            const s = G.el('div', 'strail', trail, tw(col)), r = (18 + Math.random() * 26) * (q.s.big ? 1.3 : 1);
+            const jx = (Math.random() - 0.5) * sz * 0.5, jy = (Math.random() - 0.5) * sz * 0.5;
+            Object.assign(s.style, { left: (x + jx) + 'px', top: (y + jy) + 'px', width: r + 'px', height: r + 'px', margin: (-r / 2) + 'px 0 0 ' + (-r / 2) + 'px', animationDelay: (-Math.random()) + 's' }); s.style.setProperty('--c', col);
+            const life = many ? 1.4 + Math.random() * 0.9 : 0.8;
+            c.tween(1, 0, life, v => { s.style.opacity = v; s.style.transform = `translateY(${(1 - v) * 40}px) scale(${0.5 + v * 0.5})`; }, 'in').then(() => s.remove());
+          }
         }, 'in');
-        q.el.style.opacity = 0; tail.remove(); res();
+        q.el.style.opacity = 0;
+        if (!c.skipped) burst(c, root, ...V.toScreen(to[0], to[1]), c.light ? 4 : 8);
+        res();
       });
       const order = [2, 5, 0, 7, 3, 1, 6, 4];
       await Promise.all([
@@ -1077,6 +1127,22 @@ G.cut = (() => {
   }
 
   Object.assign(SCRIPTS, {
+    // ---- 9/30 장 제목 (약 4초): "제 3 장" + 선 + "소식을 아는 사람". 배경은 선생님 그림 (없으면 밤하늘 그림을 어둡게) ----
+    async CH(c, root, opts) {
+      const key = opts.key, T = ((G.D.story || {}).chapterTitles || {})[key]; if (!T) return;
+      root.classList.add('chapter');
+      const bg = G.el('div', 'ch-bg', root); bg.style.backgroundImage = `url("${G.art('chapter_' + key) || G.art('chapter_bg') || G.asset('assets/ui/sky.jpg')}")`;
+      if (!G.art('chapter_' + key) && !G.art('chapter_bg')) bg.classList.add('dim');
+      const box = G.el('div', 'ch-box', root);
+      G.el('div', 'ch-num', box, '제 ' + T[0] + ' 장');
+      G.el('div', 'ch-line', box, G.artImg('chapter_line') || '<i></i>');
+      const tt = G.el('div', 'ch-title', box, T[1]);
+      root.style.opacity = 0;
+      c.sfx('sfx_chime', 0.5);
+      await c.tween(0, 1, c.rm ? 0.2 : 0.9, v => { root.style.opacity = v; bg.style.transform = c.rm ? '' : `scale(${1.06 - 0.06 * v})`; }, 'out');
+      await Promise.all([c.voice(T[2], false), c.wait(G.fast() ? 0.6 : 2.2)]);
+      await c.tween(1, 0, c.rm ? 0.2 : 0.7, v => root.style.opacity = v);
+    },
     // ---- C3 시장 도착 (6초): 천막이 바람에 펄럭(소리) → 과일 가게 쪽으로 다가감 → 봄이 아주머니가 폴짝 인사 → 「시장」 ----
     async C3(c, root, opts) {
       const { V, off } = await arrive(c, root, opts, 'market');
@@ -1086,7 +1152,7 @@ G.cut = (() => {
       const wind = () => {
         if (c.skipped || c.light) return;
         for (let i = 0; i < 7; i++) {
-          const w = G.el('div', 'wind', root); const y = G.stage.H * (0.15 + Math.random() * 0.5);
+          const w = G.el('div', 'wind' + (G.art('wind_leaf') ? ' art' : ''), root, G.artImg('wind_leaf') || ''); const y = G.stage.H * (0.15 + Math.random() * 0.5);
           c.tween(0, 1, 1.6 + Math.random() * 0.8, k => { w.style.transform = `translate(${-60 + (G.stage.W + 120) * k}px,${y + Math.sin(k * 9 + i) * 30 * G.stage.u}px) rotate(${k * 540}deg)`; w.style.opacity = Math.sin(k * Math.PI); }, 'lin').then(() => w.remove());
         }
       };
@@ -1109,6 +1175,7 @@ G.cut = (() => {
       V.setCam(1200, 540, 1);
       const light = G.el('div', 'door-light', root); light.style.opacity = 0;
       const door = G.el('div', 'door', root); const dl = G.el('div', 'door-l', door), dr = G.el('div', 'door-r', door);
+      const dimg = G.art('library_door'); if (dimg) { door.classList.add('art'); for (const d of [dl, dr]) G.el('img', 'door-img', d).src = dimg; }   // 9/30: 선생님 문 그림 한 장을 반씩 (비율 그대로 화면을 채움)
       c.t0 = G.t;
       await Promise.all([
         fadeIn(c, root, 0.4),
@@ -1379,7 +1446,7 @@ G.map = (() => {
   function makeVillager(d, stage) {
     const w = V.walker(d.sheet, 'villager');
     const pts = d.path; w.set(pts[0][0], pts[0][1]);
-    const sigh = G.el('div', 'sigh', w.el, '<svg viewBox="0 0 40 26"><path d="M8 20a7 7 0 0 1 2-13 9 9 0 0 1 17-1 7 7 0 0 1 5 14z" fill="#d9dcea" stroke="#6b7090" stroke-width="2"/></svg>');
+    const sigh = G.el('div', 'sigh', w.el, G.artImg('sigh') || '<svg viewBox="0 0 40 26"><path d="M8 20a7 7 0 0 1 2-13 9 9 0 0 1 17-1 7 7 0 0 1 5 14z" fill="#d9dcea" stroke="#6b7090" stroke-width="2"/></svg>');
     const hit = G.el('button', 'whit', w.el); hit.type = 'button'; hit.setAttribute('aria-label', G.D.dialogues[d.line]?.name || '마을 사람');
     let bub = null;
     G.onTap(hit, async () => {
@@ -1417,7 +1484,7 @@ G.map = (() => {
   function clearHint() { if (trailEl) trailEl.remove(); trailEl = null; if (arrowEl) arrowEl.remove(); arrowEl = null; }
   function showArrow(p) {
     if (arrowEl || !V) return;
-    arrowEl = G.el('div', 'arrow', V.fx, '<svg viewBox="0 0 90 110"><path d="M45 104 L8 58 H30 V6 H60 V58 H82 Z" fill="#FFD66B" stroke="#8a5a0a" stroke-width="5" stroke-linejoin="round"/></svg>');
+    arrowEl = G.el('div', 'arrow', V.fx, G.arrowHtml());
     arrowEl.style.left = p.marker[0] + 'px'; arrowEl.style.top = (p.marker[1] - 60) + 'px'; arrowEl.style.zIndex = 3002;
   }
   function showTrail(p) {
@@ -1496,7 +1563,8 @@ G.scene = (() => {
   let V = null, S = null, hots = [], arrowEl = null, trailEl = null, busy = false, closeup = null, sfxOff = null;
   const missionsOf = (h) => h.mission ? [h.mission, ...(h.more || [])] : [];
   const allDone = (h) => missionsOf(h).every(m => G.st.done.includes(m));
-  const shown = (h) => !h.after || G.st.done.includes(h.after);
+  const shown = (h) => (!h.after || G.st.done.includes(h.after)) && (!h.afterLv || !G.lv('normal') || G.st.done.includes(h.afterLv));
+  const finding = (h) => h.find && G.lv('normal') && !G.st.done.includes(h.find.done);   // 9/30 난이도: 찾아야 하는 곳
   Sc.hide = () => {
     if (!V) return;
     G.resizers.delete(onResize); G.dialog.onSpeaker = null; if (sfxOff) sfxOff(); sfxOff = null;
@@ -1538,7 +1606,10 @@ G.scene = (() => {
       G.onTap(btn, () => tapHot(H));
       hots.push(H);
       showHot(H, shown(h));
+      if (h.hideLv && G.lv('normal') && !G.st.seen.includes(id + ':' + h.id)) glow.classList.add('hide');   // 보통부터: 반짝이지 않아 찾아야 함
     }
+    // 보통부터: 찾기 전에는 인물 그림도 숨김 (예: 봄이 아주머니)
+    for (const h of def.hotspots) if (finding(h) && V.spr[h.find.sprite]) V.spr[h.find.sprite].img.style.opacity = 0;
     if (def.randomSfx) {   // 가끔 나는 소리 (대화 중에는 쉼)
       const R = def.randomSfx; let t = 0, next = R.every[0] + Math.random() * (R.every[1] - R.every[0]);
       sfxOff = G.every(dt => { if (G.dialog.active || G.paused) return; t += dt; if (t > next) { t = 0; next = R.every[0] + Math.random() * (R.every[1] - R.every[0]); G.audio.sfx(R.name, R.vol || 0.4); } });
@@ -1555,6 +1626,8 @@ G.scene = (() => {
     G.$('#fade').classList.remove('on');
     if (first) {
       G.hud.hide(true);
+      await G.cut.play('CH:' + id, { key: id });   // 9/30 장 제목
+      if (g !== G.gen) return;
       await G.cut.play(def.arrive);
       if (g !== G.gen) return;
       G.hud.hide(false);
@@ -1566,6 +1639,7 @@ G.scene = (() => {
       if (g !== G.gen) return;
       G.st.done.push(id + '_intro'); G.save.write();
     }
+    if (def.clueLv && G.lv('normal') && !G.st.done.includes(def.clueLv.done)) { await G.dialog.play(def.clueLv.lines); if (g !== G.gen) return; }
     setHelp();
   };
   function setStar(el, done) { el.innerHTML = G.svgDot(done); }   // 9/30: 할 일 표시는 동그라미 (별은 진짜 별에만)
@@ -1575,6 +1649,7 @@ G.scene = (() => {
     for (const H of hots) {
       const on = shown(H.def); if (on === (H.btn.style.display !== 'none')) continue;
       showHot(H, on);
+      if (on && H.def.hideLv && G.lv('normal')) { H.glow.classList.add('hide'); continue; }
       if (on) { H.glow.classList.remove('seen'); H.glow.classList.add('strong'); G.audio.sfx('sfx_sparkle', 0.5); popStar(H.star || H.glow); G.wait(3).then(() => H.glow.classList.remove('strong')); }
     }
   }
@@ -1608,7 +1683,7 @@ G.scene = (() => {
     const h = H.def, id = S.id, g = G.gen;
     G.audio.sfx(h.sfx || 'sfx_tap', h.sfx ? 0.9 : 0.5);
     if (!G.st.seen.includes(id + ':' + h.id)) G.st.seen.push(id + ':' + h.id);
-    H.glow.classList.add('seen');
+    H.glow.classList.add('seen'); H.glow.classList.remove('hide');
     if (h.louder) G.audio.ambientBoost(h.louder, true);
     if (h.flow) {
       // 할 일 여러 개가 이어지는 대화·아이템·퍼즐 (flows.js)
@@ -1616,9 +1691,19 @@ G.scene = (() => {
       if (g !== G.gen) { busy = false; return; }
       hideCloseup();
       if (V && G.screen === 'scene') setHelp();   // 퍼즐이 도움을 바꿔 놓았을 수 있어 장면 도움으로 되돌림
+    } else if (finding(h)) {
+      // 찾았다! 숨어 있던 인물이 나타나고, 그 인물의 누를 곳이 열림
+      await G.dialog.play(h.find.lines.slice(0, 1));
+      if (g !== G.gen) { busy = false; return; }
+      const sp = V && V.spr[h.find.sprite];
+      if (sp) { G.audio.sfx('sfx_sparkle', 0.7); sp.img.animate && sp.img.animate([{ opacity: 0, transform: 'translateY(30px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 600, easing: 'ease-out' }); sp.img.style.opacity = 1; }
+      await G.dialog.play(h.find.lines.slice(1), { partner: h.find.sprite });
+      if (g !== G.gen) { busy = false; return; }
+      if (!G.st.done.includes(h.find.done)) { G.st.done.push(h.find.done); G.save.write(); }
+      revealHots();
     } else {
       if (h.closeup) showCloseup(h.closeup);
-      await G.dialog.play(h.lines, { partner: h.partner });
+      await G.dialog.play(h.linesLv && G.lv('normal') ? h.linesLv : h.lines, { partner: h.partner });
       if (g !== G.gen) { busy = false; return; }
       hideCloseup();
       if (h.mission) complete(h.mission);
@@ -1634,7 +1719,8 @@ G.scene = (() => {
     const cu = G.$('#closeup'); cu.innerHTML = '';
     closeup = G.el('div', 'closeup', cu);
     if (kind === 'braille_book') {   // 해솔의 점자책 한 쪽: 확정된 점자 낱말 (별 / 축제)
-      const bk = G.el('div', 'book-big', closeup), pg = G.el('div', 'book-page', bk);
+      const bk = G.el('div', 'book-big' + (G.art('book_open') ? ' art' : ''), closeup), pg = G.el('div', 'book-page', bk);
+      if (G.art('book_open')) bk.style.backgroundImage = `url("${G.art('book_open')}")`;
       for (const c of G.D.puzzles.braille1.book) G.el('div', 'book-line', pg, G.braille.svg(c, 30));
       closeup.animate && closeup.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
       return;
@@ -1671,7 +1757,7 @@ G.scene = (() => {
   };
 
   // ---- 도움: 첫 번째로 안 한 할 일 ----
-  function target() { return hots.find(h => h.def.mission && shown(h.def) && !allDone(h.def)); }
+  function target() { return hots.find(h => finding(h.def)) || hots.find(h => h.def.mission && shown(h.def) && !allDone(h.def)); }
   function clearHint() {
     if (arrowEl) arrowEl.remove(); if (trailEl) trailEl.remove(); arrowEl = trailEl = null;
     hots.forEach(h => h.glow.classList.remove('strong'));
@@ -1680,15 +1766,15 @@ G.scene = (() => {
     if (S && S.missions.every(m => G.st.done.includes(m))) { G.help.off(); return; }
     if (G.screen !== 'scene') return;
     G.help.set({
-      l1: () => { const t = target(); if (t && t.def.hint) G.hud.say(t.def.hint); },
+      l1: () => { const t = target(); const hn = t && (finding(t.def) ? t.def.find.hint : t.def.hint); if (hn) G.hud.say(hn); },
       l2: () => {
         const t = target(); if (!t || arrowEl || !V) return; const r = t.def.rect;
-        arrowEl = G.el('div', 'arrow', V.fx, '<svg viewBox="0 0 90 110"><path d="M45 104 L8 58 H30 V6 H60 V58 H82 Z" fill="#FFD66B" stroke="#8a5a0a" stroke-width="5" stroke-linejoin="round"/></svg>');
+        arrowEl = G.el('div', 'arrow', V.fx, G.arrowHtml());
         Object.assign(arrowEl.style, { left: (r[0] + r[2] / 2) + 'px', top: (r[1] - 40) + 'px', zIndex: 30 });
       },
       l3: () => {
         const t = target(); if (!t || !V) return;
-        t.glow.classList.remove('seen'); t.glow.classList.add('strong');
+        t.glow.classList.remove('seen', 'hide'); t.glow.classList.add('strong');
         if (trailEl) return;
         const hs = S.sprites.find(s => s.lumi), a = hs ? hs.lumi : [1200, 800], r = t.def.rect, b = [r[0] + r[2] / 2, r[1] + r[3] * 0.75];
         const ns = 'http://www.w3.org/2000/svg';
@@ -1708,7 +1794,9 @@ G.scene = (() => {
 /* ---- puzzle.js ---- */
 // puzzle.js — 퍼즐 화면 (U7). 퍼즐 1 (GDD 5-1): 촉각 지도에서 점자 이름표 「숲」 찾기
 // 촉각 지도를 정면에서 크게. 위쪽에 해솔 얼굴과 지금 할 일, 아래쪽 대화창은 공용 (인물 그림 없이)
-// 이름표를 누르면 해솔이 읽어 줌. 숲이 아니면 "다른 이름표도 만져 볼까?" (틀림 소리·표시 없음). 숲이면 연출 C8
+// 9/30: 점자를 모르는 학생을 위해 해솔이 먼저 점자를 알려 주고(점 자리 여섯, 볼록한 점) 「숲」 점자 카드를 보여 줌.
+//       카드는 오른쪽에 계속 있고, 지도에서 카드와 같은 모양의 이름표를 찾음. 맞히면 칸마다 같은 점이 함께 빛남
+// 이름표를 누르면 해솔이 읽어 줌. 숲이 아니면 "점 모양이 달라. 카드랑 다시 비교해 볼까?" (틀림 소리·표시 없음). 숲이면 연출 C8
 // [크게 보기]: 네 이름표를 크게 모아 보여 줌 (작은 화면에서도 점이 잘 보이고 누르기 쉽게)
 // 퍼즐 화면은 #world 층 안에 그려 대화창(#dialog)이 늘 그 위에 옴
 'use strict';
@@ -1728,8 +1816,9 @@ G.puzzle = (() => {
     for (const r of D.roads) { pl(r, 'road-sh'); pl(r, 'road'); pl(r, 'road-hi'); }
     B.light = pl(D.lightPath, 'road-light');
     el.appendChild(svg);
+    const bimg = G.art('tactile_board'); if (bimg) { el.classList.add('art'); el.style.backgroundImage = `url("${bimg}")`; }   // 9/30: 선생님 판 그림 (길·장소 자리는 그림에 맞춰 puzzles.json 좌표를 고침)
     for (const k in D.nodes) { const n = G.el('div', 'tnode', el); n.style.left = D.nodes[k][0] + 'px'; n.style.top = D.nodes[k][1] + 'px'; }
-    for (const L of D.labels) {
+    for (const L of D.labels.filter(l => G.lv(l.lv))) {   // 9/30 난이도: 보통부터 이름표가 늘어남
       const [w, h] = G.braille.size(L.cells, DOT);
       const pw = w + PAD[0] * 2, ph = h + PAD[1] * 2;
       const plate = G.el('div', 'tlabel', el, G.braille.svg(L.cells, DOT));
@@ -1774,13 +1863,29 @@ G.puzzle = (() => {
       const b = G.el('button', 'pz-hit', root); b.type = 'button'; b.setAttribute('aria-label', '점자 이름표');
       G.onTap(b, () => tapLabel(k)); hits[k] = b;
     }
+    // 해솔의 점자 카드 (같은 모양 찾기의 보기). 처음엔 가운데 크게 → 설명이 끝나면 오른쪽으로
+    const CL = D.card && D.labels.find(l => l.id === D.card);
+    const card = CL ? G.el('div', 'pz-card', root) : null;
+    if (card) {
+      G.el('div', 'pz-card-head', card, '해솔의 점자 카드');
+      G.el('div', 'pz-card-dots', card, G.braille.svg(CL.cells, 40));
+      G.el('div', 'pz-card-word', card, `<span class="q">?</span><span class="w">${CL.word}</span>`);   // 글자는 같은 모양을 찾은 뒤에 보여 줌 (9/30 선생님)
+      card.style.display = 'none';
+    }
     let talking = false, busy = false, done = false, arrow = null, zoom = null;
     function layout() {
       const { W, H, u } = G.stage;
       const topH = top.getBoundingClientRect().bottom + u * 12;
       const dlg = G.dialog.active ? (G.$('.dlg-box') ? H - G.$('.dlg-box').getBoundingClientRect().top + u * 16 : H * 0.3) : Math.max(u * 30, 10);
       const side = Math.max(u * 30, 10);
-      B.fit(side, topH, W - side * 2, Math.max(60, H - topH - dlg));
+      // 카드가 오른쪽에 있으면 그만큼 지도 판을 왼쪽으로
+      let cw = 0;
+      if (card && card.classList.contains('side') && card.style.display !== 'none') {
+        const bh = Math.max(60, H - topH - dlg);
+        card.style.top = topH + 'px'; card.style.maxHeight = bh + 'px';
+        cw = card.getBoundingClientRect().width + side * 0.6;
+      }
+      B.fit(side, topH, W - side * 2 - cw, Math.max(60, H - topH - dlg));
       const min = 72;
       for (const k in B.labels) {
         const r = B.labels[k].rect, [x, y] = B.toScreen(r[0], r[1]), w = r[2] * B.k, h = r[3] * B.k;
@@ -1808,7 +1913,9 @@ G.puzzle = (() => {
       const L = B.labels[k].def;
       G.audio.sfx('sfx_tap', 0.5); select(k);
       if (L.answer) { done = true; await success(L); return; }
-      await talk([L.line, D.wrong]);
+      if (card) card.classList.add('look');
+      await talk(G.lv('normal') ? [D.wrong] : [L.line, D.wrong]);   // 보통부터는 이름을 읽어 주지 않음 (모양을 비교해야 함)
+      if (card) card.classList.remove('look');
       busy = false;
     }
     // ---- 크게 보기: 네 이름표를 크게 ----
@@ -1816,7 +1923,9 @@ G.puzzle = (() => {
       if (busy || done || zoom) return;
       G.audio.voice('S92_btn_zoom', '크게 보기');   // 음성 파일이 없으면 브라우저 음성 (다음 음성 만들 때 추가)
       zoom = G.el('div', 'pz-zoom', root);
-      const grid = G.el('div', 'pz-zgrid', zoom);
+      const main = G.el('div', 'pz-zmain', zoom);   // 9/30: 카드는 왼쪽, 이름표는 오른쪽 (이름표가 6개여도 한 화면에)
+      if (CL) { const zc = G.el('div', 'pz-card pz-zcard', main); G.el('div', 'pz-card-dots', zc, G.braille.svg(CL.cells, 40)); G.el('div', 'pz-card-word', zc, '?'); }
+      const grid = G.el('div', 'pz-zgrid', main); grid.style.setProperty('--zrows', Math.ceil(Object.keys(B.labels).length / 2));
       for (const k in B.labels) {
         const L = B.labels[k].def;
         const b = G.btn('pz-zlabel', G.braille.svg(L.cells, 40), grid, () => tapLabel(k), '점자 이름표');
@@ -1845,11 +1954,11 @@ G.puzzle = (() => {
       say.style.display = 'none';
     }
     const setHelp = () => G.help.set({
-      l1: () => bubble(D.hint1),
+      l1: () => bubble(G.lv('normal') && D.hint1Lv ? D.hint1Lv : D.hint1),
       l2: () => { B.labels[ans].el.classList.add('hint'); },
       l3: () => {
         B.labels[ans].el.classList.add('hint');
-        if (!arrow) { arrow = G.el('div', 'arrow pz-arrow', root, '<svg viewBox="0 0 90 110"><path d="M45 104 L8 58 H30 V6 H60 V58 H82 Z" fill="#FFD66B" stroke="#8a5a0a" stroke-width="5" stroke-linejoin="round"/></svg>'); placeArrow(); }
+        if (!arrow && !G.lv('hard')) { arrow = G.el('div', 'arrow pz-arrow', root, G.arrowHtml()); placeArrow(); }   // 어렵게: 화살표 없음
         bubble(D.hint3);
       },
       clear: clearHint,
@@ -1859,7 +1968,14 @@ G.puzzle = (() => {
       G.help.off();
       B.labels[L.id].el.classList.add('found');
       G.audio.sfx('sfx_sparkle', 0.7);
-      await talk([L.line]); if (!ok()) return end(false);
+      // 카드와 이름표의 같은 칸이 차례로 함께 빛남 → "봐, 점 모양이 카드랑 똑같지?"
+      if (card) {
+        card.classList.add('match');
+        const a = [...card.querySelectorAll('.pz-card-dots rect')], b = [...B.labels[L.id].el.querySelectorAll('rect')];
+        (async () => { for (let i = 0; i < a.length; i++) { a[i].classList.add('on'); if (b[i]) b[i].classList.add('on'); G.audio.sfx('sfx_chime', 0.25); await G.wait(0.45); } })();
+      }
+      await talk(D.match ? [D.match, L.line] : [L.line], { onLine: (lid) => { if (card && lid === L.line) card.classList.add('show-word'); } }); if (!ok()) return end(false);
+      if (card) card.style.display = 'none';
       await G.cut.play('C8', { live: B });
       if (!ok()) return end(false);
       G.hud.hide(true);   // 연출이 끝나며 켠 모서리 버튼을 퍼즐 동안 다시 숨김
@@ -1883,9 +1999,20 @@ G.puzzle = (() => {
     }
     // ---- 시작: 해솔이 소리 단서를 말하고, 숲 이름표를 같이 찾자고 함 (이름표 4개가 반짝) ----
     busy = true;
-    await talk(D.start, { onLine: (lid) => {
-      if (lid === D.start[D.start.length - 1]) for (const k in B.labels) { const e = B.labels[k].el; e.classList.add('shine'); G.wait(2.4).then(() => e.classList.remove('shine')); }
+    await talk(D.start, { keep: !!D.teach }); if (!ok()) return end(false);
+    // 점자 알려 주기: 카드가 가운데 크게 → 점 자리 여섯 → 볼록한 점 → "이게 숲" → 오른쪽으로 옮기고 이름표 4개가 반짝
+    const T = D.teach || [];
+    if (card) { card.style.display = ''; card.classList.add('center'); card.animate && card.animate([{ opacity: 0, transform: 'translate(-50%,-50%) scale(.7)' }, { opacity: 1, transform: 'translate(-50%,-50%) scale(1)' }], { duration: 450, easing: 'ease-out' }); }
+    await talk(T, { onLine: (lid) => {
+      if (!card) return;
+      card.classList.toggle('show-empty', lid === T[1]);
+      card.classList.toggle('show-raised', lid === T[2]);
+      if (lid === T[T.length - 1]) {
+        card.classList.remove('center'); card.classList.add('side'); layout();
+        for (const k in B.labels) { const e = B.labels[k].el; e.classList.add('shine'); G.wait(2.4).then(() => e.classList.remove('shine')); }
+      }
     } });
+    if (card) { card.classList.remove('center', 'show-empty', 'show-raised'); card.classList.add('side'); layout(); }
     if (!ok()) return end(false);
     busy = false; setHelp();
   });
@@ -1920,7 +2047,7 @@ G.present = (() => {
     if (G.settings && G.settings.light) n = 5;
     const ov = G.$('#overlay');
     for (let i = 0; i < n; i++) {
-      const s = G.el('div', 'spk', ov, G.svgTwinkle('#FFF1B8', '#FFD66B', 4)); s.style.left = x + 'px'; s.style.top = y + 'px';
+      const s = G.el('div', 'spk', ov, G.sparkle()); s.style.left = x + 'px'; s.style.top = y + 'px';
       const a = Math.PI * 2 * i / n, R = G.stage.u * (140 + Math.random() * 120);
       G.tween(0, 1, 1.1, k => { s.style.transform = `translate(${Math.cos(a) * R * k}px,${Math.sin(a) * R * k}px) scale(${1 - k * 0.6})`; s.style.opacity = 1 - k; }, 'out').then(() => s.remove());
     }
@@ -2093,6 +2220,11 @@ G.teacher = (() => {
     choice(s, 'fast', [[false, '끄기'], [true, '켜기']]);
     G.el('div', 't-note', s, '켜면 음성이 끝나기 전에도 [다음]을 누를 수 있고, 연출은 처음부터 [건너뛰기]가 보이며, 지도에서 걷기는 바로 도착해요. 선택지는 한 번 누르면 골라져요. 학생이 할 때는 꺼 주세요.');
 
+    // 난이도 (9/30 선생님 요청): 반마다 고름
+    s = sec(p, '난이도');
+    choice(s, 'level', [['easy', '쉽게'], ['normal', '보통'], ['hard', '어렵게']]);
+    G.el('div', 't-note', s, '쉽게: 이름표 4개, 누르면 이름을 읽어 줌, 봄이 아주머니가 바로 보임. 보통: 이름표 5개, 카드와 모양을 비교해야 함, 시장에서 봄이 아주머니 가게를 찾음, 도서관에서 촉각 지도를 찾음. 어렵게: 이름표 6개, 도움 화살표 없음.');
+
     s = sec(p, '1. 음성과 음량');
     let r = row(s);
     tb(G.settings.voiceOn ? '음성 켜짐' : '음성 꺼짐', r, () => set('voiceOn', !G.settings.voiceOn), G.settings.voiceOn ? 'on' : '');
@@ -2174,7 +2306,7 @@ G.teacher = (() => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '프로토타입 2 (2026-09-30)';
-G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, slotCount: 12, light: false };
+G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
   document.documentElement.style.setProperty('--ts', s.textBig ? 1.2 : 1);
@@ -2242,6 +2374,8 @@ G.flow = (() => {
   F.intro = async () => {
     const g = G.gen, S = G.D.story;
     G.audio.music('music_night'); G.audio.ambient([]);
+    await G.cut.play('CH:intro', { key: 'intro' });   // 9/30 장 제목 "제 1 장 별이 사라진 밤"
+    if (g !== G.gen) return;
     await G.cut.play('C1');
     if (g !== G.gen) return;
     G.st.place = 'home';
