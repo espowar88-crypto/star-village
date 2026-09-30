@@ -33,6 +33,12 @@ G.onTap = (elm, fn) => {
 };
 // 아이콘 그림 (9/29: 이모지 대신 그림). 지금은 임시 그림이고, 선생님 그림이 오면 assets/ui/icons/ 의 같은 이름 파일만 바꿈
 G.icon = (name, cls = '') => `<img class="ico${cls ? ' ' + cls : ''}" src="${G.asset('assets/ui/icons/' + name + '.png')}" alt="">`;
+// 9/30 새 세계관: 별 모양은 진짜 별(8개 + 마지막 별)에만 씀. 할 일 표시는 동그라미, 장소 표시는 동그란 핀, 반짝이는 4갈래 빛
+G.svgDot = (done) => done
+  ? '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#FFD66B" stroke="#C98F14" stroke-width="9"/><path d="M31 51 L45 64 L70 37" fill="none" stroke="#FFF8EC" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  : '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="rgba(255,248,236,.9)" stroke="#C98F14" stroke-width="9"/></svg>';
+G.svgPin = (fill, stroke, sw = 6) => `<svg viewBox="0 0 100 100"><path d="M50 96 C38 76 16 62 16 40 A34 34 0 1 1 84 40 C84 62 62 76 50 96 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/><circle cx="50" cy="40" r="13" fill="${stroke}" opacity=".55"/></svg>`;
+G.svgTwinkle = (fill, stroke, sw = 4) => `<svg viewBox="0 0 100 100"><path d="M50 4 C54 38 62 46 96 50 C62 54 54 62 50 96 C46 62 38 54 4 50 C38 46 46 38 50 4 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/></svg>`;
 G.svgStar = (fill, stroke, sw = 6) => `<svg viewBox="0 0 100 100"><path d="M50 6 L62 37 L95 38 L69 58 L78 91 L50 72 L22 91 L31 58 L5 38 L38 37 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/></svg>`;
 
 // ---------- 화면 크기: 기준 1920x1080, 비율이 달라도 검은 띠 없이 채움 ----------
@@ -74,6 +80,8 @@ G.tween = (a, b, dur, fn, ease = 'io') => new Promise(res => {
   let t = 0; fn(a);
   const off = G.every(dt => { t += dt; const k = Math.min(1, t / dur); fn(a + (b - a) * G.ease[ease](k)); if (k >= 1) { off(); res(); } });
 });
+// 빠르게 모드 (교사용 설정, 9/30): 음성을 기다리지 않고 [다음]·[건너뛰기]가 바로 켜짐. 선생님이 시연하거나 확인할 때
+G.fast = () => !!(G.settings && G.settings.fast);
 G.reduced = () => G.settings && (G.settings.reduceMotion || (G.settings.reduceAuto && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches));
 
 // ---------- 저장소 (학교 PC에서 막혀 있어도 게임은 돌아가게) ----------
@@ -330,7 +338,7 @@ G.hud = (() => {
     root = G.$('#hud'); root.innerHTML = '';
     tl = G.el('div', 'hud-tl', root); tr = G.el('div', 'hud-tr', root); bl = G.el('div', 'hud-bl', root); br = G.el('div', 'hud-br', root);
     bubble = G.el('div', 'bubble', root); bubble.style.display = 'none';
-    const sv = G.el('div', 'saved', root); sv.id = 'savedStar'; sv.innerHTML = G.svgStar('#FFD66B', '#FFF6D6', 6);
+    const sv = G.el('div', 'saved', root); sv.id = 'savedStar'; sv.innerHTML = G.svgTwinkle('#FFD66B', '#FFF6D6', 6);
   };
   H.clear = () => { if (!root) H.init(); tl.innerHTML = tr.innerHTML = bl.innerHTML = br.innerHTML = ''; H.hideBubble(); taskEl = null; };
   H.hide = (on) => { if (!root) H.init(); root.style.visibility = on ? 'hidden' : ''; };
@@ -340,7 +348,7 @@ G.hud = (() => {
   function questCard() {
     const q = G.el('button', 'quest', tl); q.type = 'button';
     const np = H.nextPlace();
-    G.el('div', 'q1', q, '★ 사라진 별 ' + (G.st.quest || 0) + '/5');
+    G.el('div', 'q1', q, '길의 별 찾기 ' + (G.st.quest || 0) + '/5');   // 9/30: 별 모양·"사라진 별"은 진짜 별에만
     G.el('div', 'q2', q, np ? '지금 할 일: ' + np.name + '에 가 보자' : '다음 이야기를 기다려요');
     G.onTap(q, () => { if (np) G.audio.voice('S92_now_' + np.id); });
     return q;
@@ -374,7 +382,7 @@ G.hud = (() => {
   H.tasks = (def, flash) => {
     if (!taskEl) return;
     const n = def.missions.length, d = def.missions.filter(m => G.st.done.includes(m)).length;
-    taskEl.innerHTML = '<span>이곳에서 할 일</span> <span class="stars">' + '<b>★</b>'.repeat(d) + '☆'.repeat(n - d) + '</span>';
+    taskEl.innerHTML = '<span>이곳에서 할 일</span> <span class="stars">' + G.svgDot(true).repeat(d) + G.svgDot(false).repeat(n - d) + '</span>';
     if (flash) { taskEl.classList.remove('flash'); void taskEl.offsetWidth; taskEl.classList.add('flash'); }
   };
   H.keepTasks = (on) => { tl && tl.classList.toggle('keep', !!on); };
@@ -496,8 +504,8 @@ G.mapView = (parent, o = {}) => {
     if (k.state !== state) {
       k.state = state; k.m.className = 'marker ' + state;
       k.m.innerHTML = state === 'hidden' ? '' :
-        state === 'locked' ? G.svgStar('rgba(190,196,214,.55)', 'rgba(90,96,120,.8)', 5) :
-        state === 'done' ? G.svgStar('#FFE9A8', '#C98F14', 6) : G.svgStar('#FFD66B', '#FFF6D6', 6);
+        state === 'locked' ? G.svgPin('rgba(190,196,214,.55)', 'rgba(90,96,120,.8)', 5) :
+        state === 'done' ? G.svgPin('#FFE9A8', '#C98F14', 6) : G.svgPin('#FFD66B', '#FFF6D6', 6);   // 9/30: 장소 표시는 동그란 핀
       if (state === 'done') k.m.style.transform = 'scale(.62)'; else k.m.style.transform = '';
     }
     k.lb.style.display = showLabel && state !== 'hidden' ? '' : 'none';
@@ -552,14 +560,15 @@ G.mapPath = (from, to) => {
 // 9/29 밤: 상반신 위주로 크게, 서로 마주 보게 (왼쪽 인물은 오른쪽을, 오른쪽 인물은 왼쪽을 봄)
 //   상대가 없으면 주인공(왼쪽)과 루미(오른쪽)가 마주 봄. 상대가 있으면 루미는 주인공 어깨 옆에서 상대 쪽을 봄
 //   인물 그림은 #portraits 층(장면 바로 위, 버튼·할 일 표시·대화창보다 아래)에만 그려 버튼을 가리지 않음
+// 프로토타입 2: opts.noPortraits = 인물 그림 없이 대화창만 (퍼즐 화면은 위쪽에 해솔 얼굴을 따로 그림, U7)
 'use strict';
 G.dialog = (() => {
   const Dl = { active: false };
-  const BAND = { lumi: '#FFD66B', hero: '#7FB77E', chief: '#A0764F', post: '#5B8FD0', villager: '#B58BC4', nar: '', ui: '' };
+  const BAND = { lumi: '#FFD66B', hero: '#7FB77E', chief: '#A0764F', post: '#5B8FD0', bom: '#F4A259', haesol: '#3AA39A', daon: '#E88D7A', villager: '#B58BC4', nar: '', ui: '' };
   let wrap, box, nameEl, textEl, nextBtn, replayBtn, pgL, pgR, heroImg, lumiImg, partnerImg, choicesEl;
   let ready = false, vtok = 0, curId = null, waiter = null, blinkOff = null, lastLine = false;
 
-  function build(partner) {
+  function build(partner, noPt) {
     const root = G.$('#dialog'); root.innerHTML = '';
     wrap = G.el('div', 'dlg-wrap', root);
     const hit = G.el('div', 'dlg-hit', wrap);
@@ -569,19 +578,23 @@ G.dialog = (() => {
       press();
       if (through) setTimeout(() => tapThrough(e.clientX, e.clientY), 80);
     });
-    const P = G.D.portraits, pr = G.$('#portraits'); pr.innerHTML = ''; pr.classList.add('on');
-    pgL = G.el('div', 'pgroup L enter', pr);
-    heroImg = portrait(pgL, 'pmain', 'hero', 'L');
-    if (partner && P[partner]) {
-      lumiImg = portrait(pgL, 'plumi', 'lumi', 'L');
-      pgR = G.el('div', 'pgroup R enter', pr);
-      partnerImg = portrait(pgR, 'pmain', partner, 'R');
-    } else {
-      pgR = G.el('div', 'pgroup R solo enter', pr);
-      lumiImg = portrait(pgR, 'plumi', 'lumi', 'R');
-      partnerImg = null;
+    const P = G.D.portraits, pr = G.$('#portraits'); pr.innerHTML = '';
+    if (noPt) { pgL = pgR = heroImg = lumiImg = partnerImg = null; pr.classList.remove('on'); }
+    else {
+      pr.classList.add('on');
+      pgL = G.el('div', 'pgroup L enter', pr);
+      heroImg = portrait(pgL, 'pmain', 'hero', 'L');
+      if (partner && P[partner]) {
+        lumiImg = portrait(pgL, 'plumi', 'lumi', 'L');
+        pgR = G.el('div', 'pgroup R enter', pr);
+        partnerImg = portrait(pgR, 'pmain', partner, 'R');
+      } else {
+        pgR = G.el('div', 'pgroup R solo enter', pr);
+        lumiImg = portrait(pgR, 'plumi', 'lumi', 'R');
+        partnerImg = null;
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => { pgL && pgL.classList.remove('enter'); pgR && pgR.classList.remove('enter'); }));
     }
-    requestAnimationFrame(() => requestAnimationFrame(() => { pgL.classList.remove('enter'); pgR && pgR.classList.remove('enter'); }));
     box = G.el('div', 'dlg-box', wrap);
     nameEl = G.el('div', 'dlg-name', box);
     textEl = G.el('div', 'dlg-text', box);
@@ -590,7 +603,7 @@ G.dialog = (() => {
     nextBtn = G.btn('pill gold dlg-next wait', '다음 ' + G.icon('icon_next'), btns, () => press(), '다음');
     choicesEl = null;
     // 루미 눈 깜박임 (깜박임 그림이 있을 때만)
-    if (P.lumi.blink) {
+    if (P.lumi.blink && lumiImg) {
       let t = 0, next = 2.5 + Math.random() * 2;
       blinkOff = G.every(dt => {
         t += dt; if (t > next) { lumiImg.src = G.asset(P.lumi.blink); if (t > next + 0.14) { lumiImg.src = G.asset(P.lumi.img); t = 0; next = 2.5 + Math.random() * 2.5; } }
@@ -621,17 +634,18 @@ G.dialog = (() => {
   }
   function setSpeaker(sp) {
     const inL = sp === 'hero' || sp === 'lumi';
-    heroImg.classList.toggle('dim', sp !== 'hero'); heroImg.classList.toggle('speak', sp === 'hero');
-    lumiImg.classList.toggle('dim', sp !== 'lumi'); lumiImg.classList.toggle('speak', sp === 'lumi');
+    if (heroImg) { heroImg.classList.toggle('dim', sp !== 'hero'); heroImg.classList.toggle('speak', sp === 'hero'); }
+    if (lumiImg) { lumiImg.classList.toggle('dim', sp !== 'lumi'); lumiImg.classList.toggle('speak', sp === 'lumi'); }
     if (partnerImg) { const me = !inL && sp !== 'nar'; partnerImg.classList.toggle('dim', !me); partnerImg.classList.toggle('speak', me); }
     if (Dl.onSpeaker) Dl.onSpeaker(sp);
   }
   function setNext() { if (!nextBtn) return; nextBtn.classList.toggle('wait', !ready); nextBtn.classList.toggle('ready', ready); nextBtn.disabled = !ready; }
   function speak(id) {
     const my = ++vtok; ready = false; setNext();
+    if (G.fast()) { ready = true; setNext(); }   // 빠르게 모드: 음성이 끝나기 전에도 [다음]
     return G.audio.voice(id).then(() => { if (my === vtok) { ready = true; setNext(); } });
   }
-  function press() { if (!ready || !waiter) return; G.audio.sfx('sfx_tap', 0.5); const w = waiter; waiter = null; w(); }
+  function press() { if (!ready || !waiter) return; if (G.fast()) { vtok++; G.audio.stopVoice(); } G.audio.sfx('sfx_tap', 0.5); const w = waiter; waiter = null; w(); }
   function show(id) {
     const L = G.D.dialogues[id] || { speaker: 'nar', name: '', text: '' };
     curId = id;
@@ -645,10 +659,10 @@ G.dialog = (() => {
   }
 
   // ---- 대사 여러 개를 차례로 ----
-  // opts.partner: 오른쪽 인물 ('chief', 'post'), opts.keep: 끝나도 창을 닫지 않음
+  // opts.partner: 오른쪽 인물 ('chief', 'post', 'bom', 'haesol'), opts.keep: 끝나도 창을 닫지 않음, opts.noPortraits: 인물 그림 없이
   Dl.play = async (ids, opts = {}) => {
     if (!ids || !ids.length) return;
-    open(opts.partner);
+    open(opts.partner, opts.noPortraits);
     G.audio.preload(ids.slice(0, 3));
     for (let i = 0; i < ids.length; i++) {
       G.audio.preload(ids.slice(i + 1, i + 3));
@@ -658,12 +672,12 @@ G.dialog = (() => {
     }
     if (!opts.keep) Dl.close();
   };
-  function open(partner) {
-    if (!Dl.active || (partner || null) !== Dl.partner) {
+  function open(partner, noPt) {
+    if (!Dl.active || (partner || null) !== Dl.partner || !!noPt !== Dl.noPt) {
       if (blinkOff) blinkOff();
-      build(partner);
+      build(partner, noPt);
     }
-    Dl.partner = partner || null;
+    Dl.partner = partner || null; Dl.noPt = !!noPt;
     if (!Dl.active) { Dl.active = true; G.busy++; G.$('#game').classList.add('talking'); }
   }
   Dl.close = () => {
@@ -678,17 +692,17 @@ G.dialog = (() => {
   // ---- 선택지 (U6): 처음 누르면 읽어 주고 테두리, 한 번 더 누르면 선택. 버튼이 하나면 바로 선택 ----
   // opts: [{label, icon, voice}] → 고른 번호. 고른 말은 주인공 대사로 한 번 나옴
   Dl.choose = (options, keep) => new Promise((done) => {
-    open(Dl.partner); lastLine = false;
+    open(Dl.partner, Dl.noPt); lastLine = false;
     nextBtn.style.visibility = 'hidden';
     choicesEl = G.el('div', 'choices', wrap);
-    const one = options.length === 1 || (G.settings && G.settings.choiceOne);
+    const one = options.length === 1 || (G.settings && G.settings.choiceOne) || G.fast();
     let armed = -1;
     options.forEach((o, i) => {
       const b = G.btn('pill gold choice', (o.icon ? G.icon(o.icon) + ' ' : '') + o.label, choicesEl, async () => {
         if (one || armed === i) {
           choicesEl.remove(); choicesEl = null; nextBtn.style.visibility = '';
           G.audio.sfx('sfx_tap', 0.6);
-          if (o.voice) { show(o.voice); await speak(o.voice); await G.wait(0.3); }
+          if (o.voice) { show(o.voice); if (G.fast()) { speak(o.voice); await G.wait(0.5); } else { await speak(o.voice); await G.wait(0.3); } }
           if (!keep) Dl.close();
           done(i); return;
         }
@@ -708,6 +722,86 @@ G.dialog = (() => {
     return false;
   };
   return Dl;
+})();
+
+/* ---- braille.js ---- */
+// braille.js — 점자 그리기 (GDD 5-1). 점자/braille_draw.js와 같은 모양을 SVG로 그림 (글꼴이 아니라 점을 직접 그려 기기마다 모양이 같음)
+// 한 칸 = 왼쪽 줄 위에서 아래로 1·2·3, 오른쪽 줄 4·5·6. 6자리를 모두 그림: 찍힌 점 = 볼록한 점, 빈 자리 = 옅은 동그라미. 칸 테두리도 옅게
+// 비율은 실제 점자 크기(점 사이 2.5mm, 칸 사이 6mm, 점 지름 1.5mm)를 따름: s = 점 사이, 칸 간격 2.4s, 점 반지름 0.3s
+'use strict';
+G.braille = (() => {
+  const B = {};
+  const POS = { 1: [0, 0], 2: [0, 1], 3: [0, 2], 4: [1, 0], 5: [1, 1], 6: [1, 2] };
+  const ST = { dot: '#4A3B32', dotLight: '#8A7362', empty: 'rgba(74,59,50,0.38)', emptyFill: 'rgba(255,244,224,0.55)', cell: 'rgba(74,59,50,0.16)', cellFill: 'rgba(255,244,224,0.35)' };
+  let uid = 0;
+  B.metrics = (s) => ({ s, r: 0.3 * s, pitch: 2.4 * s, cellW: s, cellH: 2 * s, pad: 0.55 * s });
+  // 낱말 그림의 크기 (칸 테두리 포함)
+  B.size = (cells, s) => { const m = B.metrics(s); return [(cells.length - 1) * m.pitch + m.cellW + 2 * m.pad, m.cellH + 2 * m.pad]; };
+  // 낱말 하나를 SVG 글로. o.dot: 볼록한 점 색 (빛날 때 바꿈)
+  B.svg = (cells, s, o = {}) => {
+    const m = B.metrics(s), [w, h] = B.size(cells, s), id = 'bd' + (++uid);
+    const dot = o.dot || ST.dot, light = o.dotLight || ST.dotLight;
+    let g = `<svg class="braille" viewBox="0 0 ${w.toFixed(1)} ${h.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}">` +
+      `<defs><radialGradient id="${id}" cx="35%" cy="30%" r="70%"><stop offset="0" stop-color="${light}"/><stop offset="1" stop-color="${dot}"/></radialGradient></defs>`;
+    cells.forEach((dots, i) => {
+      const x = m.pad + i * m.pitch, y = m.pad, on = new Set(dots);
+      g += `<rect x="${(x - m.pad).toFixed(1)}" y="${(y - m.pad).toFixed(1)}" width="${(m.cellW + 2 * m.pad).toFixed(1)}" height="${(m.cellH + 2 * m.pad).toFixed(1)}" rx="${(0.35 * s).toFixed(1)}" fill="${ST.cellFill}" stroke="${ST.cell}" stroke-width="${Math.max(1, 0.05 * s).toFixed(1)}"/>`;
+      for (let d = 1; d <= 6; d++) {
+        const px = x + POS[d][0] * s, py = y + POS[d][1] * s;
+        if (on.has(d)) g += `<circle cx="${(px + 0.06 * s).toFixed(1)}" cy="${(py + 0.08 * s).toFixed(1)}" r="${m.r.toFixed(1)}" fill="rgba(40,30,25,0.28)"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${m.r.toFixed(1)}" fill="url(#${id})"/>`;
+        else g += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(m.r * 0.92).toFixed(1)}" fill="${ST.emptyFill}" stroke="${ST.empty}" stroke-width="${Math.max(1, 0.07 * s).toFixed(1)}"/>`;
+      }
+    });
+    return g + '</svg>';
+  };
+  return B;
+})();
+
+/* ---- stars.js ---- */
+// stars.js — 하늘의 별 9개 (9/30 새 세계관): 주제 별 8개 + 마지막 별. 별마다 모양과 색, 하는 일이 다름
+// 하는 일은 사람의 몸을 고치는 것이 아니라 "마을이 모두에게 맞는 방법을 쓰게 돕는 것" (기획안 2장 표현 원칙)
+// 지금은 SVG로 그린 임시 그림. 선생님 그림이 오면 assets/ui/stars/star_<id>.png 로 바꿈 (img가 있으면 그림을 씀)
+'use strict';
+G.STARS = (() => {
+  const OUT = '#FFF6D6';
+  const pts = (n, R, r, cx = 50, cy = 52, rot = -90) => {
+    const a = [];
+    for (let i = 0; i < n * 2; i++) { const t = (rot + i * 180 / n) * Math.PI / 180, q = i % 2 ? r : R; a.push((cx + q * Math.cos(t)).toFixed(1) + ',' + (cy + q * Math.sin(t)).toFixed(1)); }
+    return a.join(' ');
+  };
+  const poly = (p, fill, sw = 4) => `<polygon points="${p}" fill="${fill}" stroke="${OUT}" stroke-width="${sw}" stroke-linejoin="round"/>`;
+  const face = (cx = 50, cy = 54) => '';   // 얼굴은 넣지 않음 (루미와 헷갈리지 않게)
+  const S = [
+    { id: 'road', name: '길의 별', job: '여러 가지 방법으로 길과 소식을 알려 줘요', color: '#7DBBE3',
+      svg: poly(pts(4, 46, 14), '#7DBBE3') + poly(pts(4, 22, 8, 50, 52, -45), '#FFE9A8', 3) },
+    { id: 'sound', name: '소리의 별', job: '모두가 편안하게 들을 수 있게 도와요', color: '#B58BC4',
+      svg: poly(pts(5, 38, 22), '#B58BC4') + `<path d="M84 34 Q94 52 84 70 M76 40 Q83 52 76 64" fill="none" stroke="${OUT}" stroke-width="4" stroke-linecap="round"/>` },
+    { id: 'word', name: '말의 별', job: '말, 그림, 손짓으로 마음을 전하게 해요', color: '#F29BB0',
+      svg: `<path d="M26 74 L16 94 L40 80 Z" fill="#F29BB0" stroke="${OUT}" stroke-width="4" stroke-linejoin="round"/>` + poly(pts(5, 42, 20), '#F29BB0') },
+    { id: 'door', name: '문턱의 별', job: '누구나 어디든 들어갈 수 있게 해요', color: '#7FB77E',
+      svg: poly(pts(6, 44, 26), '#7FB77E') + `<path d="M26 88 Q52 88 76 70" fill="none" stroke="${OUT}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>` },
+    { id: 'heart', name: '마음의 별', job: '왜 그랬는지 서로 물어보게 해요', color: '#F4A259',
+      svg: `<path d="M50 88 C18 66 8 46 22 30 C33 18 46 24 50 34 C54 24 67 18 78 30 C92 46 82 66 50 88 Z" fill="#F4A259" stroke="${OUT}" stroke-width="4" stroke-linejoin="round"/>` +
+        `<path d="M50 4 V14 M88 18 L81 25 M12 18 L19 25" stroke="${OUT}" stroke-width="4" stroke-linecap="round"/>` },
+    { id: 'speed', name: '속도의 별', job: '저마다의 빠르기를 기다려 줘요', color: '#E6B54A',
+      svg: poly(pts(5, 46, 22), '#E6B54A') + `<path d="M50 52 m0 0 a4 4 0 1 1 5 4 a9 9 0 1 1 -13 -8 a14 14 0 1 1 20 14" fill="none" stroke="${OUT}" stroke-width="3.5" stroke-linecap="round"/>` },
+    { id: 'idea', name: '생각의 별', job: '푸는 방법이 여러 가지라고 알려 줘요', color: '#9ED0C8',
+      svg: (() => { const C = ['#F4A259', '#FFD66B', '#7FB77E', '#7DBBE3', '#B58BC4', '#F29BB0', '#E88D7A']; let g = '';
+        for (let i = 0; i < 7; i++) { const a = (-90 + i * 360 / 7) * Math.PI / 180, b = (-90 + (i + 0.5) * 360 / 7) * Math.PI / 180, c = (-90 + (i - 0.5) * 360 / 7) * Math.PI / 180;
+          g += `<polygon points="50,52 ${(50 + 20 * Math.cos(c)).toFixed(1)},${(52 + 20 * Math.sin(c)).toFixed(1)} ${(50 + 46 * Math.cos(a)).toFixed(1)},${(52 + 46 * Math.sin(a)).toFixed(1)} ${(50 + 20 * Math.cos(b)).toFixed(1)},${(52 + 20 * Math.sin(b)).toFixed(1)}" fill="${C[i]}" stroke="${OUT}" stroke-width="3" stroke-linejoin="round"/>`; }
+        return g; })() },
+    { id: 'together', name: '함께의 별', job: '직접 만나고 알아 가게 해요', color: '#FFD66B',
+      svg: poly(pts(5, 34, 15, 36, 50), '#FFE9A8') + poly(pts(5, 34, 15, 64, 56), '#FFD66B') },
+    { id: 'last', name: '마지막 별', job: '모두의 마음이 모이면 빛나요', color: '#FFF1B8', big: true,
+      svg: poly(pts(8, 47, 24), '#FFF1B8') + poly(pts(8, 26, 14, 50, 52, -67.5), '#FFD66B', 3) },
+  ];
+  // 별 하나를 그림으로 (선생님 그림이 있으면 그 그림)
+  G.starSvg = (s) => {
+    const img = window.EMBED && window.EMBED['assets/ui/stars/star_' + s.id + '.png'];
+    if (img) return `<img src="${img}" alt="">`;
+    return `<svg viewBox="0 0 100 100">${s.svg}</svg>`;
+  };
+  return S;
 })();
 
 /* ---- cutscene.js ---- */
@@ -762,7 +856,7 @@ G.cut = (() => {
       G.btn('pill skip', '건너뛰기 ' + G.icon('icon_skip'), skipBox, () => { skipBox.innerHTML = ''; G.audio.voice('S92_btn_skip'); c.skip(); }, '건너뛰기');
       c.skipShown = true;
     };
-    if (seen) showSkip(); else c.wait(2).then(showSkip);
+    if (seen || G.fast()) showSkip(); else c.wait(2).then(showSkip);
     try { await fn(c, root, opts); } catch (e) { console.error('연출 오류', id, e); }
     done = true;
     if (st0 && !st0.seenCutscenes.includes(id) && !opts.replay) { st0.seenCutscenes.push(id); if (st0 === G.st) G.save.write(); }
@@ -777,7 +871,7 @@ G.cut = (() => {
 
   const fadeIn = (c, el, d = 0.8) => c.tween(0, 1, d, v => el.style.opacity = v);
   const fadeOut = (c, el, d = 0.6) => c.tween(1, 0, d, v => el.style.opacity = v);
-  const sparkSvg = G.svgStar('#FFF1B8', '#FFD66B', 4);
+  const sparkSvg = G.svgTwinkle('#FFF1B8', '#FFD66B', 4);
 
   // 반짝이 가루가 한 점에서 퍼짐 (화면 좌표)
   function burst(c, root, x, y, n = 14) {
@@ -791,7 +885,9 @@ G.cut = (() => {
   }
 
   const SCRIPTS = {
-    // ---- C1 인트로 (약 16초): 별 반짝이는 하늘 → 별이 떨어짐 → 카메라가 마을로 → 빛이 퍼짐 → 가로등이 꺼지고 먹색으로 → 루미 등장 ----
+    // ---- C1 인트로 (9/30 새 세계관, 약 40초): 여러 모양의 별 9개가 뜬 하늘 → 별마다 마을로 빛줄기 → 광장에서 별 하나가 하늘로 올라감
+    //      → 별이 하나둘 떨어지고 마지막 별까지 사라짐 → 카메라가 마을로 → 불빛이 꺼지고 색이 빠짐 → 루미 등장
+    //      이야기꾼 대사 S01_nar_01~09 가 끝나야 다음 장면으로 (음성 길이에 맞춰 흐름)
     async C1(c, root) {
       root.style.opacity = 0;
       const V = G.mapView(root, { free: true });
@@ -799,68 +895,89 @@ G.cut = (() => {
       Object.assign(sky.style, { top: '-1300px', width: V.W + 'px', height: '1600px' }); V.el.insertBefore(sky, V.el.firstChild);
       V.imgs.style.webkitMaskImage = V.imgs.style.maskImage = 'linear-gradient(to bottom, transparent 0, #000 320px)';
       V.fullColor(1); V.setLamps(5, true);
-      // 별 (반짝이는 작은 별 + 별자리)
-      const starL = G.el('div', 'layer', V.el);
+      const dotL = G.el('div', 'layer', V.el), starL = G.el('div', 'layer', V.el);
+      const dots = [];
       for (let i = 0; i < (c.light ? 14 : 40); i++) {
-        const d = G.el('div', 'dot twinkle', starL), r = 6 + Math.random() * 12;
+        const d = G.el('div', 'dot twinkle', dotL), r = 6 + Math.random() * 12;
         Object.assign(d.style, { left: Math.random() * V.W + 'px', top: (-1250 + Math.random() * 1000) + 'px', width: r + 'px', height: r + 'px', animationDelay: (-Math.random() * 2.2) + 's' });
+        dots.push(d);
       }
-      const CON = [[1380, -1080], [1520, -960], [1700, -1010], [1840, -900], [1960, -1060]];
-      const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg'); svg.setAttribute('class', 'cline'); svg.setAttribute('width', 1); svg.setAttribute('height', 1);
-      const pth = document.createElementNS(ns, 'path'); pth.setAttribute('d', 'M' + CON.map(p => p.join(' ')).join(' L')); svg.appendChild(pth); starL.appendChild(svg);
-      const bigs = CON.map(([x, y], i) => { const b = G.el('div', 'bigstar twinkle', starL, G.svgStar('#FFF6D6', '#FFD66B', 5)); Object.assign(b.style, { left: x + 'px', top: y + 'px', animationDelay: -i * 0.4 + 's' }); if (i !== 2) b.style.transform = 'scale(.6)'; return b; });
-      const fallen = bigs[2];
-      const fall = G.el('div', 'star-fall', V.fx, '<div class="tail"></div><div class="head"></div>');
-      Object.assign(fall.style, { position: 'absolute', left: '0', top: '0', transformOrigin: '480px 40px', opacity: 0, zIndex: 4000 });
+      // 별 9개: 가운데 위가 마지막 별 (가장 큼)
+      const POS = [[880, -930], [1080, -1110], [1260, -900], [1640, -900], [1820, -1110], [2010, -930], [1160, -700], [1720, -700], [1440, -1060]];
+      const beamL = G.el('div', 'layer', V.el);
+      const S = G.STARS.map((s, i) => {
+        const sz = s.big ? 190 : 140, el = G.el('div', 'skystar', starL, G.starSvg(s)), at = POS[i];
+        Object.assign(el.style, { left: at[0] + 'px', top: at[1] + 'px', width: sz + 'px', height: sz + 'px', margin: (-sz / 2) + 'px 0 0 ' + (-sz / 2) + 'px', animationDelay: (-i * 0.37) + 's' });
+        const bm = G.el('div', 'sbeam', beamL); Object.assign(bm.style, { left: (at[0] - 9) + 'px', top: at[1] + 'px', height: (900 - at[1]) + 'px', opacity: 0 });
+        bm.style.background = `linear-gradient(to bottom, ${s.color}cc, ${s.color}00)`;
+        return { s, el, at, bm };
+      });
+      const road = S[0]; road.el.style.opacity = 0;   // 길의 별: 광장에서 올라가는 모습으로 등장
       const P = G.D.places.nodes, land = [P.PLAZA[0], P.PLAZA[1] - 70];
       const flare = G.el('div', 'flare', V.fx); Object.assign(flare.style, { position: 'absolute', left: (land[0] - 450) + 'px', top: (land[1] - 300) + 'px', opacity: 0, zIndex: 3990 });
       const lumi = G.el('img', '', V.fx); lumi.src = G.asset('assets/chars/lumi_big.png'); lumi.alt = '';
       Object.assign(lumi.style, { position: 'absolute', left: (land[0] - 70) + 'px', top: (land[1] - 150) + 'px', width: '140px', height: '140px', opacity: 0, zIndex: 4001 });
       await Promise.all([V.ready, sky.decode ? sky.decode().catch(() => { }) : 0]);
-      V.setCam(1440, -760, 1);
+      V.setCam(1440, -820, 1);
       const onR = () => V.setCam(V.cam.x, V.cam.y, V.cam.z); G.resizers.add(onR);
+      const cam = (x, y, z, d) => c.rm ? (V.setCam(x, y, z), Promise.resolve()) : c.tween(0, 1, d, k => { const a = V.cam; V.setCam(a.x + (x - a.x) * k, a.y + (y - a.y) * k, a.z + (z - a.z) * k); }, 'io');
+      const pop = (el) => { if (!c.rm && el.animate && !c.skipped) el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 600, easing: 'ease-out' }); };
       c.t0 = G.t;
+      // (1) 별이 가득한 밤하늘
+      fadeIn(c, root, 1.0);
+      await c.wait(0.4); await c.voice('S01_nar_01');
+      // (2) 여러 모양의 별이 차례로 반짝
+      await Promise.all([c.voice('S01_nar_02'), (async () => { for (const q of S) { if (q === road) continue; pop(q.el); c.sfx('sfx_chime', 0.12); await c.wait(0.3); } })()]);
+      // (3) 별마다 마을로 빛줄기 (별이 하는 일)
+      await Promise.all([c.voice('S01_nar_03'), c.tween(0, 0.55, 1.4, v => S.forEach(q => { if (q !== road) q.bm.style.opacity = v; }))]);
+      await Promise.all([c.voice('S01_nar_04'), (async () => { pop(S[2].el); await c.wait(1.2); pop(S[2].el); })()]);
+      // (4) 광장으로 내려가 주민들이 함께 방법을 찾는 마을 → 길의 별이 별 받침대에서 하늘로
+      c.tween(0.55, 0, 1.2, v => S.forEach(q => q.bm.style.opacity = v));
+      await Promise.all([c.voice('S01_nar_05'), cam(1400, 640, 1.1, 2.6)]);
+      road.el.style.left = land[0] + 'px'; road.el.style.top = land[1] + 'px'; road.el.style.opacity = 1;
+      c.sfx('sfx_sparkle', 0.6);
       await Promise.all([
-        fadeIn(c, root, 1.0),
-        (async () => { await c.until(0.3); await c.voice('S01_nar_01'); await c.until(5.3); await c.voice('S01_nar_02'); await c.until(9.9); await c.voice('S01_nar_03'); })(),
-        (async () => {   // 별이 흔들리다 떨어짐
-          await c.until(3.0);
-          if (!c.rm) await c.tween(0, 1, 2.0, k => { fallen.style.transform = `rotate(${Math.sin(k * Math.PI * 6) * 14}deg) scale(${1 + Math.sin(k * Math.PI * 4) * 0.25})`; });
-          await c.until(5.2);
-          c.sfx('sfx_starfall', 0.8); c.sfx('sfx_sparkle', 0.5);
-          fallen.style.opacity = 0; fall.style.opacity = 1;
-          const p0 = CON[2], p1 = [2050, -250], p2 = land;
-          await c.tween(0, 1, 3.4, k => {
-            const q = 1 - k, x = q * q * p0[0] + 2 * q * k * p1[0] + k * k * p2[0], y = q * q * p0[1] + 2 * q * k * p1[1] + k * k * p2[1];
-            const dx = 2 * q * (p1[0] - p0[0]) + 2 * k * (p2[0] - p1[0]), dy = 2 * q * (p1[1] - p0[1]) + 2 * k * (p2[1] - p1[1]);
-            fall.style.transform = `translate(${x - 480}px,${y - 40}px) rotate(${Math.atan2(dy, dx)}rad)`;
-          }, 'in');
-          fall.style.opacity = 0; c.sfx('sfx_chime', 0.5);
-          await c.tween(0, 1, 0.6, k => { flare.style.opacity = k; flare.style.transform = `scale(${0.3 + k * 0.7})`; }, 'out');
-          await c.tween(1, 0.45, 1.8, k => flare.style.opacity = k);
-        })(),
-        (async () => {   // 카메라가 하늘에서 마을로 내려옴
-          if (c.rm) { await c.until(8.4); root.style.opacity = 0.2; V.setCam(1400, 700, 1.1); await fadeIn(c, root, 0.6); return; }
-          await c.until(5.4);
-          await c.tween(0, 1, 3.6, k => V.setCam(1440 - 40 * k, -760 + 1460 * k, 1 + 0.1 * k), 'io');
-        })(),
-        (async () => {   // 가로등이 광장 가까운 것부터 하나씩 꺼짐, 색이 빠짐
-          await c.until(10.2);
-          const ls = [...V.lamps].sort((a, b) => Math.hypot(a.def.at[0] - land[0], a.def.at[1] - land[1]) - Math.hypot(b.def.at[0] - land[0], b.def.at[1] - land[1]));
-          const colT = c.tween(1, 0, 3.2, v => V.colorImg.style.opacity = v);
-          for (const l of ls) { l.el.classList.remove('on'); c.sfx('sfx_click', 0.15); await c.wait(0.28); }
-          await colT;
-        })(),
-        (async () => {   // 빛 속에서 루미가 나타나 두리번거림
-          await c.until(13.8);
-          c.sfx('sfx_sparkle', 0.7);
-          await c.tween(0, 1, 0.9, k => { lumi.style.opacity = k; lumi.style.transform = c.rm ? '' : `scale(${k}) rotate(${(1 - k) * 360}deg)`; }, 'out');
-          c.tween(0.45, 0, 1.2, v => flare.style.opacity = v);
-          await c.until(14.9); if (!c.rm) lumi.style.transform = 'scaleX(-1)';
-          await c.until(15.6); lumi.style.transform = '';
-          await c.until(16.2);
-        })(),
+        c.voice('S01_nar_06'),
+        c.tween(0, 1, c.rm ? 0.1 : 3.4, k => { road.el.style.left = (land[0] + (road.at[0] - land[0]) * k) + 'px'; road.el.style.top = (land[1] + (road.at[1] - land[1]) * k) + 'px'; }, 'io'),
+        cam(1440, -820, 1, 3.4),
       ]);
+      pop(road.el); c.sfx('sfx_chime', 0.4);
+      await c.wait(0.6);
+      // (5) 별이 하나둘 떨어짐 → 마지막 별까지
+      const fall = (q, i) => new Promise(async (res) => {
+        if (!c.rm && !c.skipped) await c.tween(0, 1, 0.8, k => { q.el.style.transform = `rotate(${Math.sin(k * Math.PI * 6) * 16}deg)`; });
+        c.sfx('sfx_starfall', 0.35);
+        const tail = G.el('div', 'stail', starL), to = [500 + ((i * 397) % 1900), 250 + ((i * 211) % 600)], p1 = [(q.at[0] + to[0]) / 2 + 300, q.at[1] + 200];
+        await c.tween(0, 1, c.rm ? 0.3 : 1.6, k => {
+          const u = 1 - k, x = u * u * q.at[0] + 2 * u * k * p1[0] + k * k * to[0], y = u * u * q.at[1] + 2 * u * k * p1[1] + k * k * to[1];
+          q.el.style.left = x + 'px'; q.el.style.top = y + 'px'; q.el.style.transform = `scale(${1 - 0.6 * k})`; q.el.style.opacity = k < 0.7 ? 1 : (1 - k) / 0.3;
+          const dx = 2 * u * (p1[0] - q.at[0]) + 2 * k * (to[0] - p1[0]), dy = 2 * u * (p1[1] - q.at[1]) + 2 * k * (to[1] - p1[1]);
+          Object.assign(tail.style, { left: x + 'px', top: y + 'px', transform: `rotate(${Math.atan2(dy, dx)}rad)`, opacity: q.el.style.opacity });
+        }, 'in');
+        q.el.style.opacity = 0; tail.remove(); res();
+      });
+      const order = [2, 5, 0, 7, 3, 1, 6, 4];
+      await Promise.all([
+        c.voice('S01_nar_07'),
+        (async () => { const fs = []; for (const i of order) { fs.push(fall(S[i], i)); await c.wait(c.rm ? 0.3 : 0.75); } await Promise.all(fs); })(),
+      ]);
+      await Promise.all([c.voice('S01_nar_08'), fall(S[8], 8), c.tween(1, 0.25, 2, v => dotL.style.opacity = v)]);
+      // (6) 마을로: 가로등이 광장 가까운 것부터 꺼지고, 색이 빠짐
+      await cam(1400, 700, 1.1, c.rm ? 0 : 2.4);
+      const ls = [...V.lamps].sort((a, b) => Math.hypot(a.def.at[0] - land[0], a.def.at[1] - land[1]) - Math.hypot(b.def.at[0] - land[0], b.def.at[1] - land[1]));
+      await Promise.all([
+        c.voice('S01_nar_09'),
+        c.tween(1, 0, 3.2, v => V.colorImg.style.opacity = v),
+        (async () => { for (const l of ls) { l.el.classList.remove('on'); c.sfx('sfx_click', 0.15); await c.wait(0.28); } })(),
+      ]);
+      // (7) 광장 쪽 작은 빛 속에서 루미가 나타나 두리번거림
+      c.sfx('sfx_sparkle', 0.7);
+      await c.tween(0, 0.8, 0.6, k => { flare.style.opacity = k; flare.style.transform = `scale(${0.3 + k * 0.7})`; }, 'out');
+      await c.tween(0, 1, 0.9, k => { lumi.style.opacity = k; lumi.style.transform = c.rm ? '' : `scale(${k}) rotate(${(1 - k) * 360}deg)`; }, 'out');
+      c.tween(0.8, 0, 1.2, v => flare.style.opacity = v);
+      await c.wait(0.6); if (!c.rm && !c.skipped) lumi.style.transform = 'scaleX(-1)';
+      await c.wait(0.7); lumi.style.transform = '';
+      await c.wait(0.6);
       await fadeOut(c, root, 0.6);
       G.resizers.delete(onR);
     },
@@ -911,11 +1028,13 @@ G.cut = (() => {
       await c.tween(0, 1, 0.5, k => { big.style.opacity = Math.min(1, k * 2); big.style.transform = `translate(-50%,-50%) scale(${c.rm ? 1 : 0.5 + 0.6 * k})`; }, 'out');
       await c.tween(1.1, 1, 0.2, k => { if (!c.rm) big.style.transform = `translate(-50%,-50%) scale(${k})`; });
       await c.until(1.2);
-      const orb = G.el('div', 'orb', root);
+      // 9/30 새 세계관: 장소를 끝내면 별이 아니라 마을의 따뜻한 불빛이 돌아옴 (별은 역할 미션 뒤 별 받침대에서만)
+      const warm = G.el('div', 'warm-glow', root);
       const sv = live ? G.scene.view() : SV; const pp = sv ? sv.toScreen(1200, 560) : [W / 2, H / 2];
-      c.sfx('sfx_sparkle', 0.6);
-      await c.tween(0, 1, 1.3, k => { orb.style.left = pp[0] + 'px'; orb.style.top = (pp[1] - (pp[1] + 120 * u) * k) + 'px'; orb.style.transform = `scale(${1 + k * 0.6})`; }, 'in');
-      orb.remove();
+      warm.style.left = pp[0] + 'px'; warm.style.top = pp[1] + 'px';
+      c.sfx('sfx_chime', 0.5);
+      await c.tween(0, 1, 1.3, k => { warm.style.transform = `translate(-50%,-50%) scale(${0.2 + k * 2.2})`; warm.style.opacity = Math.min(1, 3 * (1 - k)); }, 'out');
+      warm.remove();
       await c.tween(1, 0, 0.4, v => big.style.opacity = v);
       // (나) 지도로
       G.$('#fade').classList.add('on'); await c.wait(0.45); if (c.skipped) await G.wait(0.05);
@@ -938,6 +1057,121 @@ G.cut = (() => {
       if (!live) await fadeOut(c, root, 0.5);
     },
   };
+
+  // ---- 장소 도착 공통: 장면 그림 한 벌 + 카메라 + 제목 ----
+  async function arrive(c, root, opts, place) {
+    root.style.opacity = 0;
+    const V = G.sceneView(root, place); V.setMood(opts.replay ? 0 : (G.st ? G.st.mood : 0));
+    await V.ready;
+    const onR = () => V.setCam(V.cam.x, V.cam.y, V.cam.z); G.resizers.add(onR);
+    return { V, off: () => G.resizers.delete(onR) };
+  }
+  async function title(c, root, text, voice, at, until) {
+    const t = G.el('div', 'cut-title', root, text); t.style.opacity = 0;
+    await c.until(at);
+    c.voice(voice, false);
+    await c.tween(0, 1, 0.6, k => { t.style.opacity = k; t.style.transform = `translate(-50%,-50%) scale(${0.8 + 0.2 * k})`; }, 'out');
+    await c.until(until - 0.6);
+    await c.tween(1, 0, 0.5, v => t.style.opacity = v);
+    await c.until(until);
+  }
+
+  Object.assign(SCRIPTS, {
+    // ---- C3 시장 도착 (6초): 천막이 바람에 펄럭(소리) → 과일 가게 쪽으로 다가감 → 봄이 아주머니가 폴짝 인사 → 「시장」 ----
+    async C3(c, root, opts) {
+      const { V, off } = await arrive(c, root, opts, 'market');
+      if (c.rm) V.setCam(1200, 540, 1); else V.setCam(1500, 520, 1.3);
+      c.t0 = G.t;
+      // 바람: 나뭇잎 같은 작은 조각이 화면을 가로질러 날아감
+      const wind = () => {
+        if (c.skipped || c.light) return;
+        for (let i = 0; i < 7; i++) {
+          const w = G.el('div', 'wind', root); const y = G.stage.H * (0.15 + Math.random() * 0.5);
+          c.tween(0, 1, 1.6 + Math.random() * 0.8, k => { w.style.transform = `translate(${-60 + (G.stage.W + 120) * k}px,${y + Math.sin(k * 9 + i) * 30 * G.stage.u}px) rotate(${k * 540}deg)`; w.style.opacity = Math.sin(k * Math.PI); }, 'lin').then(() => w.remove());
+        }
+      };
+      await Promise.all([
+        fadeIn(c, root, 0.5),
+        (async () => { await c.until(0.3); c.sfx('sfx_flap', 0.8); wind(); })(),
+        (async () => { if (!c.rm) await c.tween(0, 1, 3.4, k => V.setCam(1500 - 300 * k, 520 + 20 * k, 1.3 - 0.3 * k), 'io'); })(),
+        (async () => {
+          await c.until(2.4); const b = V.spr.bom && V.spr.bom.img; if (!b || c.rm) return;
+          await c.tween(0, 1, 0.9, k => b.style.marginTop = (-Math.abs(Math.sin(k * Math.PI * 2)) * 14) + 'px');
+        })(),
+        title(c, root, '시장', 'S92_place_market', 3.3, 5.9),
+      ]);
+      V.setCam(1200, 540, 1); off();
+    },
+
+    // ---- C4 도서관 도착 (7초): 나무 문이 천천히 열림 → 따뜻한 빛이 쏟아짐 → 먼지가 반짝 → 해솔 사서가 인사 → 「도서관」 ----
+    async C4(c, root, opts) {
+      const { V, off } = await arrive(c, root, opts, 'library');
+      V.setCam(1200, 540, 1);
+      const light = G.el('div', 'door-light', root); light.style.opacity = 0;
+      const door = G.el('div', 'door', root); const dl = G.el('div', 'door-l', door), dr = G.el('div', 'door-r', door);
+      c.t0 = G.t;
+      await Promise.all([
+        fadeIn(c, root, 0.4),
+        (async () => {
+          await c.until(0.6); c.sfx('sfx_door', 0.9);
+          await c.tween(0, 1, 2.2, k => {
+            if (c.rm) { door.style.opacity = 1 - k; return; }
+            dl.style.transform = `perspective(${G.stage.W}px) rotateY(${-100 * k}deg)`; dr.style.transform = `perspective(${G.stage.W}px) rotateY(${100 * k}deg)`;
+          }, 'io');
+          door.remove();
+        })(),
+        (async () => {   // 빛이 쏟아지고 먼지가 반짝
+          await c.until(1.2);
+          await c.tween(0, 1, 0.8, k => light.style.opacity = k, 'out');
+          if (!c.skipped) for (let i = 0; i < (c.light ? 8 : 22); i++) {
+            const d = G.el('div', 'dot twinkle', root), r = (5 + Math.random() * 9) * G.stage.u;
+            Object.assign(d.style, { left: (G.stage.W * (0.2 + Math.random() * 0.6)) + 'px', top: (G.stage.H * (0.1 + Math.random() * 0.6)) + 'px', width: r + 'px', height: r + 'px', animationDelay: (-Math.random() * 2.2) + 's' });
+            c.tween(0, 1, 4, k => { d.style.translate = `0 ${-60 * k * G.stage.u}px`; d.style.opacity = Math.sin(k * Math.PI); }, 'lin').then(() => d.remove());
+          }
+          await c.tween(1, 0.35, 2.4, k => light.style.opacity = k);
+        })(),
+        (async () => {   // 해솔 사서가 책에서 손을 떼고 인사 (살짝 몸을 세움)
+          await c.until(3.2); const h = V.spr.haesol && V.spr.haesol.img; if (!h || c.rm) return;
+          await c.tween(0, 1, 0.8, k => h.style.marginTop = (-Math.sin(k * Math.PI) * 10) + 'px');
+        })(),
+        title(c, root, '도서관', 'S92_place_library', 4.2, 6.9),
+      ]);
+      off();
+    },
+
+    // ---- C8 퍼즐 1 성공 (5초): 촉각 지도의 볼록한 길이 도서관에서 숲까지 차례로 빛남 → 숲 이름표가 반짝 ----
+    async C8(c, root, opts) {
+      let B = opts.live, off = () => { };
+      if (B) root.style.background = 'transparent';
+      else {   // 교사용 다시 보기: 촉각 지도를 따로 그림
+        root.style.background = '#2a2440';
+        B = G.puzzle.board(root, 'braille1');
+        const fit = () => { const { W, H, u } = G.stage; B.fit(u * 40, u * 40, W - u * 80, H - u * 200); };
+        fit(); G.resizers.add(fit); off = () => G.resizers.delete(fit);
+      }
+      const P = B.D.lightPath, seg = [];
+      let total = 0; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); seg.push(l); total += l; }
+      const at = (d) => { for (let i = 0; i < seg.length; i++) { if (d <= seg[i]) { const k = d / seg[i]; return [P[i][0] + (P[i + 1][0] - P[i][0]) * k, P[i][1] + (P[i + 1][1] - P[i][1]) * k]; } d -= seg[i]; } return P[P.length - 1]; };
+      B.light.style.strokeDasharray = total; B.light.style.strokeDashoffset = total; B.light.style.opacity = 1;
+      c.t0 = G.t;
+      await Promise.all([
+        (async () => { await c.until(0.3); await c.voice('S06_haesol_11'); })(),
+        (async () => {
+          await c.until(0.5); c.sfx('sfx_sparkle', 0.7);
+          let lastSpk = 0;
+          await c.tween(0, 1, c.rm ? 1.2 : 2.6, k => {
+            B.light.style.strokeDashoffset = total * (1 - k);
+            if (!c.rm && k - lastSpk > 0.12) { lastSpk = k; const [x, y] = B.toScreen(...at(total * k)); burst(c, root, x, y, 5); }
+          }, 'io');
+          const f = B.labels.forest; if (f) { f.el.classList.add('found'); const r = f.rect, [x, y] = B.toScreen(r[0] + r[2] / 2, r[1] + r[3] / 2); c.sfx('sfx_chime', 0.6); burst(c, root, x, y, 14); }
+          await c.until(4.8);
+        })(),
+      ]);
+      B.light.style.strokeDashoffset = 0;
+      off();
+      if (!opts.live) await fadeOut(c, root, 0.5);
+    },
+  });
 
   // 금빛 물감 번짐: 바뀌는 구역의 색이 작은 자국에서 크게 번짐, 가로등이 켜지고 다음 장소 표시가 반짝
   async function bloom(c, V, from, to, z, unlock, live) {
@@ -1084,7 +1318,7 @@ G.map = (() => {
       const W = G.D.places.walk, dur = Math.max(W.minSec, Math.min(W.maxSec, len / W.speed)), speed = len / dur;
       G.busy++;
       const visited = G.st.visited.includes(p.id);
-      walking = { skip: false };
+      walking = { skip: G.fast() };   // 빠르게 모드면 걷기를 바로 건너뜀
       if (visited) G.hud.skip(() => { if (walking) walking.skip = true; });
       if (p.walkLine) G.hud.say(p.walkLine);
       await new Promise(res => {
@@ -1214,6 +1448,8 @@ G.map = (() => {
 /* ---- scene.js ---- */
 // scene.js — 장소 장면 (U4): 장소 그림 한 장에서 사람·물건 누르기. 할 일(☆)을 모두 하면 장소 클리어 (C7)
 // 장면 그림은 2400x1080: 가운데 1920 = 16:9, 가운데 1440 = 4:3 핵심 영역 (누를 곳은 모두 여기)
+// 프로토타입 2: 누를 곳 하나가 할 일 여러 개를 이어서 할 수 있음 (flow: flows.js, more: 이어지는 할 일),
+//   after: 다른 할 일을 끝낸 뒤에 나타나는 누를 곳 (도서관 촉각 지도), randomSfx: 가끔 나는 소리 (도서관 책장 넘기는 소리)
 'use strict';
 // ---- 장면 그림 한 벌 (연출 C2·C7도 같이 씀) ----
 G.sceneView = (parent, id, o = {}) => {
@@ -1257,10 +1493,13 @@ G.sceneView = (parent, id, o = {}) => {
 
 G.scene = (() => {
   const Sc = {};
-  let V = null, S = null, hots = [], arrowEl = null, trailEl = null, busy = false, closeup = null;
+  let V = null, S = null, hots = [], arrowEl = null, trailEl = null, busy = false, closeup = null, sfxOff = null;
+  const missionsOf = (h) => h.mission ? [h.mission, ...(h.more || [])] : [];
+  const allDone = (h) => missionsOf(h).every(m => G.st.done.includes(m));
+  const shown = (h) => !h.after || G.st.done.includes(h.after);
   Sc.hide = () => {
     if (!V) return;
-    G.resizers.delete(onResize); G.dialog.onSpeaker = null;
+    G.resizers.delete(onResize); G.dialog.onSpeaker = null; if (sfxOff) sfxOff(); sfxOff = null;
     V.el.remove(); V = null; S = null; hots = []; arrowEl = trailEl = null;
     const cu = G.$('#closeup'); if (cu) cu.innerHTML = '';
     G.help.off(); G.audio.ambientBoost('amb_fountain', false);
@@ -1291,13 +1530,18 @@ G.scene = (() => {
       let star = null;
       if (h.mission) {
         star = G.el('div', 'mstar', V.fx); star.style.left = (h.rect[0] + h.rect[2] / 2) + 'px'; star.style.top = (h.rect[1] - 6) + 'px';
-        setStar(star, G.st.done.includes(h.mission));
+        setStar(star, allDone(h));
       }
       const btn = G.el('button', 'hot', V.fx); btn.type = 'button'; btn.setAttribute('aria-label', h.label);
       btn.style.zIndex = h.mission ? 20 : 10;
       const H = { def: h, glow, star, btn };
       G.onTap(btn, () => tapHot(H));
       hots.push(H);
+      showHot(H, shown(h));
+    }
+    if (def.randomSfx) {   // 가끔 나는 소리 (대화 중에는 쉼)
+      const R = def.randomSfx; let t = 0, next = R.every[0] + Math.random() * (R.every[1] - R.every[0]);
+      sfxOff = G.every(dt => { if (G.dialog.active || G.paused) return; t += dt; if (t > next) { t = 0; next = R.every[0] + Math.random() * (R.every[1] - R.every[0]); G.audio.sfx(R.name, R.vol || 0.4); } });
     }
     sizeHots();
     G.resizers.add(onResize);
@@ -1317,13 +1561,34 @@ G.scene = (() => {
     }
     if (!V) return;
     if (!G.st.done.includes(id + '_intro')) {
-      await playIntro(def);
+      if (def.intro) await playIntro(def);
+      else { G.hud.tasks(def, true); hots.forEach(h => h.glow.classList.add('strong')); G.wait(2.5).then(() => hots.forEach(h => h.glow.classList.remove('strong'))); }
       if (g !== G.gen) return;
       G.st.done.push(id + '_intro'); G.save.write();
     }
     setHelp();
   };
-  function setStar(el, done) { el.innerHTML = done ? G.svgStar('#FFD66B', '#C98F14', 7) : G.svgStar('rgba(255,248,236,.9)', '#C98F14', 7); }
+  function setStar(el, done) { el.innerHTML = G.svgDot(done); }   // 9/30: 할 일 표시는 동그라미 (별은 진짜 별에만)
+  function showHot(H, on) { for (const e of [H.glow, H.star, H.btn]) if (e) e.style.display = on ? '' : 'none'; }
+  // 다른 할 일을 끝내서 새로 나타나는 누를 곳: 반짝하며 나타남
+  function revealHots() {
+    for (const H of hots) {
+      const on = shown(H.def); if (on === (H.btn.style.display !== 'none')) continue;
+      showHot(H, on);
+      if (on) { H.glow.classList.remove('seen'); H.glow.classList.add('strong'); G.audio.sfx('sfx_sparkle', 0.5); popStar(H.star || H.glow); G.wait(3).then(() => H.glow.classList.remove('strong')); }
+    }
+  }
+  // 할 일 하나 끝: ★ 채우기, 소리, 저장. 흐름(flows.js) 안에서도 부름
+  function complete(m) {
+    if (!m || G.st.done.includes(m)) return false;
+    G.st.done.push(m);
+    G.audio.sfx('sfx_star', 0.9);
+    for (const H of hots) if (H.star && missionsOf(H.def).includes(m)) { setStar(H.star, allDone(H.def)); popStar(H.star); }
+    G.hud.tasks(S, true);
+    G.save.write();
+    revealHots();
+    return true;
+  }
 
   // 처음 방문: "여기가 광장이야" → "위를 봐, 할 일이 세 개" (☆☆☆ 반짝) → "반짝이는 곳을 눌러 봐" (테두리 한 번 밝아짐)
   async function playIntro(def) {
@@ -1345,20 +1610,22 @@ G.scene = (() => {
     if (!G.st.seen.includes(id + ':' + h.id)) G.st.seen.push(id + ':' + h.id);
     H.glow.classList.add('seen');
     if (h.louder) G.audio.ambientBoost(h.louder, true);
-    if (h.closeup) showCloseup(h.closeup);
-    await G.dialog.play(h.lines, { partner: h.partner });
-    if (g !== G.gen) { busy = false; return; }
-    hideCloseup();
+    if (h.flow) {
+      // 할 일 여러 개가 이어지는 대화·아이템·퍼즐 (flows.js)
+      try { await G.flows[h.flow]({ S, V, H, g, complete, closeup: showCloseup, hideCloseup }); } catch (e) { console.error('흐름 오류', h.flow, e); G.dialog.close(); }
+      if (g !== G.gen) { busy = false; return; }
+      hideCloseup();
+      if (V && G.screen === 'scene') setHelp();   // 퍼즐이 도움을 바꿔 놓았을 수 있어 장면 도움으로 되돌림
+    } else {
+      if (h.closeup) showCloseup(h.closeup);
+      await G.dialog.play(h.lines, { partner: h.partner });
+      if (g !== G.gen) { busy = false; return; }
+      hideCloseup();
+      if (h.mission) complete(h.mission);
+    }
     if (h.louder) G.audio.ambientBoost(h.louder, false);
     if (!V) { busy = false; return; }
-    if (h.mission && !G.st.done.includes(h.mission)) {
-      G.st.done.push(h.mission);
-      G.audio.sfx('sfx_star', 0.9);
-      setStar(H.star, true); popStar(H.star);
-      G.hud.tasks(S, true);
-      G.save.write();
-      if (S.missions.every(m => G.st.done.includes(m)) && !G.st.cleared.includes(id)) { await G.wait(0.9); busy = false; if (g !== G.gen) return; return clear(); }
-    }
+    if (S.missions.every(m => G.st.done.includes(m)) && !G.st.cleared.includes(id)) { await G.wait(0.9); busy = false; if (g !== G.gen) return; return clear(); }
     busy = false;
   }
   function popStar(el) { el.animate && el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.8)' }, { transform: 'scale(1)' }], { duration: 700, easing: 'ease-out' }); }
@@ -1366,6 +1633,12 @@ G.scene = (() => {
   function showCloseup(kind) {
     const cu = G.$('#closeup'); cu.innerHTML = '';
     closeup = G.el('div', 'closeup', cu);
+    if (kind === 'braille_book') {   // 해솔의 점자책 한 쪽: 확정된 점자 낱말 (별 / 축제)
+      const bk = G.el('div', 'book-big', closeup), pg = G.el('div', 'book-page', bk);
+      for (const c of G.D.puzzles.braille1.book) G.el('div', 'book-line', pg, G.braille.svg(c, 30));
+      closeup.animate && closeup.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
+      return;
+    }
     const b = G.el('div', 'board-big', closeup);
     for (let i = 0; i < 4; i++) { const n = G.el('div', 'note', b); for (let j = 0; j < 4; j++) { const l = G.el('i', '', n); l.style.width = (55 + Math.random() * 40) + '%'; } }
     closeup.animate && closeup.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
@@ -1398,13 +1671,14 @@ G.scene = (() => {
   };
 
   // ---- 도움: 첫 번째로 안 한 할 일 ----
-  function target() { return hots.find(h => h.def.mission && !G.st.done.includes(h.def.mission)); }
+  function target() { return hots.find(h => h.def.mission && shown(h.def) && !allDone(h.def)); }
   function clearHint() {
     if (arrowEl) arrowEl.remove(); if (trailEl) trailEl.remove(); arrowEl = trailEl = null;
     hots.forEach(h => h.glow.classList.remove('strong'));
   }
   function setHelp() {
     if (S && S.missions.every(m => G.st.done.includes(m))) { G.help.off(); return; }
+    if (G.screen !== 'scene') return;
     G.help.set({
       l1: () => { const t = target(); if (t && t.def.hint) G.hud.say(t.def.hint); },
       l2: () => {
@@ -1426,7 +1700,351 @@ G.scene = (() => {
     });
   }
   Sc.view = () => V;
+  Sc.setHelp = () => { if (V) setHelp(); };
+  Sc.sprite = (id) => V && V.spr[id];
   return Sc;
+})();
+
+/* ---- puzzle.js ---- */
+// puzzle.js — 퍼즐 화면 (U7). 퍼즐 1 (GDD 5-1): 촉각 지도에서 점자 이름표 「숲」 찾기
+// 촉각 지도를 정면에서 크게. 위쪽에 해솔 얼굴과 지금 할 일, 아래쪽 대화창은 공용 (인물 그림 없이)
+// 이름표를 누르면 해솔이 읽어 줌. 숲이 아니면 "다른 이름표도 만져 볼까?" (틀림 소리·표시 없음). 숲이면 연출 C8
+// [크게 보기]: 네 이름표를 크게 모아 보여 줌 (작은 화면에서도 점이 잘 보이고 누르기 쉽게)
+// 퍼즐 화면은 #world 층 안에 그려 대화창(#dialog)이 늘 그 위에 옴
+'use strict';
+G.puzzle = (() => {
+  const Pz = {};
+  const DOT = 24;   // 판 위 점 사이 거리 (판 1600x900 기준)
+  const PAD = [28, 24];   // 이름표 판 안쪽 여백
+
+  // ---- 촉각 지도 판 (연출 C8 다시 보기도 같이 씀) ----
+  Pz.board = (parent, id) => {
+    const D = G.D.puzzles[id], [W, H] = D.size;
+    const B = { D, W, H, labels: {} };
+    const el = B.el = G.el('div', 'tboard', parent); el.style.width = W + 'px'; el.style.height = H + 'px';
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = B.svg = document.createElementNS(ns, 'svg'); svg.setAttribute('class', 'troads'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('width', W); svg.setAttribute('height', H);
+    const pl = (pts, cls) => { const p = document.createElementNS(ns, 'polyline'); p.setAttribute('points', pts.map(q => q.join(',')).join(' ')); p.setAttribute('class', cls); svg.appendChild(p); return p; };
+    for (const r of D.roads) { pl(r, 'road-sh'); pl(r, 'road'); pl(r, 'road-hi'); }
+    B.light = pl(D.lightPath, 'road-light');
+    el.appendChild(svg);
+    for (const k in D.nodes) { const n = G.el('div', 'tnode', el); n.style.left = D.nodes[k][0] + 'px'; n.style.top = D.nodes[k][1] + 'px'; }
+    for (const L of D.labels) {
+      const [w, h] = G.braille.size(L.cells, DOT);
+      const pw = w + PAD[0] * 2, ph = h + PAD[1] * 2;
+      const plate = G.el('div', 'tlabel', el, G.braille.svg(L.cells, DOT));
+      Object.assign(plate.style, { left: L.at[0] + 'px', top: L.at[1] + 'px', width: pw + 'px', height: ph + 'px' });
+      B.labels[L.id] = { def: L, el: plate, rect: [L.at[0], L.at[1], pw, ph] };
+    }
+    // 판을 주어진 네모 안에 맞춤 (화면 좌표)
+    B.fit = (x, y, w, h) => {
+      const k = Math.min(w / W, h / H); B.k = k; B.x = x + (w - W * k) / 2; B.y = y + (h - H * k) / 2;
+      el.style.transform = `translate(${B.x.toFixed(1)}px,${B.y.toFixed(1)}px) scale(${k.toFixed(4)})`;
+    };
+    B.toScreen = (bx, by) => [B.x + bx * B.k, B.y + by * B.k];
+    return B;
+  };
+
+  // ---- 퍼즐 한 판 ----
+  Pz.play = (id) => new Promise(async (finish) => {
+    const D = G.D.puzzles[id], g = G.gen, ok = () => g === G.gen;
+    const back = { music: (G.D.scenes[G.st.place] || {}).music, screen: G.screen };
+    G.screen = 'puzzle'; G.hud.hide(true); G.help.off();
+    G.audio.music('music_puzzle');
+    const root = G.el('div', 'puzzle', G.$('#world'));
+    const B = Pz.board(root, id);
+    // 위쪽: 해솔 얼굴 + 지금 할 일 / 크게 보기
+    const top = G.el('div', 'pz-top', root);
+    const face = G.el('div', 'pz-face', top); const faceImg = G.el('div', 'pz-face-img', face); G.el('span', '', face, '해솔');
+    const setFace = (q) => { const P = G.D.portraits.haesol; faceImg.style.backgroundImage = `url("${G.asset((P.poses && P.poses[q]) || P.img)}")`; };
+    setFace('01');
+    const task = G.el('button', 'quest pz-task', top); task.type = 'button';
+    G.el('div', 'q2', task, (G.D.dialogues[D.task] || {}).text || '');
+    G.onTap(task, () => G.audio.voice(D.task));
+    const say = G.el('div', 'pz-say', top); say.style.display = 'none';
+    const tr = G.el('div', 'pz-tr', root);
+    const zoomBtn = G.btn('pill', G.icon('icon_zoom') + ' 크게 보기', tr, () => openZoom(), '크게 보기');
+    const bl = G.el('div', 'pz-bl', root);
+    const lumiB = G.el('button', 'lumi-btn', bl); lumiB.type = 'button'; lumiB.setAttribute('aria-label', '루미 도움');
+    const li = G.el('img', '', lumiB); li.src = G.asset('assets/chars/lumi.png'); li.alt = ''; G.el('span', '', lumiB, '루미');
+    G.onTap(lumiB, () => G.help.now());
+    // 이름표 누르는 곳: 판 위 이름표 자리에 화면 좌표로 (휴대폰에서도 손가락 크기 이상)
+    const hits = {};
+    for (const k in B.labels) {
+      const b = G.el('button', 'pz-hit', root); b.type = 'button'; b.setAttribute('aria-label', '점자 이름표');
+      G.onTap(b, () => tapLabel(k)); hits[k] = b;
+    }
+    let talking = false, busy = false, done = false, arrow = null, zoom = null;
+    function layout() {
+      const { W, H, u } = G.stage;
+      const topH = top.getBoundingClientRect().bottom + u * 12;
+      const dlg = G.dialog.active ? (G.$('.dlg-box') ? H - G.$('.dlg-box').getBoundingClientRect().top + u * 16 : H * 0.3) : Math.max(u * 30, 10);
+      const side = Math.max(u * 30, 10);
+      B.fit(side, topH, W - side * 2, Math.max(60, H - topH - dlg));
+      const min = 72;
+      for (const k in B.labels) {
+        const r = B.labels[k].rect, [x, y] = B.toScreen(r[0], r[1]), w = r[2] * B.k, h = r[3] * B.k;
+        const ww = Math.max(w, min), hh = Math.max(h, min);
+        Object.assign(hits[k].style, { left: (x - (ww - w) / 2) + 'px', top: (y - (hh - h) / 2) + 'px', width: ww + 'px', height: hh + 'px' });
+      }
+      if (arrow) placeArrow();
+    }
+    let lastDlg = null;
+    const watch = G.every(() => { if (!ok()) { watch(); G.resizers.delete(layout); return; } const a = G.dialog.active; if (a !== lastDlg) { lastDlg = a; root.classList.toggle('talk', !!a); requestAnimationFrame(layout); } });
+    G.resizers.add(layout); layout(); requestAnimationFrame(layout);
+    const opts = { partner: 'haesol', noPortraits: true };
+    const talk = async (ids, extra = {}) => {
+      talking = true;
+      G.dialog.onLine = (lid) => { const q = ((G.D.poses || {})[lid] || {}).haesol; if (q) setFace(q); if (extra.onLine) extra.onLine(lid); };
+      await G.dialog.play(ids, Object.assign({}, opts, extra.keep ? { keep: true } : {}));
+      G.dialog.onLine = null; talking = false; setFace('01');
+    };
+    function select(k) {
+      for (const j in B.labels) B.labels[j].el.classList.toggle('sel', j === k);
+    }
+    async function tapLabel(k) {
+      if (busy || done || !ok()) return;
+      busy = true; clearHint(); closeZoom();
+      const L = B.labels[k].def;
+      G.audio.sfx('sfx_tap', 0.5); select(k);
+      if (L.answer) { done = true; await success(L); return; }
+      await talk([L.line, D.wrong]);
+      busy = false;
+    }
+    // ---- 크게 보기: 네 이름표를 크게 ----
+    function openZoom() {
+      if (busy || done || zoom) return;
+      G.audio.voice('S92_btn_zoom', '크게 보기');   // 음성 파일이 없으면 브라우저 음성 (다음 음성 만들 때 추가)
+      zoom = G.el('div', 'pz-zoom', root);
+      const grid = G.el('div', 'pz-zgrid', zoom);
+      for (const k in B.labels) {
+        const L = B.labels[k].def;
+        const b = G.btn('pz-zlabel', G.braille.svg(L.cells, 40), grid, () => tapLabel(k), '점자 이름표');
+        if (B.labels[k].el.classList.contains('hint')) b.classList.add('hint');
+      }
+      const row = G.el('div', 'btn-row', zoom);
+      G.btn('pill gold', G.icon('icon_ok') + ' 닫기', row, () => closeZoom(), '닫기');
+    }
+    function closeZoom() { if (zoom) { zoom.remove(); zoom = null; } }
+    // ---- 도움 (5-1): 30초 "숲은 한 글자라서 이름표가 제일 짧아" → 60초 숲 이름표가 은은하게 빛남 → 90초·루미 해솔이 가리킴 ----
+    const ans = Object.keys(B.labels).find(k => B.labels[k].def.answer);
+    async function bubble(lid) {
+      const L = G.D.dialogues[lid]; if (!L) return;
+      say.textContent = L.text; say.style.display = ''; const q = ((G.D.poses || {})[lid] || {}).haesol; if (q) setFace(q);
+      await G.audio.voice(lid); await G.wait(1.2);
+      if (say.textContent === L.text) say.style.display = 'none';
+      if (!talking) setFace('01');
+    }
+    function placeArrow() {
+      const r = B.labels[ans].rect, [x, y] = B.toScreen(r[0] + r[2] / 2, r[1]);
+      Object.assign(arrow.style, { left: x + 'px', top: y + 'px' });
+    }
+    function clearHint() {
+      if (arrow) arrow.remove(); arrow = null;
+      for (const k in B.labels) B.labels[k].el.classList.remove('hint');
+      say.style.display = 'none';
+    }
+    const setHelp = () => G.help.set({
+      l1: () => bubble(D.hint1),
+      l2: () => { B.labels[ans].el.classList.add('hint'); },
+      l3: () => {
+        B.labels[ans].el.classList.add('hint');
+        if (!arrow) { arrow = G.el('div', 'arrow pz-arrow', root, '<svg viewBox="0 0 90 110"><path d="M45 104 L8 58 H30 V6 H60 V58 H82 Z" fill="#FFD66B" stroke="#8a5a0a" stroke-width="5" stroke-linejoin="round"/></svg>'); placeArrow(); }
+        bubble(D.hint3);
+      },
+      clear: clearHint,
+    });
+    // ---- 성공: "맞아! 이게 숲이야" → C8 (볼록한 길이 도서관에서 숲까지 빛남) → 숲 점자를 크게 한 번 더 ----
+    async function success(L) {
+      G.help.off();
+      B.labels[L.id].el.classList.add('found');
+      G.audio.sfx('sfx_sparkle', 0.7);
+      await talk([L.line]); if (!ok()) return end(false);
+      await G.cut.play('C8', { live: B });
+      if (!ok()) return end(false);
+      G.hud.hide(true);   // 연출이 끝나며 켠 모서리 버튼을 퍼즐 동안 다시 숨김
+      let big = null;
+      await talk(D.after, { onLine: (lid) => {
+        if (lid === D.after[D.after.length - 1] && !big) {
+          big = G.el('div', 'pz-big', root);
+          G.el('div', 'pz-big-dots', big, G.braille.svg(L.cells, 60));
+          G.el('div', 'pz-big-word', big, L.word);
+          big.animate && big.animate([{ opacity: 0, transform: 'translate(-50%,-50%) scale(.7)' }, { opacity: 1, transform: 'translate(-50%,-50%) scale(1)' }], { duration: 500, easing: 'ease-out' });
+          G.audio.sfx('sfx_chime', 0.5);
+        }
+      } });
+      end(ok());
+    }
+    function end(won) {
+      watch(); G.resizers.delete(layout); G.help.off(); G.dialog.onLine = null;
+      root.remove();
+      if (ok()) { G.screen = back.screen || 'scene'; G.hud.hide(false); if (back.music) G.audio.music(back.music); }
+      finish(won);
+    }
+    // ---- 시작: 해솔이 소리 단서를 말하고, 숲 이름표를 같이 찾자고 함 (이름표 4개가 반짝) ----
+    busy = true;
+    await talk(D.start, { onLine: (lid) => {
+      if (lid === D.start[D.start.length - 1]) for (const k in B.labels) { const e = B.labels[k].el; e.classList.add('shine'); G.wait(2.4).then(() => e.classList.remove('shine')); }
+    } });
+    if (!ok()) return end(false);
+    busy = false; setHelp();
+  });
+  return Pz;
+})();
+
+/* ---- flows.js ---- */
+// flows.js — 누를 곳 하나에서 할 일 여러 개가 이어지는 대화 (프로토타입 2)
+// 시장: 봄이 아주머니와의 한 대화 안에서 할 일 3개 (GDD 4-2, 저학년이 헤매지 않게)
+// 도서관: 해솔 사서 대화 → 촉각 지도 받기 → 퍼즐 1 (GDD 4-3)
+// 할 일을 하나 끝낼 때마다 저장하므로, 중간에 멈춰도 다시 누르면 남은 부분부터 이어서 함
+// G.present: 아이템 얻기 카드, 퀘스트 알림, 알게 된 것 카드 (모두 #overlay 층 = 인물 그림·대화창보다 위)
+'use strict';
+// 화면 글자: 주아체에 없는 「」는 “”로 바꿔 보여 줌 (읽어 주는 음성은 그대로)
+G.txt = (id) => ((G.D.dialogues[id] || {}).text || '').replace(/「/g, '“').replace(/」/g, '”');
+
+G.present = (() => {
+  const P = {};
+  const card = (cls) => { const ov = G.$('#overlay'); const m = G.el('div', 'modal ' + cls, ov); const sh = G.el('div', 'sheet', m); return { m, sh }; };
+  // [다음] 버튼: 음성이 끝나면 켜짐 (대화창과 같은 규칙). 누르면 끝
+  function nextRow(sh, first) {
+    const row = G.el('div', 'btn-row', sh);
+    const b = G.btn('pill gold dlg-next wait', '다음 ' + G.icon('icon_next'), row, null, '다음'); b.disabled = true;
+    let res; const p = new Promise(r => res = r);
+    if (G.fast()) first = Promise.resolve();   // 빠르게 모드: 바로 [다음]
+    first.then(() => { b.disabled = false; b.classList.remove('wait'); b.classList.add('ready'); });
+    G.onTap(b, () => { if (b.disabled) return; G.audio.sfx('sfx_tap', 0.5); G.audio.stopVoice(); res(); });
+    return p;
+  }
+  // 반짝이 가루 (화면 좌표)
+  function sparkle(x, y, n = 12) {
+    if (G.settings && G.settings.light) n = 5;
+    const ov = G.$('#overlay');
+    for (let i = 0; i < n; i++) {
+      const s = G.el('div', 'spk', ov, G.svgTwinkle('#FFF1B8', '#FFD66B', 4)); s.style.left = x + 'px'; s.style.top = y + 'px';
+      const a = Math.PI * 2 * i / n, R = G.stage.u * (140 + Math.random() * 120);
+      G.tween(0, 1, 1.1, k => { s.style.transform = `translate(${Math.cos(a) * R * k}px,${Math.sin(a) * R * k}px) scale(${1 - k * 0.6})`; s.style.opacity = 1 - k; }, 'out').then(() => s.remove());
+    }
+  }
+
+  // ---- 아이템 얻기: 큰 그림 + "마을 지도를 얻었어요!" + 설명 → [다음] → 그림이 가방으로 날아감 ----
+  P.item = async (id) => {
+    const it = G.D.items.find(x => x.id === id); if (!it) return;
+    const g = G.gen; G.busy++;
+    if (!G.st.items.includes(id)) { G.st.items.push(id); G.save.write(); }
+    const { m, sh } = card('get');
+    const pic = G.el('div', 'get-pic', sh, G.icon(it.icon));
+    G.el('div', 'get-title', sh, G.txt('S92_get_' + id));
+    G.el('div', 'get-desc', sh, G.txt(it.voice));
+    G.audio.sfx('sfx_sparkle', 0.7);
+    pic.animate && pic.animate([{ transform: 'scale(.3) rotate(-20deg)', opacity: 0 }, { transform: 'scale(1.15)', opacity: 1, offset: .7 }, { transform: 'scale(1)' }], { duration: 700, easing: 'ease-out' });
+    requestAnimationFrame(() => { const r = pic.getBoundingClientRect(); sparkle(r.left + r.width / 2, r.top + r.height / 2); });
+    const v1 = G.audio.voice('S92_get_' + id);   // "…을 얻었어요!"가 끝나면 [다음]이 켜지고 설명도 읽어 줌
+    v1.then(() => { if (g === G.gen && m.isConnected) G.audio.voice(it.voice); });
+    await nextRow(sh, v1);
+    if (g !== G.gen) return;
+    // 가방으로 날아가기
+    const r0 = pic.getBoundingClientRect(), bag = [...document.querySelectorAll('#hud .pill')].find(b => b.getAttribute('aria-label') === '가방');
+    m.remove();
+    if (bag && !G.reduced()) {
+      const r1 = bag.getBoundingClientRect(), fly = G.el('div', 'get-fly', G.$('#overlay'), G.icon(it.icon));
+      Object.assign(fly.style, { left: r0.left + 'px', top: r0.top + 'px', width: r0.width + 'px', height: r0.height + 'px' });
+      const dx = r1.left + r1.width * 0.2 - r0.left, dy = r1.top + r1.height / 2 - (r0.top + r0.height / 2), k1 = Math.min(1, (r1.height * 0.9) / r0.height);
+      await G.tween(0, 1, 0.7, k => { fly.style.transform = `translate(${dx * k}px,${dy * k - Math.sin(k * Math.PI) * 80 * G.stage.u}px) scale(${1 + (k1 - 1) * k})`; }, 'io');
+      fly.remove();
+      bag.animate && bag.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 400 });
+      G.audio.sfx('sfx_chime', 0.4);
+    }
+    G.busy = Math.max(0, G.busy - 1);
+  };
+
+  // ---- 퀘스트 알림: 화면 위쪽 가운데에 "길의 별 찾기 2/5 해냈어요!" + 퀘스트 이름, 읽어 준 뒤 사라짐 ----
+  P.quest = async (n) => {
+    const g = G.gen; G.busy++;
+    const ov = G.$('#overlay'), b = G.el('div', 'quest-banner', ov);
+    G.el('div', 'qb1', b, '길의 별 찾기 ' + n + '/5 해냈어요!');
+    G.el('div', 'qb2', b, G.txt('S92_quest_' + n));
+    G.audio.sfx('sfx_chime', 0.6);
+    b.animate && b.animate([{ transform: 'translate(-50%,-120%)', opacity: 0 }, { transform: 'translate(-50%,0)', opacity: 1 }], { duration: 450, easing: 'ease-out' });
+    await G.audio.voice('S92_quest_' + n); await G.wait(1.2);
+    if (b.isConnected && b.animate) await b.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400 }).finished.catch(() => { });
+    b.remove();
+    if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.refreshQuest(); }
+  };
+
+  // ---- 알게 된 것: "알게 된 것" + 내용 카드 → [다음] ----
+  P.info = async (id) => {
+    const g = G.gen; G.busy++;
+    const t = G.txt(id), i = t.indexOf(':');
+    const { m, sh } = card('info');
+    G.el('div', 'info-head', sh, G.icon('icon_star') + ' ' + (i > 0 ? t.slice(0, i) : '알게 된 것'));
+    G.el('div', 'info-body', sh, i > 0 ? t.slice(i + 1).trim() : t);
+    G.audio.sfx('sfx_chime', 0.5);
+    await nextRow(sh, G.audio.voice(id));
+    m.remove();
+    if (g === G.gen) G.busy = Math.max(0, G.busy - 1);
+  };
+  return P;
+})();
+
+G.flows = (() => {
+  const F = {};
+  const done = (m) => G.st.done.includes(m);
+  const opt = (id, icon) => ({ label: G.txt(id), icon, voice: id });
+
+  // ---- 시장: 봄이 아주머니 (할 일 1 인사 → 2 무엇을 물어볼까? 선택지 3개 → 3 마을 지도 받기) ----
+  F.market_bom = async ({ complete, g }) => {
+    const ok = () => g === G.gen, P = { partner: 'bom', keep: true };
+    if (!done('market_bom')) {
+      await G.dialog.play(['S04_bom_01', 'S04_bom_02'], P); if (!ok()) return;
+      complete('market_bom');
+    }
+    if (!done('market_ask')) {
+      await G.dialog.play(['S04_rumi_01'], P); if (!ok()) return;
+      // 무엇을 물어도 괜찮음: 고른 질문에 봄이 아주머니가 대답하고, 모두 해솔 사서 이야기로 이어짐
+      const i = await G.dialog.choose([opt('S04_opt_01', 'icon_star'), opt('S04_opt_02', 'opt_road'), opt('S04_opt_03', 'opt_apple')], true); if (!ok()) return;
+      await G.dialog.play([['S04_bom_03', 'S04_bom_04', 'S04_bom_05'][i]], P); if (!ok()) return;
+      complete('market_ask');
+    }
+    if (!done('market_map')) {
+      await G.dialog.play(['S04_bom_06', 'S04_bom_07', 'S04_bom_08', 'S04_bom_09'], P); if (!ok()) return;
+      G.dialog.close();
+      await G.present.item('map'); if (!ok()) return;
+      await G.dialog.play(['S04_bom_10', 'S04_rumi_02'], { partner: 'bom' }); if (!ok()) return;
+      complete('market_map');
+    }
+    G.dialog.close();
+  };
+
+  // ---- 도서관: 해솔 사서 (점자책 보여 주기 → 주인공 질문 버튼) ----
+  F.library_haesol = async ({ complete, closeup, hideCloseup, g }) => {
+    const ok = () => g === G.gen;
+    G.dialog.onLine = (lid) => { if (lid === 'S05_haesol_03') closeup('braille_book'); if (lid === 'S05_haesol_04') hideCloseup(); };
+    await G.dialog.play(['S05_haesol_01', 'S05_haesol_02', 'S05_haesol_03', 'S05_rumi_01', 'S05_haesol_04', 'S05_rumi_02'], { partner: 'haesol', keep: true });
+    G.dialog.onLine = null; hideCloseup(); if (!ok()) return;
+    await G.dialog.choose([opt('S05_ply_01', 'opt_night')], true); if (!ok()) return;
+    await G.dialog.play(['S05_haesol_05', 'S05_haesol_06'], { partner: 'haesol' }); if (!ok()) return;
+    complete('library_haesol');
+  };
+
+  // ---- 도서관: 촉각 지도 (할 일 2 아이템, 퀘스트 2/5) → 퍼즐 1 (할 일 3, 퀘스트 3/5) ----
+  F.library_tactile = async ({ complete, g }) => {
+    const ok = () => g === G.gen;
+    if (!done('library_tactile')) {
+      await G.dialog.play(['S05_haesol_07', 'S05_haesol_08', 'S05_haesol_09'], { partner: 'haesol' }); if (!ok()) return;
+      await G.present.item('tactile'); if (!ok()) return;
+      complete('library_tactile');
+      G.st.quest = Math.max(G.st.quest, 2); G.save.write();
+      await G.present.quest(2); if (!ok()) return;
+    }
+    if (!done('library_puzzle')) {
+      const won = await G.puzzle.play('braille1'); if (!ok() || !won) return;
+      G.st.quest = Math.max(G.st.quest, 3);
+      complete('library_puzzle');
+      await G.present.info('S92_info_01'); if (!ok()) return;
+      await G.present.quest(3);
+    }
+  };
+  return F;
 })();
 
 /* ---- teacher.js ---- */
@@ -1468,9 +2086,14 @@ G.teacher = (() => {
     const p = G.el('div', 't-panel', bg);
     const h = G.el('h2', '', p, '<span>교사용 설정</span>');
     tb('닫기 (ESC)', h, () => T.close(), 'on t-close');
-    G.el('div', 't-help', p, '게임은 잠시 멈춰 있어요. ' + (G.st ? `지금 칸: ${G.st.slot}번${G.st.name ? ' (' + G.save.esc(G.st.name) + ')' : ''}` : '아직 칸을 고르지 않았어요.') + ' (프로토타입 1)');
+    G.el('div', 't-help', p, '게임은 잠시 멈춰 있어요. ' + (G.st ? `지금 칸: ${G.st.slot}번${G.st.name ? ' (' + G.save.esc(G.st.name) + ')' : ''}` : '아직 칸을 고르지 않았어요.') + ' (프로토타입 2)');
 
-    let s = sec(p, '1. 음성과 음량');
+    // 빠르게 모드 (9/30 선생님 요청, 청선별GO처럼): 대화·연출·걷기를 바로 넘길 수 있게
+    let s = sec(p, '빠르게 모드 (선생님 확인·시연용)');
+    choice(s, 'fast', [[false, '끄기'], [true, '켜기']]);
+    G.el('div', 't-note', s, '켜면 음성이 끝나기 전에도 [다음]을 누를 수 있고, 연출은 처음부터 [건너뛰기]가 보이며, 지도에서 걷기는 바로 도착해요. 선택지는 한 번 누르면 골라져요. 학생이 할 때는 꺼 주세요.');
+
+    s = sec(p, '1. 음성과 음량');
     let r = row(s);
     tb(G.settings.voiceOn ? '음성 켜짐' : '음성 꺼짐', r, () => set('voiceOn', !G.settings.voiceOn), G.settings.voiceOn ? 'on' : '');
     const lab = G.el('label', '', r, '음량 '); const rg = G.el('input', '', lab); rg.type = 'range'; rg.min = 0; rg.max = 100; rg.value = Math.round(G.settings.volume * 100);
@@ -1493,11 +2116,11 @@ G.teacher = (() => {
       const b = tb(ch.label, r, () => { T.close(() => G.flow.chapter(ch.id)); });
       if (!ch.ready || !G.st) b.disabled = true;
     }
-    G.el('div', 't-note', s, G.st ? '고른 곳 앞까지의 할 일, 아이템, 마을 단계가 채워진 채로 시작해요. 4~7은 다음 프로토타입에서 열려요.' : '먼저 저장 칸 번호를 고른 뒤에 쓸 수 있어요.');
+    G.el('div', 't-note', s, G.st ? '고른 곳 앞까지의 할 일, 아이템, 마을 단계가 채워진 채로 시작해요. 5~7은 다음 프로토타입에서 열려요.' : '먼저 저장 칸 번호를 고른 뒤에 쓸 수 있어요.');
 
     s = sec(p, '6. 연출');
     r = row(s); G.el('span', '', r, '다시 보기:');
-    for (const [id, label] of [['C1', 'C1 인트로'], ['C2', 'C2 광장 도착'], ['C7', 'C7 장소 완료']]) tb(label, r, () => T.close(() => { if (!G.cut.active) G.cut.play(id, { replay: true }); }));
+    for (const [id, label] of [['C1', 'C1 인트로'], ['C2', 'C2 광장 도착'], ['C3', 'C3 시장 도착'], ['C4', 'C4 도서관 도착'], ['C8', 'C8 점자 길 빛남'], ['C7', 'C7 장소 완료']]) tb(label, r, () => T.close(() => { if (!G.cut.active) G.cut.play(id, { replay: true }); }));
     r = row(s); G.el('span', '', r, '움직임 줄이기:');
     const rmv = G.settings.reduceMotion ? 'on' : (G.settings.reduceAuto ? 'auto' : 'off');
     for (const [v, label] of [['auto', '기기 설정 따르기'], ['on', '켜기'], ['off', '끄기']]) tb(label, r, () => { G.settings.reduceMotion = v === 'on'; G.settings.reduceAuto = v === 'auto'; G.applySettings(); render(); }, rmv === v ? 'on' : '');
@@ -1550,8 +2173,8 @@ G.teacher = (() => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '프로토타입 1 (2026-09-29 고침)';
-G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, slotCount: 12, light: false };
+G.VERSION = '프로토타입 2 (2026-09-30)';
+G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
   document.documentElement.style.setProperty('--ts', s.textBig ? 1.2 : 1);
@@ -1661,6 +2284,13 @@ G.flow = (() => {
       st.done.push('plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post'); st.cleared.push('plaza');
       st.seenCutscenes.push('C2', 'C7'); st.visited.push('plaza'); st.mood = 1; st.quest = 1; st.place = 'plaza';
       st.seen.push('plaza:chief', 'plaza:board', 'plaza:post');
+      G.save.write(); return F.resume();
+    }
+    if (id === 'library') {   // 시장까지 끝, 마을 지도를 가진 채로 도서관 앞 (프로토타입 2)
+      st.done.push('plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'market_intro', 'market_bom', 'market_ask', 'market_map');
+      st.cleared.push('plaza', 'market'); st.items.push('map');
+      st.seenCutscenes.push('C2', 'C3', 'C7'); st.visited.push('plaza', 'market'); st.mood = 2; st.quest = 1; st.place = 'market';
+      st.seen.push('plaza:chief', 'plaza:board', 'plaza:post', 'market:bom');
       G.save.write(); return F.resume();
     }
   };
