@@ -1397,7 +1397,7 @@ G.map = (() => {
     offs.forEach(f => f()); offs = []; vills = [];
     G.resizers.delete(onResize);
     if (V) { V.el.remove(); V = null; }
-    walking = null; hero = null; lumi = null; trailEl = null; arrowEl = null;
+    walking = null; hero = null; lumi = null; trailEl = null; arrowEl = null; clearEnter();
     G.help.off();
   };
   function onResize() { if (V) V.setCam(V.cam.x, V.cam.y); }
@@ -1478,10 +1478,18 @@ G.map = (() => {
     const s = Mp.state(p);
     if (s === 'locked') { G.audio.sfx('sfx_tap', 0.5); G.hud.say(G.D.story.lock); return; }
     G.audio.sfx('sfx_tap', 0.6);
-    Mp.walkTo(p);
+    Mp.walkTo(p, { stay: G.st.place !== p.id });   // 9/30 선생님: 걸어가서 멈추고 [들어가기]로 들어감 (이미 그 자리면 바로 들어감)
   }
-  Mp.walkTo = async (p) => {
-    clearHint();
+  // [들어가기] 버튼: 도착한 장소 안으로. 다른 장소를 누르면 사라지고 그쪽으로 걸어감
+  let enterEl = null;
+  const clearEnter = () => { if (enterEl) enterEl.remove(); enterEl = null; };
+  function showEnter(p) {
+    clearEnter();
+    enterEl = G.btn('pill gold enter-btn', G.icon('icon_next') + ' ' + p.name + ' 들어가기', G.$('#hud'), () => { clearEnter(); Mp.walkTo(p); }, p.name + ' 들어가기');
+    G.audio.voice(p.voice.replace('.mp3', ''));
+  }
+  Mp.walkTo = async (p, o = {}) => {
+    clearHint(); clearEnter();
     const from = Mp.node(G.st.place), to = p.node, g = G.gen;
     const names = G.mapPath(from, to), pts = names.map(nm => G.D.places.nodes[nm]);
     if (names.length > 1) {
@@ -1517,6 +1525,7 @@ G.map = (() => {
     G.save.write();
     await G.wait(0.25);
     if (g !== G.gen) return;
+    if (o.stay) { showEnter(p); return; }
     if (p.scene && G.D.scenes[p.scene]) { G.$('#fade').classList.add('on'); await G.wait(0.45); G.scene.enter(p.scene); }
     else notReady(p);
   };
