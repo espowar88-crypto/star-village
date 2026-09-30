@@ -511,6 +511,11 @@ G.hud = (() => {
     G.audio.voice(it.voice);
     const row = G.el('div', 'btn-row', sh);
     G.btn('pill gold', G.icon('icon_ok') + ' 닫기', row, () => { m.remove(); G.audio.stopVoice(); }, '닫기');
+    // 9/30: 낮은 휴대폰 화면에서 [닫기]가 화면 밖으로 밀리지 않게, 창이 넘치면 그림을 그만큼 줄임
+    const img = big && pic.querySelector('img');
+    const fit = () => { if (!img || !m.isConnected) return; img.style.maxHeight = ''; const over = sh.scrollHeight - sh.clientHeight;
+      if (over > 0) img.style.maxHeight = Math.max(60, img.getBoundingClientRect().height - over - 4) + 'px'; };
+    if (img) { if (img.complete) fit(); else img.onload = fit; G.resizers.add(fit); const mo = new MutationObserver(() => { if (!m.isConnected) { G.resizers.delete(fit); mo.disconnect(); } }); mo.observe(ov, { childList: true }); }
   };
   return H;
 })();
@@ -1027,7 +1032,7 @@ G.cut = (() => {
       await Promise.all([c.voice('S01_nar_03'), c.tween(0, 0.55, 1.4, v => S.forEach(q => { if (q !== road) q.bm.style.opacity = v; }))]);
       await Promise.all([c.voice('S01_nar_04'), (async () => { pop(S[2].el); await c.wait(1.2); pop(S[2].el); })()]);
       // (4) 광장으로 내려가 주민들이 함께 방법을 찾는 마을 → 길의 별이 별 받침대에서 하늘로
-      c.tween(0.55, 0, 1.2, v => S.forEach(q => q.bm.style.opacity = v));
+      c.tween(0.55, 0, 1.2, v => S.forEach(q => { if (q !== road) q.bm.style.opacity = v; }));   // 9/30: 아직 없는 길의 별 빛줄기가 잠깐 보이던 것 고침
       await Promise.all([c.voice('S01_nar_05'), cam(1400, 640, 1.1, 2.6)]);
       road.el.style.left = land[0] + 'px'; road.el.style.top = land[1] + 'px'; road.el.style.opacity = 1;
       c.sfx('sfx_sparkle', 0.6);
@@ -2019,8 +2024,17 @@ G.puzzle = (() => {
       }
       const row = G.el('div', 'btn-row', zoom);
       G.btn('pill gold', G.icon('icon_ok') + ' 닫기', row, () => closeZoom(), '닫기');
+      fitZoom(); G.resizers.add(fitZoom);
     }
-    function closeZoom() { if (zoom) { zoom.remove(); zoom = null; } }
+    // 9/30: 아주 낮은 휴대폰 화면에서 이름표 위쪽이 잘리지 않게, 넘치면 카드·이름표 묶음을 그만큼 줄임
+    function fitZoom() {
+      if (!zoom) return; const main = zoom.querySelector('.pz-zmain'); main.style.zoom = '';
+      const cs = getComputedStyle(zoom), row = zoom.querySelector('.btn-row'), h = main.getBoundingClientRect().height;
+      const need = h + (row ? row.getBoundingClientRect().height : 0) + parseFloat(cs.rowGap || 0) + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+      const over = need - zoom.clientHeight;
+      if (over > 0 && h > 0) main.style.zoom = Math.max(0.4, (h - over - 8) / h);
+    }
+    function closeZoom() { if (zoom) { zoom.remove(); zoom = null; G.resizers.delete(fitZoom); } }
     // ---- 도움 (5-1): 30초 "숲은 한 글자라서 이름표가 제일 짧아" → 60초 숲 이름표가 은은하게 빛남 → 90초·루미 해솔이 가리킴 ----
     const ans = Object.keys(B.labels).find(k => B.labels[k].def.answer);
     async function bubble(lid) {
