@@ -1022,24 +1022,26 @@ G.cut = (() => {
       // 9/30: 시작 위치를 한 번만 잡아 고르게 움직임 (전에는 매 순간 남은 거리를 줄여 카메라가 먼저 가 버렸음)
       const cam = (x, y, z, d) => { if (c.rm) { V.setCam(x, y, z); return Promise.resolve(); } const a = { ...V.cam }; return c.tween(0, 1, d, k => V.setCam(a.x + (x - a.x) * k, a.y + (y - a.y) * k, a.z + (z - a.z) * k), 'io'); };
       const pop = (el) => { if (!c.rm && el.animate && !c.skipped) el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 600, easing: 'ease-out' }); };
+      // 9/30 선생님: 인트로 이야기꾼 대사 사이에 0.7초 쉼 (연달아 줄줄 말하지 않게, 인트로에만)
+      const say = (id) => c.voice(id).then(() => c.wait(0.7));
       c.t0 = G.t;
       // (1) 별이 가득한 밤하늘
       fadeIn(c, root, 1.0);
-      await c.wait(0.4); await c.voice('S01_nar_01');
+      await c.wait(0.4); await say('S01_nar_01');
       // (2) 여러 모양의 별이 차례로 반짝
-      await Promise.all([c.voice('S01_nar_02'), (async () => { for (const q of S) { if (q === road) continue; pop(q.el); c.sfx('sfx_chime', 0.12); await c.wait(0.3); } })()]);
+      await Promise.all([say('S01_nar_02'), (async () => { for (const q of S) { if (q === road) continue; pop(q.el); c.sfx('sfx_chime', 0.12); await c.wait(0.3); } })()]);
       // (3) 별마다 마을로 빛줄기 (별이 하는 일)
-      await Promise.all([c.voice('S01_nar_03'), c.tween(0, 0.55, 1.4, v => S.forEach(q => { if (q !== road) q.bm.style.opacity = v; }))]);
-      await Promise.all([c.voice('S01_nar_04'), (async () => { pop(S[2].el); await c.wait(1.2); pop(S[2].el); })()]);
+      await Promise.all([say('S01_nar_03'), c.tween(0, 0.55, 1.4, v => S.forEach(q => { if (q !== road) q.bm.style.opacity = v; }))]);
+      await Promise.all([say('S01_nar_04'), (async () => { pop(S[2].el); await c.wait(1.2); pop(S[2].el); })()]);
       // (4) 광장으로 내려가 주민들이 함께 방법을 찾는 마을 → 길의 별이 별 받침대에서 하늘로
       c.tween(0.55, 0, 1.2, v => S.forEach(q => { if (q !== road) q.bm.style.opacity = v; }));   // 9/30: 아직 없는 길의 별 빛줄기가 잠깐 보이던 것 고침
-      await Promise.all([c.voice('S01_nar_05'), cam(1400, 640, 1.1, 2.6)]);
+      await Promise.all([say('S01_nar_05'), cam(1400, 640, 1.1, 2.6)]);
       road.el.style.left = land[0] + 'px'; road.el.style.top = land[1] + 'px'; road.el.style.opacity = 1;
       c.sfx('sfx_sparkle', 0.6);
       // 9/30 선생님: 별 받침대에서 올라가는 별을 카메라가 따라감 (별이 늘 화면 가운데 조금 아래)
       const c0 = { ...V.cam };
       await Promise.all([
-        c.voice('S01_nar_06'),
+        say('S01_nar_06'),
         c.tween(0, 1, c.rm ? 0.1 : 3.8, k => {
           const x = land[0] + (road.at[0] - land[0]) * k, y = land[1] + (road.at[1] - land[1]) * k;
           road.el.style.left = x + 'px'; road.el.style.top = y + 'px';
@@ -1091,15 +1093,15 @@ G.cut = (() => {
       });
       const order = [2, 5, 0, 7, 3, 1, 6, 4];
       await Promise.all([
-        c.voice('S01_nar_07'),
+        say('S01_nar_07'),
         (async () => { const fs = []; for (const i of order) { fs.push(fall(S[i], i)); await c.wait(c.rm ? 0.3 : 0.75); } await Promise.all(fs); })(),
       ]);
-      await Promise.all([c.voice('S01_nar_08'), fall(S[8], 8), c.tween(1, 0.25, 2, v => dotL.style.opacity = v)]);
+      await Promise.all([say('S01_nar_08'), fall(S[8], 8), c.tween(1, 0.25, 2, v => dotL.style.opacity = v)]);
       // (6) 마을로: 가로등이 광장 가까운 것부터 꺼지고, 색이 빠짐
       await cam(1400, 700, 1.1, c.rm ? 0 : 2.4);
       const ls = [...V.lamps].sort((a, b) => Math.hypot(a.def.at[0] - land[0], a.def.at[1] - land[1]) - Math.hypot(b.def.at[0] - land[0], b.def.at[1] - land[1]));
       await Promise.all([
-        c.voice('S01_nar_09'),
+        say('S01_nar_09'),
         c.tween(1, 0, 3.2, v => V.colorImg.style.opacity = v),
         (async () => { for (const l of ls) { l.el.classList.remove('on'); c.sfx('sfx_click', 0.15); await c.wait(0.28); } })(),
       ]);
