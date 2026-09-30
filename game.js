@@ -1267,6 +1267,16 @@ G.cut = (() => {
       const light = G.el('div', 'door-light', root); light.style.opacity = 0;
       const door = G.el('div', 'door', root); const dl = G.el('div', 'door-l', door), dr = G.el('div', 'door-r', door);
       const dimg = G.art('library_door'); if (dimg) { door.classList.add('art'); for (const d of [dl, dr]) G.el('img', 'door-img', d).src = dimg; }   // 9/30: 선생님 문 그림 한 장을 반씩 (비율 그대로 화면을 채움)
+      // 9/30 선생님 "테두리 먼저 움직이고 그다음 문이 움직임": 돌 테두리(frame)는 가만히 두고 문짝(l, r)만 경첩을 축으로 열림
+      const fimg = G.art('library_door_frame'), limg = G.art('library_door_l'), rimg = G.art('library_door_r');
+      if (fimg && limg && rimg) {
+        door.classList.remove('art'); door.classList.add('art2'); dl.textContent = ''; dr.textContent = '';
+        G.el('img', 'door-img', dl).src = limg; G.el('img', 'door-img', dr).src = rimg;
+        G.el('img', 'door-img door-frame', door).src = fimg;
+        // 그림(1600x893)이 화면을 채우는 배율로 경첩 위치(x 308, 1292)를 화면 좌표로
+        const W = root.clientWidth || G.stage.W, H = root.clientHeight || G.stage.H, s = Math.max(W / 1600, H / 893);
+        dl.style.transformOrigin = `${W / 2 + (308 - 800) * s}px 50%`; dr.style.transformOrigin = `${W / 2 + (1292 - 800) * s}px 50%`;
+      }
       c.t0 = G.t;
       await Promise.all([
         fadeIn(c, root, 0.4),
@@ -1275,6 +1285,7 @@ G.cut = (() => {
           await c.tween(0, 1, 2.2, k => {
             if (c.rm) { door.style.opacity = 1 - k; return; }
             dl.style.transform = `perspective(${G.stage.W}px) rotateY(${-100 * k}deg)`; dr.style.transform = `perspective(${G.stage.W}px) rotateY(${100 * k}deg)`;
+            const fr = door.querySelector('.door-frame'); if (fr) fr.style.opacity = Math.min(1, (1 - k) / 0.35);   // 문이 거의 열리면 돌 테두리가 사라지며 도서관 안으로
           }, 'io');
           door.remove();
         })(),
