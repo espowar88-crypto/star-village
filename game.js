@@ -2412,6 +2412,13 @@ G.teacher = (() => {
       return Promise.resolve((d.exitFullscreen || d.webkitExitFullscreen || (() => { })).call(d)).catch(() => { });
     } catch (e) { return Promise.resolve(); }
   }
+  T.fs = fullscreen;
+  // 9/30 선생님: 휴대폰·태블릿에서 ESC 대신 누르는 [선생님 설정] 버튼 (왼쪽 가장자리 가운데). icon_teacher.png가 오면 그림, 없으면 글자
+  if (matchMedia('(pointer: coarse)').matches) {
+    const b = G.el('button', 'tbtn', G.$('#game')); b.type = 'button'; b.setAttribute('aria-label', '선생님 설정'); b.textContent = '설정';
+    const im = new Image(); im.alt = ''; im.onload = () => { b.textContent = ''; b.appendChild(im); }; im.src = G.asset('assets/ui/icons/icon_teacher.png');
+    b.addEventListener('click', (e) => { e.stopPropagation(); T.toggle(); });
+  }
   return T;
 })();
 
@@ -2458,6 +2465,7 @@ G.flow = (() => {
 
   // 시작하기 = 소리 켜기 (브라우저 규칙상 첫 누르기에서만 소리를 켤 수 있음)
   F.start = async () => {
+    if (matchMedia('(pointer: coarse)').matches) G.teacher.fs(true);   // 9/30 선생님: 휴대폰에서는 처음 누를 때 전체 화면 (아이폰 사파리는 지원 안 함 → 홈 화면에 추가)
     G.audio.unlock(); G.audio.sfx('sfx_tap', 0.6); G.audio.music('music_title');
     const g = G.gen;
     await G.audio.voice('S92_btn_start');
