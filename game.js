@@ -1244,7 +1244,7 @@ G.cut = (() => {
       if (!G.art('chapter_' + key) && !G.art('chapter_bg')) bg.classList.add('dim');
       // 9/30 선생님: 장 제목은 마루부리 글꼴 (위 "제 1장" Light, 아래 제목 Bold). 글자는 따로 페이드 인·아웃
       const box = G.el('div', 'ch-box', root);
-      const num = G.el('div', 'ch-num chapter-number', box, '제 ' + T[0] + '장');
+      const num = G.el('div', 'ch-num chapter-number', box, (G.D.story.chapterStar || '길의 별') + '-' + T[0]);   // 10/1 선생님: "제 1장" 대신 "길의 별-1"
       const line = G.el('div', 'ch-line', box, G.artImg('chapter_line') || '<i></i>');
       const tt = G.el('div', 'ch-title chapter-title', box, T[1]);
       const txt = [num, line, tt]; txt.forEach(e => e.style.opacity = 0);
@@ -3736,7 +3736,7 @@ G.teacher = (() => {
       if (!ch.ready || !G.st) b.disabled = true;
     }
     if (G.p4) { r = row(s); const b = tb('이 퍼즐 바로 풀기', r, () => T.close(() => G.p4.skip())); if (!G.p4.can()) b.disabled = true; }   // 10/1 프로토타입 4: 지금 하는 퍼즐·자물쇠를 바로 풂
-    G.el('div', 't-note', s, G.st ? '고른 곳 앞까지의 할 일, 아이템, 마을 단계가 채워진 채로 시작해요. 5~7은 다음 프로토타입에서 열려요.' : '먼저 저장 칸 번호를 고른 뒤에 쓸 수 있어요.');
+    G.el('div', 't-note', s, G.st ? '고른 곳 앞까지의 할 일, 아이템, 마을 단계가 채워진 채로 시작해요.' : '먼저 저장 칸 번호를 고른 뒤에 쓸 수 있어요.');
 
     s = sec(p, '6. 연출');
     r = row(s); G.el('span', '', r, '다시 보기:');
