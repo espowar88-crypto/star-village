@@ -1499,6 +1499,7 @@ G.map = (() => {
     V.setCam(hero.x, hero.y - 40);
     offs.push(G.every(update)); update(10);
     G.resizers.add(onResize);
+    dragCam(world);
     G.hud.map();
     G.audio.music('music_night'); G.audio.ambient(['amb_crickets']);
     setHelp();
@@ -1524,7 +1525,7 @@ G.map = (() => {
     }
     for (const v of vills) v.update(dt);
     // 카메라
-    if (hero && !Mp.camFree) {
+    if (hero && !Mp.camFree && !Mp.userCam) {
       let fx = hero.x, fy = hero.y - 40;
       // 갈 곳 표시가 화면 모서리 버튼에 가리지 않게, 주인공과 함께 안전한 가운데 영역에 들어오도록 카메라를 옮김
       const np = !walking && G.hud.nextPlace && G.st.done.includes('meet_lumi') ? G.hud.nextPlace() : null;
@@ -1540,6 +1541,33 @@ G.map = (() => {
       const k = Math.min(1, dt * 3);
       V.setCam(V.cam.x + (fx - V.cam.x) * k, V.cam.y + (fy - V.cam.y) * k);
     }
+  }
+
+  // ---- 10/2 선생님: 지도를 끌면 시점만 옮김 (장소를 누르면 다시 주인공을 따라감) ----
+  Mp.userCam = false;
+  function dragCam(world) {
+    let st = null;
+    const down = (e) => {
+      if (!V || walking || Mp.camFree || G.busy > 0 || G.paused || G.screen !== 'map') return;
+      st = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: V.cam.x, cy: V.cam.y, on: false };
+    };
+    const move = (e) => {
+      if (!st || e.pointerId !== st.id || !V) return;
+      const dx = e.clientX - st.x, dy = e.clientY - st.y;
+      if (!st.on && Math.hypot(dx, dy) < 12 * (G.stage.u || 1)) return;
+      st.on = true; Mp.userCam = true;
+      const r = world.getBoundingClientRect(), k = (G.stage.W / (r.width || G.stage.W)) / (G.stage.ws * V.cam.z);
+      V.setCam(st.cx - dx * k, st.cy - dy * k);
+    };
+    const up = (e) => {
+      if (!st || e.pointerId !== st.id) return;
+      if (st.on) { G._suppressClick = true; setTimeout(() => G._suppressClick = false, 60); }
+      st = null;
+    };
+    world.addEventListener('pointerdown', down);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+    offs.push(() => { world.removeEventListener('pointerdown', down); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); });
   }
 
   // ---- 장소 누르기 ----
@@ -1559,6 +1587,7 @@ G.map = (() => {
     G.audio.voice(p.voice.replace('.mp3', ''));
   }
   Mp.walkTo = async (p, o = {}) => {
+    Mp.userCam = false;   // 장소를 누르면 시점이 다시 주인공을 따라감
     clearHint(); clearEnter();
     const from = Mp.node(G.st.place), to = p.node, g = G.gen;
     const names = G.mapPath(from, to), pts = names.map(nm => G.D.places.nodes[nm]);
