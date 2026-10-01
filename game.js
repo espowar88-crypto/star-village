@@ -1574,6 +1574,9 @@ G.map = (() => {
       if (bub || G.busy > 0) return;
       const id = stage >= 5 ? d.line.replace(/_a$/, '_b') : d.line; const L = G.D.dialogues[id]; if (!L) return;
       v.pause = Math.max(v.pause, 5); w.frame = 8; w.face(hero.x - w.x, hero.y - w.y); w.draw();
+      if (G.D.portraits[d.id] && !G.dialog.active) {   // 10/1 선생님 배경 주민 일러스트: 대화창에 얼굴과 함께
+        bub = true; v.pause = 1e9; await G.dialog.play([id], { partner: d.id }); v.pause = 1; bub = null; return;
+      }
       bub = G.el('div', 'wbubble', w.el, L.text);
       await G.audio.voice(id); await G.wait(0.8); if (bub) bub.remove(); bub = null;
     });
@@ -2409,8 +2412,8 @@ G.puzzle2 = (() => {
     if (!view) G.audio.music('music_puzzle');
     const root = G.el('div', 'puzzle pz2', G.$('#world'));
     const watch = G.every(() => { if (!ok() || !root.isConnected) return watch(); root.classList.toggle('talk', !!G.dialog.active); });   // 대화 중 카드·루미 버튼 숨김
-    if (G.art('board_front')) { root.classList.add('art'); root.style.backgroundImage = `url("${G.art('board_front')}")`; }
     const board = G.el('div', 'pz2-board', root);
+    if (G.art('board_front')) { board.classList.add('art'); board.style.borderImageSource = `url("${G.art('board_front')}")`; }   // 선생님 게시판 그림: 나무 테두리는 그대로, 가운데 코르크만 늘어남
     const note = G.el('div', 'pz2-note', board, D.text);
     const slots = G.el('div', 'pz2-slots', board);
     const slot = {}; for (const k of ['pic', 'sound', 'braille']) slot[k] = G.el('div', 'pz2-slot ' + k, slots);
