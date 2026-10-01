@@ -1326,6 +1326,8 @@ G.cut = (() => {
       let total = 0; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); seg.push(l); total += l; }
       const at = (d) => { for (let i = 0; i < seg.length; i++) { if (d <= seg[i]) { const k = d / seg[i]; return [P[i][0] + (P[i + 1][0] - P[i][0]) * k, P[i][1] + (P[i + 1][1] - P[i][1]) * k]; } d -= seg[i]; } return P[P.length - 1]; };
       B.light.style.strokeDasharray = total; B.light.style.strokeDashoffset = total; B.light.style.opacity = 1;
+      const head = (d) => { if (!B.arrow) return; const [x, y] = at(d); let i = 0, r = d; while (i < seg.length - 1 && r > seg[i]) { r -= seg[i]; i++; }
+        const ang = Math.atan2(P[i + 1][1] - P[i][1], P[i + 1][0] - P[i][0]) * 180 / Math.PI; B.arrow.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${ang.toFixed(1)})`); B.arrow.style.opacity = d > 4 ? 1 : 0; };   // 10/1 화살촉이 길 끝을 따라감
       c.t0 = G.t;
       await Promise.all([
         (async () => { await c.until(0.3); await c.voice('S06_haesol_11'); })(),
@@ -1334,13 +1336,14 @@ G.cut = (() => {
           let lastSpk = 0;
           await c.tween(0, 1, c.rm ? 1.2 : 2.6, k => {
             B.light.style.strokeDashoffset = total * (1 - k);
+            head(total * k);
             if (!c.rm && k - lastSpk > 0.12) { lastSpk = k; const [x, y] = B.toScreen(...at(total * k)); burst(c, root, x, y, 5); }
           }, 'io');
           const f = B.labels.forest; if (f) { f.el.classList.add('found'); const r = f.rect, [x, y] = B.toScreen(r[0] + r[2] / 2, r[1] + r[3] / 2); c.sfx('sfx_chime', 0.6); burst(c, root, x, y, 14); }
           await c.until(4.8);
         })(),
       ]);
-      B.light.style.strokeDashoffset = 0;
+      B.light.style.strokeDashoffset = 0; head(total);
       off();
       if (!opts.live) await fadeOut(c, root, 0.5);
     },
@@ -1852,6 +1855,8 @@ G.scene = (() => {
     if (h.louder) G.audio.ambientBoost(h.louder, false);
     if (!V) { busy = false; return; }
     if (S.missions.every(m => G.st.done.includes(m)) && !G.st.cleared.includes(id)) { await G.wait(0.9); busy = false; if (g !== G.gen) return; return clear(); }
+    // 10/1 선생님: 이미 끝낸 장소에 다시 들어와 누르면 진행이 멈춘 것처럼 보임 → 다음에 갈 곳을 알려 줌
+    if (G.st.cleared.includes(id) && S.onClear && S.onClear.now) G.hud.say(S.onClear.now);
     busy = false;
   }
   function popStar(el) { el.animate && el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.8)' }, { transform: 'scale(1)' }], { duration: 700, easing: 'ease-out' }); }
@@ -1958,6 +1963,7 @@ G.puzzle = (() => {
     const pl = (pts, cls) => { const p = document.createElementNS(ns, 'polyline'); p.setAttribute('points', pts.map(q => q.join(',')).join(' ')); p.setAttribute('class', cls); svg.appendChild(p); return p; };
     for (const r of D.roads) { pl(r, 'road-sh'); pl(r, 'road'); pl(r, 'road-hi'); }
     B.light = pl(D.lightPath, 'road-light');
+    B.arrow = document.createElementNS(ns, 'polygon'); B.arrow.setAttribute('points', '-14,-34 40,0 -14,34 0,0'); B.arrow.setAttribute('class', 'road-arrow'); svg.appendChild(B.arrow);   // 10/1 길 끝 화살촉 (숲 쪽을 가리킴)
     el.appendChild(svg);
     const bimg = G.art('tactile_board'); if (bimg) { el.classList.add('art'); el.style.backgroundImage = `url("${bimg}")`; }   // 9/30: 선생님 판 그림 (길·장소 자리는 그림에 맞춰 puzzles.json 좌표를 고침)
     for (const k in D.nodes) { const n = G.el('div', 'tnode', el); n.style.left = D.nodes[k][0] + 'px'; n.style.top = D.nodes[k][1] + 'px'; }
