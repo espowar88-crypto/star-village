@@ -1840,7 +1840,7 @@ G.scene = (() => {
     }
     if (!V) return;
     if (!G.st.done.includes(id + '_intro')) {
-      if (def.intro) { await playIntro(def); if (def.intro.length < 3) { G.hud.tasks(def, true); hots.forEach(h => h.glow.classList.add('strong')); G.wait(2.5).then(() => hots.forEach(h => h.glow.classList.remove('strong'))); } }
+      if (def.intro) { await playIntro(def); if (def.intro.length < 3 || def.introAsk) { G.hud.tasks(def, true); hots.forEach(h => h.glow.classList.add('strong')); G.wait(2.5).then(() => hots.forEach(h => h.glow.classList.remove('strong'))); } }
       else { G.hud.tasks(def, true); hots.forEach(h => h.glow.classList.add('strong')); G.wait(2.5).then(() => hots.forEach(h => h.glow.classList.remove('strong'))); }
       if (g !== G.gen) return;
       G.st.done.push(id + '_intro'); G.save.write();
@@ -1874,7 +1874,13 @@ G.scene = (() => {
 
   // 처음 방문: "여기가 광장이야" → "위를 봐, 할 일이 세 개" (☆☆☆ 반짝) → "반짝이는 곳을 눌러 봐" (테두리 한 번 밝아짐)
   async function playIntro(def) {
-    const ids = def.intro;
+    const ids = def.intro, ask = def.introAsk;
+    if (ask) {   // 10/1 중간에 주인공 버튼 하나 (두 번째 광장: 별 축제 제안 → "좋아요!")
+      const k = ids.indexOf(ask.after) + 1, g = G.gen;
+      await G.dialog.play(ids.slice(0, k), { keep: true }); if (g !== G.gen) return;
+      await G.dialog.choose([{ label: G.txt(ask.ply), icon: 'icon_star', voice: ask.ply }], true); if (g !== G.gen) return;
+      await G.dialog.play(ids.slice(k)); return;
+    }
     G.dialog.onLine = (lid) => {
       if (lid === ids[1]) { G.hud.keepTasks(true); G.hud.tasks(def, true); }
       if (lid === ids[2]) { G.hud.keepTasks(false); hots.forEach(h => { h.glow.classList.add('strong'); }); }
@@ -2418,6 +2424,30 @@ G.leafPuff = (V, at, n = 4) => {
   }
 };
 // ---- 소리 물결 표시 (선생님 그림 wind_wave, 없으면 소리 아이콘) ----
+// 10/1 선생님: 별을 올리면 불꽃놀이 (부드러운 빛 알갱이가 퍼졌다 사라짐, 화면 전체 번쩍임 없음)
+G.firework = (parent, x, y, size = 1) => {
+  const cols = ['#FFD66B', '#F4A259', '#E88D7A', '#9FD8FF', '#C9A7FF', '#7FB77E'], col = cols[Math.floor(Math.random() * cols.length)];
+  const n = (G.settings && G.settings.light) ? 10 : 22, r = (120 + Math.random() * 60) * size * G.stage.u;
+  G.audio.sfx('sfx_sparkle', 0.35, 0.8 + Math.random() * 0.4);
+  const art = G.art('firework_' + (1 + Math.floor(Math.random() * 3)));   // 선생님 그림이 오면 그림으로
+  if (art) {
+    const im = G.el('img', 'fw-img', parent); im.src = art; im.alt = ''; im.style.left = x + 'px'; im.style.top = y + 'px'; im.style.width = im.style.height = (r * 2.4) + 'px';
+    const an = im.animate ? im.animate([{ transform: 'translate(-50%,-50%) scale(.2)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1)', opacity: 1, offset: .35 }, { transform: 'translate(-50%,-40%) scale(1.08)', opacity: 0 }], { duration: 1600, easing: 'ease-out' }) : null;
+    if (an) an.finished.then(() => im.remove()).catch(() => im.remove()); else setTimeout(() => im.remove(), 1600);
+    return;
+  }
+  for (let i = 0; i < n; i++) {
+    const a = i / n * Math.PI * 2, d = G.el('div', 'fw-dot', parent); d.style.left = x + 'px'; d.style.top = y + 'px'; d.style.background = col; d.style.boxShadow = `0 0 10px ${col}`;
+    const dx = Math.cos(a) * r, dy = Math.sin(a) * r;
+    const an = d.animate ? d.animate([{ transform: 'translate(-50%,-50%) scale(1)', opacity: 1 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.9)`, opacity: .9, offset: .6 }, { transform: `translate(calc(-50% + ${dx * 1.1}px), calc(-50% + ${dy * 1.1 + 40 * size}px)) scale(.4)`, opacity: 0 }], { duration: 1500, easing: 'cubic-bezier(.2,.7,.4,1)' }) : null;
+    if (an) an.finished.then(() => d.remove()).catch(() => d.remove()); else setTimeout(() => d.remove(), 1500);
+  }
+};
+G.fireworkShow = async (parent, sec = 4, size = 1) => {
+  if (G.reduced()) { G.firework(parent, G.stage.W * .5, G.stage.H * .3, size); return; }
+  const end = performance.now() + sec * 1000;
+  while (performance.now() < end && parent.isConnected) { G.firework(parent, G.stage.W * (.2 + Math.random() * .6), G.stage.H * (.15 + Math.random() * .25), size); await G.wait(0.45 + Math.random() * 0.35); }
+};
 G.waveMark = (parent, x, y, times = 3) => {
   const m = G.el('div', 'wavemark', parent, G.artImg('wind_wave') || G.icon('icon_sound'));
   Object.assign(m.style, { left: x + 'px', top: y + 'px' });
@@ -2889,6 +2919,7 @@ G.cut.add({
     const col = V.colorImg; col.style.visibility = '';
     for (const l of V.lamps) { if (!l.el.classList.contains('on')) { l.el.classList.add('on'); c.sfx('sfx_chime', 0.35); await c.wait(0.3); } }
     await c.tween(parseFloat(col.style.opacity) || 0, 1, 1.2, k => col.style.opacity = k);
+    G.fireworkShow(root, 5);   // 10/1 별 축제 불꽃놀이
     for (const k of ['chief', 'post', 'daon', 'haesol', 'hero']) { const s = V.spr[k]; if (s && !c.rm && s.img.animate && s.img.style.display !== 'none') s.img.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-16px)' }, { transform: 'translateY(0)' }], { duration: 500, iterations: 2 }); }
     // (바) 「길의 별」
     const t = G.el('div', 'cut-title c11-title', root, '길의 별'); t.style.opacity = 0;
@@ -2906,7 +2937,7 @@ G.cut.add({
       MV.setCam(1400, 830, c.rm ? z1 : z0);
       await Promise.all([
         (async () => { if (!c.rm) await c.tween(0, 1, 5, k => MV.setCam(1400 + 40 * k, 830 - 20 * k, z0 + (z1 - z0) * k), 'io'); })(),
-        (async () => { await c.until(0.6); await c.voice(E.nar); })(),
+        (async () => { await c.until(0.6); await c.voice(E.nar); if (E.nar2) { G.fireworkShow(root, 4, 0.7); await c.voice(E.nar2); } })(),
       ]);
       await c.until(5.2);
       MV.setCam(1440, 810, z1);
@@ -3481,9 +3512,12 @@ G.p4 = (() => {
     return new Promise(async (res) => {
       const D = PZ().tiles, g = G.gen, ok = () => g === G.gen, easy = !G.lv('normal'), hard = G.lv('hard');
       const S = screen('p4-tiles', 'E10_rumi_01'), CS = 180, OX = 220, OY = 150, B = board(S.root, 1400, 900, 'p4-tboard');
+      const bgArt = G.art('tiles_bg'), K = 1.116, TX = -115, TY = 5;   // 10/1 선생님 그림(1264x848): 그림 속 길이 빈칸 자리에 오게
+      if (bgArt) { B.el.classList.add('art'); Object.assign(B.el.style, { backgroundImage: `url("${bgArt}")`, backgroundSize: `${1264 * K}px ${848 * K}px`, backgroundPosition: `${TX}px ${TY}px` }); }
       const start = G.el('div', 'p4-tmark pole', B.el, G.icon('place_plaza') + '<span>광장</span>'); Object.assign(start.style, { left: (OX - 130) + 'px', top: (OY + 10) + 'px' });   // 10/1: 출발은 광장, 안내 기둥은 도서관 문 옆
       const last = D.cells[D.cells.length - 1].at, doorM = G.el('div', 'p4-tmark door', B.el, G.icon('place_library') + '<span>도서관 문</span>');
       Object.assign(doorM.style, { left: (OX + last[0] * CS + 10) + 'px', top: (OY + (last[1] + 1) * CS + 6) + 'px' });
+      if (bgArt) Object.assign(doorM.style, { left: (OX + last[0] * CS - 300) + 'px', top: (TY + 760 * K) + 'px' });   // 그림 속 문 왼쪽에 이름표
       const pole = G.el('div', 'p4-tmark pole', B.el, (G.artImg('opt_bell') || '') + '<span>안내 기둥</span>'); Object.assign(pole.style, { left: (OX + (last[0] + 1) * CS + 10) + 'px', top: (OY + last[1] * CS + 10) + 'px' });
       const C = D.cells.map((d) => {
         const el = G.el('button', 'p4-tcell', B.el); el.type = 'button'; el.setAttribute('aria-label', '빈칸');
@@ -3574,7 +3608,7 @@ G.p4 = (() => {
       const first = !done('plaza_chief');
       if (first || !give) { await G.dialog.play(first ? [...H.def.lines, 'E03_chief_04', 'E03_chief_05'] : H.def.lines, { partner: 'chief', keep: give }); if (!ok()) return; complete('plaza_chief'); }   // 10/1 처음에는 별가루 규칙도
       if (!give) return;
-      await G.dialog.play(G.lv('normal') ? ['E03_chief_02', 'E03_chief_03'] : ['E03_chief_01'], { partner: 'chief' }); if (!ok()) return;
+      await G.dialog.play(G.lv('normal') ? ['E05_chief_01', 'E03_chief_02', 'E03_chief_03'] : ['E03_chief_01'], { partner: 'chief' }); if (!ok()) return;
       await G.present.item('note'); if (!ok()) return;
       mark('note_got'); G.map.refresh(); document.querySelectorAll('.p4-askq').forEach(e => e.remove());
     },
@@ -3600,7 +3634,7 @@ G.p4 = (() => {
     async plaza_board({ complete, g }) {
       const ok = () => g === G.gen;
       if (done('plaza_board')) { await G.dialog.play(['S03_rumi_06']); return; }
-      await G.dialog.play(['E03_rumi_02']); if (!ok()) return;
+      await G.dialog.play(['S03_rumi_05', 'E03_rumi_02']); if (!ok()) return;
       const w = await wipe(); if (!ok() || !w) return;
       await G.dialog.play(['S03_rumi_06']); if (!ok()) return;
       complete('plaza_board');
@@ -3665,15 +3699,15 @@ G.p4 = (() => {
       while (left.length) {
         const i = await G.dialog.choose(left.map(k => opts[k]), true); if (!ok()) return;
         const k = left.splice(i, 1)[0];
-        if (k === 'blocks' && !done('road_tiles')) { G.dialog.close(); const w = await tiles(); if (!ok() || !w) return; mark('road_tiles'); }
+        if (k === 'blocks' && !done('road_tiles')) {   // 10/1 선생님 수정안: 블록 뜻을 먼저 알려 주고 퍼즐, 다 깔면 한 줄
+          await G.dialog.play(['S10_haesol_03', 'S10_haesol_04', 'S10_haesol_05'], { partner: 'haesol' }); if (!ok()) return;
+          G.dialog.close(); const w = await tiles(); if (!ok() || !w) return; mark('road_tiles');
+          await G.dialog.play(['E10_haesol_03'], { partner: 'haesol' }); if (!ok()) return;
+        }
         if (k === 'pole') await libPole(); else await p3Install(V, k); if (!ok()) return;   // 10/1 선생님: 안내 기둥은 도서관 앞에
       }
       G.dialog.close();
       await G.cut.play('C10', { live: { V, S } }); if (!ok()) return;
-      const blocks = V.spr.blocks && V.spr.blocks.img;
-      G.dialog.onLine = (id) => { if (blocks) blocks.classList.toggle('shine', id === 'S10_haesol_04' || id === 'S10_haesol_05'); };
-      await G.dialog.play(['S10_haesol_03', 'S10_haesol_04', 'S10_haesol_05'], { partner: 'haesol', keep: true });
-      G.dialog.onLine = null; if (blocks) blocks.classList.remove('shine'); if (!ok()) return;
       await G.dialog.play(['S10_post_03'], { partner: 'post' }); if (!ok()) return;
       await p3WalkAway(V, S); if (!ok()) return;
       await G.dialog.play(['S10_haesol_06'], { partner: 'haesol' }); if (!ok()) return;
@@ -3693,7 +3727,7 @@ G.p4 = (() => {
       if (dustSt().length >= total()) await bonus();
     },
   });
-  P.libPole = libPole;
+  P.libPole = libPole; P.tiles = tiles;   // 점검용
   return P;
 })();
 
