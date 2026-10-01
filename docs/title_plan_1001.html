@@ -1,0 +1,162 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>별의 스펙트럼 제목 연출</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
+<style>
+:root{--bg:#F6EFE2;--paper:#FFF9EE;--ink:#4A3B32;--line:#E4D8C4;--night:#2E3A6B}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.7 "Gowun Dodum",sans-serif}
+main{max-width:860px;margin:0 auto;padding:16px 16px 60px}
+h1,h2{font-family:Jua,sans-serif;font-weight:400} h1{font-size:clamp(24px,6vw,34px);line-height:1.3} h2{margin-top:34px;border-bottom:3px solid #B58BC4;padding-bottom:4px}
+blockquote{margin:0;padding:8px 14px;background:var(--paper);border-left:4px solid #FFD66B;border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--paper)} th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top} th{background:#EFE4D0}
+.tw{overflow-x:auto} figure{margin:18px 0} svg{width:100%;height:auto;display:block} figcaption{font-size:13px;opacity:.8;margin-top:4px}
+</style></head><body><main><h1>「별의 스펙트럼」 제목 연출 기획안 v1.0 (2026-10-01)</h1>
+<blockquote>
+<p>이번에는 기획과 그림 프롬프트까지. 게임 코드는 선생님 확인 뒤에 바꿉니다.</p>
+</blockquote>
+<h2>1. 핵심 생각</h2>
+<ul>
+<li><strong>스펙트럼 = 한 빛이 여러 빛깔로 나뉜 것.</strong> 우리 별 9개는 모양도 색도 하는 일도 모두 다릅니다. 여덟 빛깔이 모여 무지개가 되고, 그 위에 크림빛 "마지막 별"이 빛납니다.</li>
+<li>전하는 말: <strong>"모두 다르지만, 모두 있어야 무지개가 된다."</strong></li>
+<li>이야기와 이어지기<ul>
+<li>제목 화면 = 별이 다 있던 행복한 마을의 하늘 (빛깔이 모두 있음)</li>
+<li>인트로 C1 = 그 빛깔이 하나둘 사라짐</li>
+<li>게임 = 빛깔을 하나씩 되찾음</li>
+<li>엔딩 = 제목 화면의 무지개가 다시 완성됨</li>
+</ul>
+</li>
+</ul>
+<p>무지개 띠 색 (바깥부터, 별 색 그대로): 말 분홍, 마음 주황, 속도 금빛, 함께 노랑, 문턱 초록, 생각 민트, 길 하늘색, 소리 보라.</p>
+<figure><svg viewBox="0 0 800 450" role="img" aria-label="제목 화면 배치 그림: 위 가운데 마지막 별, 그 아래 무지개 띠와 별 여덟 개, 가운데 제목 글자, 아래 시작하기 버튼과 마을">
+<rect width="800" height="450" rx="14" fill="#2E3A6B"/><path d="M80 300 A320 250 0 0 1 720 300" fill="none" stroke="#F29BB0" stroke-width="15" stroke-opacity=".8"/><path d="M94 300 A306 236 0 0 1 706 300" fill="none" stroke="#F4A259" stroke-width="15" stroke-opacity=".8"/><path d="M108 300 A292 222 0 0 1 692 300" fill="none" stroke="#E6B54A" stroke-width="15" stroke-opacity=".8"/><path d="M122 300 A278 208 0 0 1 678 300" fill="none" stroke="#FFD66B" stroke-width="15" stroke-opacity=".8"/><path d="M136 300 A264 194 0 0 1 664 300" fill="none" stroke="#7FB77E" stroke-width="15" stroke-opacity=".8"/><path d="M150 300 A250 180 0 0 1 650 300" fill="none" stroke="#9ED0C8" stroke-width="15" stroke-opacity=".8"/><path d="M164 300 A236 166 0 0 1 636 300" fill="none" stroke="#7DBBE3" stroke-width="15" stroke-opacity=".8"/><path d="M178 300 A222 152 0 0 1 622 300" fill="none" stroke="#B58BC4" stroke-width="15" stroke-opacity=".8"/><circle cx="71" cy="233" r="13" fill="#F29BB0" stroke="#4A3B32" stroke-width="2"/><circle cx="125" cy="142" r="13" fill="#F4A259" stroke="#4A3B32" stroke-width="2"/><circle cx="218" cy="74" r="13" fill="#E6B54A" stroke="#4A3B32" stroke-width="2"/><circle cx="336" cy="37" r="13" fill="#FFD66B" stroke="#4A3B32" stroke-width="2"/><circle cx="464" cy="37" r="13" fill="#7FB77E" stroke="#4A3B32" stroke-width="2"/><circle cx="582" cy="74" r="13" fill="#9ED0C8" stroke="#4A3B32" stroke-width="2"/><circle cx="675" cy="142" r="13" fill="#7DBBE3" stroke="#4A3B32" stroke-width="2"/><circle cx="729" cy="233" r="13" fill="#B58BC4" stroke="#4A3B32" stroke-width="2"/>
+<circle cx="400" cy="20" r="0"/><circle cx="400" cy="46" r="20" fill="#FFF1B8" stroke="#4A3B32" stroke-width="2"/>
+<text x="400" y="250" text-anchor="middle" font-size="46" fill="#FFF4E0" font-family="Jua,sans-serif">별의 스펙트럼</text>
+<line x1="270" y1="272" x2="530" y2="272" stroke="#E6B54A" stroke-width="2"/>
+<text x="400" y="296" text-anchor="middle" font-size="18" fill="#FFD66B" font-family="Jua,sans-serif">길의 별</text>
+<rect x="335" y="330" width="130" height="38" rx="19" fill="#FFD66B"/><text x="400" y="355" text-anchor="middle" font-size="18" fill="#4A3B32" font-family="Jua,sans-serif">시작하기</text>
+<path d="M0 395 L60 380 L90 395 L150 372 L200 395 L260 384 L330 398 L400 380 L470 396 L540 378 L600 394 L660 376 L720 392 L800 380 L800 450 L0 450Z" fill="#1d2546"/>
+<g fill="#F4A259"><rect x="70" y="405" width="8" height="10"/><rect x="180" y="405" width="8" height="10"/><rect x="300" y="405" width="8" height="10"/><rect x="460" y="405" width="8" height="10"/><rect x="590" y="405" width="8" height="10"/><rect x="700" y="405" width="8" height="10"/></g>
+<circle cx="730" cy="110" r="14" fill="#FFD66B" opacity=".9"/><text x="716" y="145" font-size="13" fill="#FFF4E0">루미</text>
+</svg><figcaption>T5 기다림 화면의 배치 (대략). 별 위치와 크기는 그림을 받은 뒤 맞춥니다.</figcaption></figure>
+<h2>2. 제목 화면 장면 (처음 약 9초, 누르면 바로 마지막 모습)</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>장면</th>
+<th>시간</th>
+<th>보이는 것과 움직임</th>
+<th>소리</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1 물감 밤하늘</td>
+<td>0~1.5초</td>
+<td>빈 종이에 남색 물감이 가장자리에서 안쪽으로 번져 밤하늘이 됨. 아래 마을 창문에 불이 하나씩 켜짐</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>T2 마지막 별</td>
+<td>1.5~3초</td>
+<td>가운데 위에 크림빛 큰 별이 천천히 밝아짐 (번쩍이지 않게 1.5초 동안)</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>T3 빛깔이 나뉨</td>
+<td>3~6초</td>
+<td>마지막 별 아래로 무지개 띠가 왼쪽부터 물감 번지듯 펼쳐짐. 띠 위에 별 8개가 왼쪽부터 하나씩 톡 앉음</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>T4 제목</td>
+<td>6~8.5초</td>
+<td>"별의 스펙트럼" 글자가 붓으로 칠하듯 왼쪽부터 채워짐. 글자 속은 여덟 빛깔 물감. 아래 장식 선과 작은 글씨 "길의 별"</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>T5 기다림</td>
+<td>8.5초부터 계속</td>
+<td>별이 아주 천천히 둥실, 무지개가 느리게 일렁임, 루미가 둥실. [시작하기] 버튼이 부드럽게 나타남</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>T6 시작하기 누름</td>
+<td>2초</td>
+<td>하프가 별마다 한 음씩 올라가고(도레미...), 이야기꾼이 "별의 스펙트럼." 하고 읽어 줌. 무지개가 별 속으로 스며들고 별 9개가 C1 첫 장면 자리로 미끄러지며 어두워짐</td>
+<td>하프 9음, 제목 음성, 제목 음악 시작</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>처음 열 때는 브라우저 규칙상 누르기 전에는 소리를 낼 수 없어, T1~T5는 그림만 움직이고 소리는 T6부터 나옵니다.</li>
+<li>T6 다음은 지금처럼 저장 칸 고르기, 이름, "제 1장"이고, C1 첫 장면이 같은 밤하늘과 같은 별 자리로 시작해 "옛날 옛날, 별빛 마을이 있었어요"로 자연스럽게 이어집니다.</li>
+</ul>
+<h2>3. 인트로·게임과 이어지게 (작게 바꾸기)</h2>
+<ol>
+<li><strong>같은 별 자리</strong>: T6에서 별이 C1의 별 자리로 옮겨 가므로 C1 코드는 고치지 않아도 이어집니다.</li>
+<li><strong>이어 하기 제목 화면 = 진행판</strong> (추천): 되찾은 별만 색이 있고, 나머지는 회색으로 흐리게. 무지개 띠도 되찾은 빛깔만 칠해짐. 9개를 다 찾으면 처음 제목 화면 그대로.</li>
+<li><strong>엔딩 뒤</strong>: 마지막 별까지 찾으면 제목 화면이 T3~T4를 한 번 더 보여 주며 끝납니다 (나중 일, 9번째 별 때).</li>
+</ol>
+<h2>4. 지킬 것</h2>
+<ul>
+<li><strong>번쩍임 없음</strong>: 밝아지는 것은 모두 0.5초보다 천천히. 화면 전체가 한꺼번에 밝아지지 않음.</li>
+<li><strong>건너뛰기</strong>: 아무 곳이나 누르면 바로 T5. 같은 기기에서 두 번째부터는 짧은 판(약 3초).</li>
+<li><strong>움직임 줄이기</strong>(교사 설정, 기기 설정): 움직임 없이 T5 모습만.</li>
+<li><strong>글꼴</strong>: 제목 글자도 배민 주아체. 글자 모양은 게임이 쓰고 속만 물감 그림으로 채움. 이모지, 코드 그림 없음.</li>
+<li><strong>화면 비율</strong>: 16:9 기준. 휴대폰은 하늘을 위아래로 늘리고, 글자와 버튼은 가운데 고정.</li>
+</ul>
+<h2>5. 제목을 바꿀 곳 (반영 단계)</h2>
+<ul>
+<li>게임 제목 글자, 불러오는 중 글, 홈 화면 앱 이름, 홈 화면 아이콘 (app_icon 그림).</li>
+<li>웹 주소(star-village)와 파일 이름은 그대로 둡니다. 바꾸면 휴대폰 홈 화면 아이콘과 저장이 끊깁니다.</li>
+<li>시작 화면 코드는 「방탈출 요소 더하기」 스레드가 맡고 있어, 반영할 때 그쪽과 겹치지 않게 순서를 맞춥니다.</li>
+</ul>
+<h2>6. 필요한 그림 5장 (프롬프트 페이지 「새 제목 별의 스펙트럼」 묶음)</h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>파일</th>
+<th>무엇</th>
+<th>비율</th>
+<th>첨부</th>
+<th>순서</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>title_sky</td>
+<td>빈 밤하늘과 아래 마을 (별, 달 없음)</td>
+<td>16:9</td>
+<td>지금_제목배경.png</td>
+<td>먼저</td>
+</tr>
+<tr>
+<td>title_rainbow</td>
+<td>여덟 빛깔 무지개 띠</td>
+<td>2:1</td>
+<td>없음</td>
+<td>먼저</td>
+</tr>
+<tr>
+<td>title_letter_fill</td>
+<td>제목 글자 속 물감 무늬</td>
+<td>4:1</td>
+<td>없음</td>
+<td>먼저</td>
+</tr>
+<tr>
+<td>title_ornament</td>
+<td>제목 아래 장식 선</td>
+<td>5:1</td>
+<td>없음</td>
+<td>다음</td>
+</tr>
+<tr>
+<td>app_icon</td>
+<td>홈 화면 아이콘</td>
+<td>1:1</td>
+<td>star_last.png</td>
+<td>다음</td>
+</tr>
+</tbody>
+</table></div>
+<p>별 9개, 루미는 이미 받은 그림을 씁니다. 하프 소리는 그림이 아니라서 Claude가 무료 소리(CC0)로 준비하고, "별의 스펙트럼" 음성은 이야기꾼 목소리(×1.1)로 만듭니다.</p></main></body></html>
