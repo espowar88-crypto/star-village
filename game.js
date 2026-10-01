@@ -2527,8 +2527,10 @@ G.puzzle2 = (() => {
       sound() { slot.sound.innerHTML = ''; G.btn('pill gold pz2-sound', G.icon('icon_sound') + ' 소리로 듣기', slot.sound, () => G.audio.voice(D.sound), '소리로 듣기'); },
       braille() { slot.braille.innerHTML = G.braille.svg(D.braille, 20); },
     };
+    const paper = (!view && G.art('notice_festival')) ? G.el('img', 'pz2-paper', slots) : null;   // 10/1 선생님 그림: 촌장님이 붙인 빽빽한 알림 종이, 첫 카드를 붙이면 걷힘
+    if (paper) { paper.src = G.art('notice_festival'); paper.alt = ''; }
     const on = new Set();
-    const attachTo = (id) => { put[id](); part[id].classList.add('on'); on.add(id); };
+    const attachTo = (id) => { if (paper) paper.classList.add('off'); put[id](); part[id].classList.add('on'); on.add(id); };
     if (view) for (const c of D.cards) attachTo(c.id);
     const say = G.el('div', 'pz-say pz2-say', root); say.style.display = 'none';
     const bl = G.el('div', 'pz-bl', root);
