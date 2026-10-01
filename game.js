@@ -264,7 +264,9 @@ G.audio = (() => {
 G.save = (() => {
   const S = {};
   const PLACES = ['home', 'plaza', 'market', 'library', 'forest'];   // 칸에 보이는 마지막 장소 그림 (assets/ui/icons/place_*.png)
-  S.count = () => Math.max(12, Math.min(24, (G.settings && G.settings.slotCount) || 12));
+  // 10/1 선생님: 처음 5칸, 칸이 하나 찰 때마다 한 칸씩 늘어남 (빈 칸이 늘 5개). 가장 큰 저장 번호까지는 언제나 보임
+  S.MAX = 60;
+  S.count = () => { let n = 0, top = 0; for (let i = 1; i <= S.MAX; i++) if (S.load(i)) { n++; top = i; } return Math.min(S.MAX, Math.max(top, n + 5)); };
   S.load = (slot) => G.store.get('slot' + slot, null);
   S.fresh = (slot) => ({
     slot, name: '', stars: 0, place: 'home', chapter: 'start',
@@ -329,6 +331,7 @@ G.save = (() => {
   function revolver(mode, list) {
     return new Promise((pick) => {
       const scr = screenBase('rv-screen ' + (mode === 'new' ? 'rv-new' : 'rv-cont'));
+      const parch = G.art('parchment_card'); if (parch) { scr.classList.add('parch'); scr.style.setProperty('--parch', `url("${parch}")`); }   // 10/1 선생님: 양피지 카드
       head(scr, ((G.D.dialogues.S92_pick_slot || {}).text || '내 번호를 눌러 주세요').replace(/\.$/, ''), 'S92_pick_slot');
       const stage = G.el('div', 'rv-stage', scr);
       const ring = G.el('div', 'rv-ring', stage);
@@ -368,7 +371,14 @@ G.save = (() => {
           c.classList.toggle('front', a === 0); c.tabIndex = a === 0 ? 0 : -1;
         });
       };
-      const go = (k) => { if (!N || busy) return; cur = ((k % N) + N) % N; G.audio.sfx('sfx_page', 0.35); layout(); };
+      const go = (k) => { if (!N || busy) return; const was = cur; cur = ((k % N) + N) % N; G.audio.sfx('sfx_page', 0.35); layout(); if (was !== cur) turn(cards[cur], k > was); };
+      // 10/1 선생님: 양피지를 넘기는 느낌 (앞장이 한쪽 끝을 축으로 넘어가며 사라짐)
+      const turn = (c, fwd) => {
+        if (G.reduced() || !c.animate) return;
+        const pg = G.el('div', 'rv-turn' + (fwd ? '' : ' back'), c);
+        const a = pg.animate([{ transform: 'rotateY(0deg)', opacity: 1 }, { transform: `rotateY(${fwd ? -100 : 100}deg)`, opacity: 0.2 }], { duration: 480, easing: 'ease-in' });
+        a.onfinish = () => pg.remove();
+      };
       const choose = async () => {
         if (!N || busy) return; busy = true;
         const c = cards[cur]; c.classList.add('picked'); G.audio.stopVoice(); G.audio.sfx('sfx_tap', 0.7);
@@ -504,8 +514,19 @@ G.hud = (() => {
   H.itemPop = (it) => {
     const ov = G.$('#overlay');
     const m = G.el('div', 'modal item-pop', ov); const sh = G.el('div', 'sheet', m);
-    const big = G.art('popup_' + it.id);
+    const big = it.id === 'map' ? G.asset(G.D.places.map.color) : G.art('popup_' + it.id);
     const pic = G.el('div', 'item-pop-pic' + (big ? ' art' : ''), sh, big ? `<img src="${big}" alt="">` : G.icon(it.icon));
+    if (it.id === 'map') {   // 10/1 선생님: 가방의 마을 지도 = 실제 마을 지도 + 장소 이름 (지도를 보고 장소를 찾아갈 수 있게)
+      pic.classList.add('item-map'); const P = G.D.places, W = P.map.width, Hh = P.map.height;
+      const tag = (x, y, t, cls = '') => { const e = G.el('div', 'im-tag ' + cls, pic, t); e.style.left = (x / W * 100) + '%'; e.style.top = (y / Hh * 100) + '%'; };
+      for (const q of P.places) tag(q.marker[0], q.marker[1] + 60, q.name);
+      tag(P.home.house[0], P.home.house[1] - 90, '우리 집');
+      sh.classList.add('map-pop');
+    }
+    if (it.id === 'note' && G.D.puzzles.lock) {   // 10/1 선생님: 촌장님 쪽지 = 점자 네 칸 쪽지
+      pic.className = 'item-pop-pic item-note';
+      pic.innerHTML = '<div class="p4-note"><div class="p4-note-head">' + G.icon('item_braille_note') + ' 촌장님 쪽지</div><div class="p4-note-dots">' + G.braille.svg(G.D.puzzles.lock.cells, 40) + '</div></div>';
+    }
     G.el('div', 'get-title', sh, it.name);
     G.el('div', 'get-desc', sh, G.txt(it.voice));
     pic.animate && pic.animate([{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 350, easing: 'ease-out' });
@@ -514,8 +535,8 @@ G.hud = (() => {
     G.btn('pill gold', G.icon('icon_ok') + ' 닫기', row, () => { m.remove(); G.audio.stopVoice(); }, '닫기');
     // 9/30: 낮은 휴대폰 화면에서 [닫기]가 화면 밖으로 밀리지 않게, 창이 넘치면 그림을 그만큼 줄임
     const img = big && pic.querySelector('img');
-    const fit = () => { if (!img || !m.isConnected) return; img.style.maxHeight = ''; const over = sh.scrollHeight - sh.clientHeight;
-      if (over > 0) img.style.maxHeight = Math.max(60, img.getBoundingClientRect().height - over - 4) + 'px'; };
+    const fit = () => { if (!img || !m.isConnected) return; if (it.id === 'map') { pic.style.fontSize = Math.max(12, img.getBoundingClientRect().width * 0.03) + 'px'; return; } img.style.maxHeight = ''; const over = sh.scrollHeight - sh.clientHeight;
+      if (over > 0) img.style.maxHeight = Math.max(60, img.getBoundingClientRect().height - over - 4) + 'px';  };
     if (img) { if (img.complete) fit(); else img.onload = fit; G.resizers.add(fit); const mo = new MutationObserver(() => { if (!m.isConnected) { G.resizers.delete(fit); mo.disconnect(); } }); mo.observe(ov, { childList: true }); }
   };
   return H;
@@ -1227,17 +1248,34 @@ G.cut = (() => {
       const line = G.el('div', 'ch-line', box, G.artImg('chapter_line') || '<i></i>');
       const tt = G.el('div', 'ch-title chapter-title', box, T[1]);
       const txt = [num, line, tt]; txt.forEach(e => e.style.opacity = 0);
-      root.style.opacity = 0;
+      root.style.opacity = opts.cover ? 1 : 0;   // 10/1 cover: 그림이 처음부터 화면을 덮음 (장소 모습이 먼저 비치지 않게)
       if (document.fonts && document.fonts.load) await Promise.race([Promise.all([document.fonts.load('300 40px MaruBuri', num.textContent), document.fonts.load('700 90px MaruBuri', T[1])]).catch(() => { }), c.wait(1.2)]);   // 글꼴이 오기 전에 글자가 먼저 보이지 않게 (늦으면 대신 글꼴로)
       c.sfx('sfx_chime', 0.5);
       const fin = (e, at, d) => c.wait(c.rm ? 0 : at).then(() => c.tween(0, 1, c.rm ? 0.2 : d, v => e.style.opacity = v, 'out'));
       await Promise.all([
-        c.tween(0, 1, c.rm ? 0.2 : 0.9, v => { root.style.opacity = v; bg.style.transform = c.rm ? '' : `scale(${1.06 - 0.06 * v})`; }, 'out'),
+        c.tween(0, 1, c.rm ? 0.2 : 0.9, v => { if (!opts.cover) root.style.opacity = v; bg.style.transform = c.rm ? '' : `scale(${1.06 - 0.06 * v})`; }, 'out'),
         fin(num, 0.35, 0.8), fin(line, 0.6, 0.8), fin(tt, 0.8, 1.0),
       ]);
       await Promise.all([c.voice(T[2], false), c.wait(G.fast() ? 0.6 : 2.0)]);
       await c.tween(1, 0, c.rm ? 0.2 : 0.7, v => txt.forEach(e => e.style.opacity = v));
       await c.tween(1, 0, c.rm ? 0.2 : 0.5, v => root.style.opacity = v);
+    },
+    // ---- 10/1 선생님: 제 1장 앞, 양피지 안으로 들어가기 (약 4초). 양피지가 펼쳐지고 가운데로 다가가면 그 안에 제 1장 그림이 번져 나옴 ----
+    async PARCH(c, root) {
+      const pa = G.art('parchment_open'), ch = G.art('chapter_intro') || G.art('chapter_bg'); if (!pa) return;
+      root.classList.add('parch-in');
+      const cam = G.el('div', 'pi-cam', root);
+      const bg = G.el('div', 'pi-bg', cam); bg.style.backgroundImage = `url("${pa}")`;
+      const win = G.el('div', 'pi-win', cam); if (ch) win.style.backgroundImage = `url("${ch}")`;
+      win.style.opacity = 0; cam.style.opacity = 0;
+      c.sfx('sfx_page', 0.6);
+      await c.tween(0, 1, c.rm ? 0.3 : 0.9, v => { cam.style.opacity = v; if (!c.rm) cam.style.transform = `scale(${0.92 + 0.08 * v})`; }, 'out');
+      await c.wait(0.5);
+      c.sfx('sfx_sparkle', 0.5);
+      if (c.rm) await c.tween(0, 1, 0.6, v => win.style.opacity = v);
+      else await c.tween(0, 1, 1.8, v => { cam.style.transform = `scale(${1 + 1.4 * v * v})`; win.style.opacity = Math.min(1, v * 1.6); }, 'io');
+      const full = G.el('div', 'ch-bg', root); full.style.backgroundImage = `url("${ch || pa}")`; full.style.transform = 'scale(1.06)'; full.style.opacity = 0;
+      await c.tween(0, 1, 0.35, v => full.style.opacity = v);
     },
     // ---- C3 시장 도착 (6초): 천막이 바람에 펄럭(소리) → 과일 가게 쪽으로 다가감 → 봄이 아주머니가 폴짝 인사 → 「시장」 ----
     async C3(c, root, opts) {
@@ -1577,20 +1615,24 @@ G.map = (() => {
     const sigh = G.el('div', 'sigh', w.el, G.artImg('sigh') || '<svg viewBox="0 0 40 26"><path d="M8 20a7 7 0 0 1 2-13 9 9 0 0 1 17-1 7 7 0 0 1 5 14z" fill="#d9dcea" stroke="#6b7090" stroke-width="2"/></svg>');
     const hit = G.el('button', 'whit', w.el); hit.type = 'button'; hit.setAttribute('aria-label', G.D.dialogues[d.line]?.name || '마을 사람');
     let bub = null;
+    const gift = G.p4 && G.p4.villagerHas && G.p4.villagerHas(d.id) ? G.el('div', 'wgift', w.el, G.artImg('stardust') || G.sparkle()) : null;   // 10/1 별가루를 가진 주민 머리 위 반짝
     G.onTap(hit, async () => {
       if (bub || G.busy > 0) return;
       const id = stage >= 5 ? d.line.replace(/_a$/, '_b') : d.line; const L = G.D.dialogues[id]; if (!L) return;
       v.pause = Math.max(v.pause, 5); w.frame = 8; w.face(hero.x - w.x, hero.y - w.y); w.draw();
       if (G.D.portraits[d.id] && !G.dialog.active) {   // 10/1 선생님 배경 주민 일러스트: 대화창에 얼굴과 함께
-        bub = true; v.pause = 1e9; await G.dialog.play([id], { partner: d.id }); v.pause = 1; bub = null; return;
+        bub = true; v.pause = 1e9; await G.dialog.play([id], { partner: d.id });
+        if (gift && G.p4.villagerHas(d.id)) { await G.p4.villagerDust(d.id, w.el, V.fx, w.x, w.y - 120); gift.remove(); }
+        v.pause = 1; bub = null; return;
       }
       bub = G.el('div', 'wbubble', w.el, L.text);
       await G.audio.voice(id); await G.wait(0.8); if (bub) bub.remove(); bub = null;
+      if (gift && G.p4.villagerHas(d.id)) { bub = true; await G.p4.villagerDust(d.id, w.el, V.fx, w.x, w.y - 120); gift.remove(); bub = null; }
     });
     const speed = G.D.mood.speed[stage];
     const v = { w, i: 1, step: 1, pause: Math.random() * 2, look: 0, sighT: Math.random() * 4 };
     v.update = (dt) => {
-      if (stage === 0) { v.sighT += dt; sigh.classList.toggle('on', (v.sighT % 7) < 2.4); }
+      if (stage === 0) { v.sighT += dt; sigh.classList.toggle('on', (v.sighT % 7) < 2.4); sigh.classList.toggle('l', w.dir === 'SW' || w.dir === 'NW'); }   // 10/1 한숨은 입 옆에서 (보는 쪽)
       if (v.pause > 0) {
         v.pause -= dt; w.frame = 8;
         if (stage === 0 && !bub) { v.look += dt; if (v.look > 0.9) { v.look = 0; const ds = ['SE', 'SW', 'NE', 'NW']; w.dir = ds[(ds.indexOf(w.dir) + 1) % 4]; } }
@@ -1771,10 +1813,12 @@ G.scene = (() => {
     G.save.write();
     await V.ready;
     if (g !== G.gen) return;
-    G.$('#fade').classList.remove('on');
+    if (!first) G.$('#fade').classList.remove('on');
     if (first) {
       G.hud.hide(true);
-      await G.cut.play('CH:' + id, { key: id });   // 9/30 장 제목
+      const ch = G.cut.play('CH:' + id, { key: id, cover: true });   // 9/30 장 제목. 10/1 선생님: 장 그림이 먼저 화면을 덮은 뒤 어둠이 걷힘 (장소 모습이 먼저 비치지 않게)
+      G.$('#fade').classList.remove('on');
+      await ch;
       if (g !== G.gen) return;
       await G.cut.play(def.arrive);
       if (g !== G.gen) return;
@@ -1859,6 +1903,7 @@ G.scene = (() => {
       if (h.mission) complete(h.mission);
       if (h.mark && !G.st.done.includes(h.mark)) { G.st.done.push(h.mark); G.save.write(); revealHots(); }   // 10/1: 할 일 표시 없이 기록만 (편지 찾기)
     }
+    if (G.p4 && G.p4.afterHot && V && g === G.gen) { await G.p4.afterHot(H, V, S, id); if (g !== G.gen) { busy = false; return; } }   // 10/1 물건 속 별가루
     if (h.louder) G.audio.ambientBoost(h.louder, false);
     if (!V) { busy = false; return; }
     if (S.missions.every(m => G.st.done.includes(m)) && !G.st.cleared.includes(id)) { await G.wait(0.9); busy = false; if (g !== G.gen) return; return clear(); }
@@ -2713,7 +2758,7 @@ async function p3WalkAway(V, S) {
 }
 // 가방 속 빛을 잃은 별이 반짝이기 시작함 (가방 단추 위로 별 그림이 떠오르며 빛남)
 async function p3GlowPiece() {
-  const ov = G.$('#overlay'), m = G.el('div', 'piece-glow', ov, G.artImg('popup_piece') ? `<img src="${G.art('popup_piece')}" alt="">` : G.icon('item_piece'));
+  const ov = G.$('#overlay'), pg = G.art('piece_glow') || G.art('popup_piece'), m = G.el('div', 'piece-glow', ov, pg ? `<img src="${pg}" alt="">` : G.icon('item_piece'));   // 10/1: 배경 없이 별만
   G.audio.sfx('sfx_sparkle', 0.8);
   await G.tween(0, 1, G.reduced() ? 0.3 : 1.8, k => { m.style.opacity = Math.sin(Math.min(1, k * 1.4) * Math.PI / 2) * (k > 0.85 ? (1 - k) / 0.15 : 1); m.style.filter = `drop-shadow(0 0 ${10 + 30 * k}px rgba(255,214,107,${0.4 + 0.6 * k})) brightness(${1 + k * 0.6})`; }, 'io');
   m.remove();
@@ -2886,6 +2931,7 @@ G.p4 = (() => {
   let cur = null;   // 지금 하는 퍼즐 { solve } (교사용 "이 퍼즐 바로 풀기")
   P.can = () => !!cur;
   P.skip = () => { if (cur && cur.solve) cur.solve(); };
+  P.reset = () => { cur = null; };   // 챕터 바로 가기: 하던 퍼즐을 잊음
 
   // 아이템 그림: 선생님 그림(art/item_…)이 있으면 그것을 (점자 쪽지)
   const icon0 = G.icon;
@@ -2995,6 +3041,11 @@ G.p4 = (() => {
   P.gate = (p) => { if (!p.gate || done(p.gate)) return false; door(); return true; };
   P.mapMarks = (V) => {   // 촌장에게 물어보러 가야 할 때 광장 위에 물음표
     const k = V.markers && V.markers.plaza; if (!k) return;
+    if (done('plaza2_star') && !V.fx.querySelector('.p4-mapstar')) {   // 10/1 선생님: 별을 올린 뒤에는 지도의 별 받침대 위에도 별이 있음
+      const st = G.STARS.find(s => s.id === 'road'), e = G.el('div', 'p4-mapstar', V.fx, st ? G.starSvg(st) : G.sparkle());
+      e.style.left = k.p.marker[0] + 'px'; e.style.top = (k.p.marker[1] + 100) + 'px'; e.style.zIndex = Math.round(k.p.marker[1] + 150);   // 받침대 앞을 지나가는 사람보다는 뒤
+      for (const q of [k.m, k.lb]) if (q) q.style.translate = '0 -150px';   // 장소 표시와 이름표는 조금 위로 비켜 별이 보이게
+    }
     let q = V.fx.querySelector('.p4-q');
     if (!P.calling()) { if (q) q.remove(); return; }
     if (!q) { q = G.el('div', 'p4-q', V.fx, G.artImg('mark_question') || '?'); q.style.left = k.p.marker[0] + 'px'; q.style.top = (k.p.marker[1] - 110) + 'px'; }
@@ -3123,26 +3174,55 @@ G.p4 = (() => {
   // ---- 장소 장면에 들어갈 때 (scene.js): 숨은 별가루, 어두운 숲 ----
   P.enter = (V, def, id) => {
     dust(V, def, id);
+    const ch = id === 'plaza' && P.calling() && def.hotspots.find(h => h.id === 'chief');   // 10/1 선생님: 쪽지를 받으러 다시 왔을 때 촌장님 머리 위에 노란 물음표
+    if (ch) { const q = G.el('div', 'mstar p4-askq', V.fx, G.artImg('mark_question') || '?'); q.style.left = (ch.rect[0] + ch.rect[2] / 2) + 'px'; q.style.top = (ch.rect[1] - 6) + 'px'; }
     if (def.dark && !done('forest_wind')) dark(V, def);
   };
   const dustSt = () => G.st.dust || (G.st.dust = []);
   const total = () => (G.D.story && G.D.story.dustTotal) || 10;
+  const NEED = (G.D.story && G.D.story.dustNeed) || 5;
+  P.dustNeed = NEED;
   function dust(V, def, id) {
+    const key = def.dustKey || id;
     (def.dust || []).forEach(([x, y], i) => {
-      const k = id + ':' + i; if (dustSt().includes(k)) return;
+      const k = key + ':' + i; if (dustSt().includes(k)) return;
       const b = G.el('button', 'p4-dust' + (G.lv('hard') ? ' dim' : ''), V.fx, G.artImg('stardust') || G.sparkle()); b.type = 'button'; b.setAttribute('aria-label', '별가루');
       Object.assign(b.style, { left: x + 'px', top: y + 'px', animationDelay: (-Math.random() * 3).toFixed(2) + 's' });
       G.onTap(b, () => {
         if (G.busy > 0 || G.dialog.active || dustSt().includes(k)) return;
-        dustSt().push(k); G.save.write(); G.audio.sfx('sfx_sparkle', 0.8); spark(b, 8);
         b.style.pointerEvents = 'none';
         if (b.animate) b.animate([{ transform: 'translate(-50%,-50%) scale(1)', opacity: 1 }, { transform: 'translate(-50%,-110%) scale(1.8)', opacity: 0 }], { duration: 700, easing: 'ease-out', fill: 'forwards' });
         setTimeout(() => b.remove(), 720);
-        const pop = G.el('div', 'p4-dust-pop', V.fx, (G.artImg('stardust') || '') + '<span>별가루 ' + dustSt().length + '/' + total() + '</span>'); pop.style.left = x + 'px'; pop.style.top = (y - 70) + 'px'; setTimeout(() => pop.remove(), 2400);
-        G.hud.say('E00_dust_01');
-        if (dustSt().length >= total() && G.st.cleared.includes('plaza2')) setTimeout(bonus, 2600);
+        gain(k, b, V.fx, x, y);
       });
     });
+  }
+  // 10/1 선생님: 물건(천막·책장·분수)을 누르면 그 안에서 별가루가 튀어나옴 (scene.js가 누를 곳 이야기 뒤에 부름)
+  P.afterHot = async (H, V, def, id) => {
+    const h = H.def; if (!(def.dustHot || []).includes(h.id)) return;
+    const k = (def.dustKey || id) + ':h:' + h.id; if (dustSt().includes(k)) return;
+    const [x, y, w] = h.rect, cx = x + w / 2, cy = y + 20;
+    const d = G.el('div', 'p4-dust pop', V.fx, G.artImg('stardust') || G.sparkle()); Object.assign(d.style, { left: cx + 'px', top: cy + 'px', pointerEvents: 'none' });
+    G.audio.sfx('sfx_sparkle', 0.6);
+    if (d.animate) await d.animate([{ transform: 'translate(-50%,-50%) scale(.3)', opacity: 0 }, { transform: 'translate(-50%,-160%) scale(1.3)', opacity: 1, offset: 0.5 }, { transform: 'translate(-50%,-220%) scale(1.6)', opacity: 0 }], { duration: G.reduced() ? 300 : 1000, easing: 'ease-out' }).finished.catch(() => { });
+    d.remove(); await gain(k, H.btn, V.fx, cx, cy);
+  };
+  // 10/1 선생님: 지도에서 말을 건 주민이 별가루를 줌 (worldmap.js가 주민 말 뒤에 부름)
+  P.villagerDust = async (vid, el, fx, x, y) => {
+    const line = ((G.D.story || {}).dustGive || {})[vid], k = 'map:' + vid; if (!line || dustSt().includes(k)) return;
+    await G.dialog.play([line], { partner: G.D.portraits[vid] ? vid : undefined });
+    await gain(k, el, fx, x, y);
+  };
+  P.villagerHas = (vid) => !!(((G.D.story || {}).dustGive || {})[vid]) && !!G.st && !dustSt().includes('map:' + vid);
+  // 별가루 하나 얻기: 반짝 + 몇 개인지 + 처음·다섯 번째에는 루미가 알려 줌
+  async function gain(k, el, fx, x, y) {
+    dustSt().push(k); G.save.write(); G.audio.sfx('sfx_sparkle', 0.8); if (el) spark(el, 8);
+    const n = dustSt().length, starUp = done('plaza2_star'), shown = !starUp && n <= NEED ? `${n}/${NEED}` : `${n}/${total()}`;
+    if (fx) { const pop = G.el('div', 'p4-dust-pop', fx, (G.artImg('stardust') || '') + '<span>별가루 ' + shown + '</span>'); pop.style.left = x + 'px'; pop.style.top = (y - 70) + 'px'; setTimeout(() => pop.remove(), 2400); }
+    if (n === 1) await G.dialog.play(['E00_dust_01', 'E00_dust_02']);
+    else if (n === NEED && !starUp) await G.dialog.play(['E00_dust_03']);
+    else G.hud.say('E00_dust_01');
+    if (n >= total() && G.st.cleared.includes('plaza2')) setTimeout(bonus, 600);
   }
   P.dustLine = (sh) => { const n = (G.st.dust || []).length; G.el('div', 'p4-bagdust', sh, (G.artImg('stardust') || '') + `<span>별가루 ${n}/${total()}</span>`); };
 
@@ -3239,14 +3319,31 @@ G.p4 = (() => {
       const pw = IW / cols, ph = IH / rows, s = Math.min((VW - TX - 30) / (cols * pw), (VH - 60) / (rows * ph)) * 0.9;
       const pcs = [], order = shuffle([...Array(cols * rows).keys()]);
       let fin = false, sel = null, arrow = null;
+      // 10/1 선생님: 진짜 찢어진 것처럼. 조각 사이 경계를 들쭉날쭉한 선으로 (이웃 조각은 같은 선을 나눠 가져 꼭 맞음)
+      const M = Math.round(Math.min(pw, ph) * 0.12), amp = M * 0.8;
+      const tear = (len, n) => { const a = [[0, 0]]; for (let k = 1; k < n; k++) a.push([len * (k + (Math.random() - 0.5) * 0.5) / n, (Math.random() * 2 - 1) * amp * (Math.random() < 0.25 ? 1 : 0.55)]); a.push([len, 0]); return a; };
+      const VL = [], HL = [];   // VL[c]: c번째 세로 경계 (위→아래, 칸 경계마다 0), HL[r]: 가로 경계 (왼→오)
+      for (let c = 1; c < cols; c++) { let a = []; for (let r = 0; r < rows; r++) a = a.concat(tear(ph, 7).slice(r ? 1 : 0).map(([t, o]) => [c * pw + o, r * ph + t])); VL[c] = a; }
+      for (let r = 1; r < rows; r++) { let a = []; for (let c = 0; c < cols; c++) a = a.concat(tear(pw, 8).slice(c ? 1 : 0).map(([t, o]) => [c * pw + t, r * ph + o])); HL[r] = a; }
+      const seg = (L, lo, hi, axis) => L.filter(q => q[axis] >= lo - 0.01 && q[axis] <= hi + 0.01);
+      const shape = (c, r) => {
+        const x0 = c * pw, y0 = r * ph, x1 = x0 + pw, y1 = y0 + ph;
+        const top = r ? seg(HL[r], x0, x1, 0) : [[x0, y0], [x1, y0]];
+        const right = c < cols - 1 ? seg(VL[c + 1], y0, y1, 1) : [[x1, y0], [x1, y1]];
+        const bottom = (r < rows - 1 ? seg(HL[r + 1], x0, x1, 0) : [[x0, y1], [x1, y1]]).slice().reverse();
+        const left = (c ? seg(VL[c], y0, y1, 1) : [[x0, y0], [x0, y1]]).slice().reverse();
+        return 'polygon(' + [...top, ...right, ...bottom, ...left].map(([x, y]) => `${(x - x0 + M).toFixed(1)}px ${(y - y0 + M).toFixed(1)}px`).join(',') + ')';
+      };
       for (let i = 0; i < cols * rows; i++) {
-        const c = i % cols, r = Math.floor(i / cols), slot = G.el('div', 'p4-jslot', B.el);
-        Object.assign(slot.style, { left: (OX + c * pw) + 'px', top: (OY + r * ph) + 'px', width: pw + 'px', height: ph + 'px' });
-        const el = G.el('button', 'p4-piece', B.el); el.type = 'button'; el.setAttribute('aria-label', '지도 조각');
-        Object.assign(el.style, { width: pw + 'px', height: ph + 'px', backgroundImage: `url("${img}")`, backgroundSize: `${IW}px ${IH}px`, backgroundPosition: `${-c * pw}px ${-r * ph}px` });
+        const c = i % cols, r = Math.floor(i / cols), slot = G.el('div', 'p4-jslot torn', B.el), clip = shape(c, r);
+        Object.assign(slot.style, { left: (OX + c * pw - M) + 'px', top: (OY + r * ph - M) + 'px', width: (pw + 2 * M) + 'px', height: (ph + 2 * M) + 'px', clipPath: clip, webkitClipPath: clip });
+        const el = G.el('button', 'p4-piece torn', B.el); el.type = 'button'; el.setAttribute('aria-label', '지도 조각');
+        const pc = G.el('div', 'p4-pc', el);
+        Object.assign(el.style, { width: (pw + 2 * M) + 'px', height: (ph + 2 * M) + 'px' });
+        Object.assign(pc.style, { backgroundImage: `url("${img}")`, backgroundSize: `${IW}px ${IH}px`, backgroundPosition: `${-(c * pw - M)}px ${-(r * ph - M)}px`, clipPath: clip, webkitClipPath: clip });
         const j = order.indexOf(i), tc = j % cols, tr = Math.floor(j / cols);
-        const home = [TX + (tc + 0.5) * (VW - TX - 30) / cols - pw / 2, 30 + (tr + 0.5) * (VH - 60) / rows - ph / 2];
-        const p = { i, el, slot, x: home[0], y: home[1], home, goal: [OX + c * pw, OY + r * ph], k: s, rot: Math.random() * 10 - 5, placed: false };
+        const home = [TX + (tc + 0.5) * (VW - TX - 30) / cols - pw / 2 - M, 30 + (tr + 0.5) * (VH - 60) / rows - ph / 2 - M];
+        const p = { i, el, slot, x: home[0], y: home[1], home, goal: [OX + c * pw - M, OY + r * ph - M], k: s, rot: Math.random() * 10 - 5, placed: false };
         put(p); pcs.push(p); drag(p);
         G.onTap(slot, () => { if (sel && !fin) { if (sel === p) place(p); else back(sel, true); } });
       }
@@ -3439,11 +3536,12 @@ G.p4 = (() => {
     // 광장 촌장: 처음 이야기 (쉽게는 바로 쪽지) / 도서관 문에서 막혀 다시 오면 점자 쪽지
     async plaza_chief({ H, complete, g }) {
       const ok = () => g === G.gen, give = !has('note') && (!G.lv('normal') || P.calling());
-      if (!done('plaza_chief') || !give) { await G.dialog.play(H.def.lines, { partner: 'chief', keep: give }); if (!ok()) return; complete('plaza_chief'); }
+      const first = !done('plaza_chief');
+      if (first || !give) { await G.dialog.play(first ? [...H.def.lines, 'E03_chief_04', 'E03_chief_05'] : H.def.lines, { partner: 'chief', keep: give }); if (!ok()) return; complete('plaza_chief'); }   // 10/1 처음에는 별가루 규칙도
       if (!give) return;
       await G.dialog.play(G.lv('normal') ? ['E03_chief_02', 'E03_chief_03'] : ['E03_chief_01'], { partner: 'chief' }); if (!ok()) return;
       await G.present.item('note'); if (!ok()) return;
-      mark('note_got'); G.map.refresh();
+      mark('note_got'); G.map.refresh(); document.querySelectorAll('.p4-askq').forEach(e => e.remove());
     },
     // 우편배달부: 편지가 날아감 → 편지 찾기 → 다 찾으면 원래 이야기
     async plaza_post({ complete, g }) {
@@ -3458,9 +3556,10 @@ G.p4 = (() => {
     async plaza_letter({ H, g }) {
       const im = H.glow;
       if (im.animate && !G.reduced()) await im.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.4) translateY(-20px)', opacity: 0 }], { duration: 500, easing: 'ease-in', fill: 'forwards' }).finished.catch(() => { });
-      mark(H.def.mark); G.scene.reveal();
-      await G.dialog.play(['E03_rumi_01']); if (g !== G.gen) return;
-      if (lettersDone()) { const p = G.scene.sprite('post'); if (p && p.img.animate) p.img.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-16px)' }, { transform: 'translateY(0)' }], { duration: 500, iterations: 2 }); }
+      mark(H.def.mark); G.scene.reveal(); G.audio.sfx('sfx_sparkle', 0.5);
+      if (!lettersDone()) return;   // 10/1 선생님: 편지마다 말하지 않고 모두 찾았을 때 한 번만
+      await G.dialog.play(['E03_rumi_03']); if (g !== G.gen) return;
+      { const p = G.scene.sprite('post'); if (p && p.img.animate) p.img.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-16px)' }, { transform: 'translateY(0)' }], { duration: 500, iterations: 2 }); }
     },
     // 게시판 닦기
     async plaza_board({ complete, g }) {
@@ -3549,6 +3648,7 @@ G.p4 = (() => {
     // 별 받침대: 가방 속 별을 끌어 올린 뒤 C11
     async plaza2_star(ctx) {
       const { H, g } = ctx;
+      if (dustSt().length < NEED) { await G.dialog.play(['E11_chief_01'], { partner: 'chief' }); return; }   // 10/1 선생님: 별가루 5개가 있어야 별을 올림
       if (has('piece')) { G.hud.say('E90_hint_11'); const u = await P.useItem('piece', H.btn, { say: (id) => G.hud.say(id), hint: 'E90_hint_11' }); if (!u || g !== G.gen) return; }
       return F0.plaza2_star(ctx);
     },
@@ -3648,10 +3748,7 @@ G.teacher = (() => {
     tb(G.settings.hideSkip ? '건너뛰기 버튼 숨김' : '건너뛰기 버튼 보임', r, () => set('hideSkip', !G.settings.hideSkip), G.settings.hideSkip ? 'on' : '');
 
     s = sec(p, '7. 저장 칸');
-    G.el('div', 't-note', s, `지금 ${G.save.count()}칸. 저장은 이 기기, 이 브라우저에만 돼요. 학교 PC가 초기화되면 5. 챕터 바로 가기로 이어 하세요.`);
-    r = row(s);
-    tb('칸 4개 늘리기', r, () => set('slotCount', Math.min(24, G.save.count() + 4))).disabled = G.save.count() >= 24;
-    tb('늘린 칸 줄이기', r, () => set('slotCount', Math.max(12, G.save.count() - 4))).disabled = G.save.count() <= 12;
+    G.el('div', 't-note', s, `지금 ${G.save.count()}칸 (처음 5칸, 칸이 찰 때마다 한 칸씩 늘어나요). 저장은 이 기기, 이 브라우저에만 돼요. 학교 PC가 초기화되면 5. 챕터 바로 가기로 이어 하세요.`);
     r = row(s); G.el('span', '', r, '지우기:');
     let any = false;
     for (let i = 1; i <= G.save.count(); i++) {
@@ -3700,7 +3797,7 @@ G.teacher = (() => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '프로토타입 3 (2026-09-30)';
+G.VERSION = '프로토타입 4 (2026-10-01 오후)';
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
@@ -3720,7 +3817,7 @@ G.flow = (() => {
     G.$('#overlay').innerHTML = ''; G.$('#closeup').innerHTML = ''; G.$('#dialog').innerHTML = '';
     G.map.hide(); G.scene.hide(); G.$('#world').innerHTML = '';
     G.hud.clear(); G.hud.hide(false); G.help.off(); G.audio.stopVoice();
-    G.busy = 0; G.map.camFree = false; G.map.lumiFree = false;
+    G.busy = 0; G.map.camFree = false; G.map.lumiFree = false; if (G.p4) G.p4.reset();
     G.$('#fade').classList.remove('on');
   };
 
@@ -3770,7 +3867,9 @@ G.flow = (() => {
   F.intro = async () => {
     const g = G.gen, S = G.D.story;
     G.audio.music('music_night'); G.audio.ambient([]);
-    await G.cut.play('CH:intro', { key: 'intro' });   // 9/30 장 제목 "제 1 장 별이 사라진 밤"
+    await G.cut.play('PARCH');   // 10/1 선생님: 양피지 안으로 들어가며 제 1장 그림이 나옴
+    if (g !== G.gen) return;
+    await G.cut.play('CH:intro', { key: 'intro', cover: !!G.art('parchment_open') });   // 9/30 장 제목 "제 1 장 별이 사라진 밤"
     if (g !== G.gen) return;
     await G.cut.play('C1');
     if (g !== G.gen) return;
@@ -3833,7 +3932,7 @@ G.flow = (() => {
     };
     const forest = () => {
       lib(); st.done.push('forest_intro', 'forest_wind', 'forest_star', 'forest_daon'); st.cleared.push('forest'); st.items.push('leaf', 'piece');
-      st.seenCutscenes.push('C5'); st.visited.push('forest'); st.mood = 4; st.quest = 4; st.place = 'forest'; st.seen.push('forest:bushB', 'forest:shine', 'forest:daon');
+      st.seenCutscenes.push('C5'); if ((st.dust || []).length < 5) st.dust = ['plaza:0', 'market:0', 'library:0', 'map:v2', 'map:v3']; st.visited.push('forest'); st.mood = 4; st.quest = 4; st.place = 'forest'; st.seen.push('forest:bushB', 'forest:shine', 'forest:daon');
     };
     if (id === 'forest') { lib(); G.save.write(); return F.resume(); }
     if (id === 'plaza2') { forest(); G.save.write(); return F.resume(); }
