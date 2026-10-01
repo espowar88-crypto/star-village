@@ -429,7 +429,13 @@ G.hud = (() => {
     bubble = G.el('div', 'bubble', root); bubble.style.display = 'none';
     const sv = G.el('div', 'saved', root); sv.id = 'savedStar'; sv.innerHTML = G.sparkle('#FFD66B', '#FFF6D6', 6);
   };
-  H.clear = () => { if (!root) H.init(); tl.innerHTML = tr.innerHTML = bl.innerHTML = br.innerHTML = ''; H.hideBubble(); taskEl = null; };
+  H.clear = () => { if (!root) H.init(); tl.innerHTML = tr.innerHTML = bl.innerHTML = br.innerHTML = ''; H.hideBubble(); taskEl = null; root.querySelectorAll('.hud-go').forEach(e => e.remove()); };
+  // 10/1 선생님: 장소 할 일을 다 끝내면 가운데에 큰 '지도로' 버튼 (모서리 버튼을 찾지 않아도 됨)
+  H.goMap = (fn) => {
+    if (!root) H.init(); root.querySelectorAll('.hud-go').forEach(e => e.remove());
+    const w = G.el('div', 'hud-go', root);
+    G.btn('pill gold', G.icon('icon_map') + ' 지도로', w, () => { w.remove(); G.audio.voice('S92_btn_map'); fn(); }, '지도로');
+  };
   H.hide = (on) => { if (!root) H.init(); root.style.visibility = on ? 'hidden' : ''; };
 
   // ---- 지금 할 일: 열려 있고 아직 안 끝낸 첫 장소 ----
@@ -1966,9 +1972,11 @@ G.scene = (() => {
     const q = G.hud.questEl; if (q) { q.classList.remove('flash'); void q.offsetWidth; q.classList.add('flash'); }
     await G.audio.voice(on.now);
     G.map.setHelp();
+    if (g === G.gen && V) G.hud.goMap(() => Sc.leave());   // 10/1 선생님: 끝나면 가운데 버튼으로 지도로
   }
   Sc.leave = async () => {
     if (!V || busy) return;
+    G.$('#hud').querySelectorAll('.hud-go').forEach(e => e.remove());
     const id = S.id;
     G.save.write();
     G.$('#fade').classList.add('on'); await G.wait(0.45);
