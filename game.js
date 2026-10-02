@@ -295,7 +295,7 @@ G.save = (() => {
       const mode = await chooseMode();
       const list = [];
       for (let i = 1; i <= S.count(); i++) { const d = S.load(i); if (mode === 'new' ? !d : !!d) list.push({ slot: i, data: d }); }
-      const r = await revolver(mode, list);
+      const r = await bookPick(mode, list);
       if (r) { done(r); return; }
     }
   });
@@ -329,6 +329,81 @@ G.save = (() => {
       const c = card('cont', 'icon_next', '이어 하기', saved ? '하던 곳부터 해요' : '아직 저장된 게임이 없어요', 'S92_btn_continue', '이어 하기', 'cont');
       if (!saved) { c.disabled = true; c.classList.add('off'); }
       say('S92_mode', '새로 할까요, 이어 할까요?');
+    });
+  }
+  // 10/2 선생님: 저장 칸을 제목 화면의 책(책상 위 펼친 책)으로. 한 쪽에 번호 하나, 넘기면 사라락 (StPageFlip)
+  // 그림판 1920x1080: 펼친 책 (335,105) 1250x805 (제목 화면 끝 위치와 같음), 뒤는 책상 그림
+  function bookPick(mode, list) {
+    return new Promise((pick) => {
+      const A = (p) => G.asset('assets/ui/title/' + p);
+      const scr = screenBase('rv-screen bk-screen ' + (mode === 'new' ? 'rv-new' : 'rv-cont'));
+      scr.style.setProperty('--desk', `url("${A('desk_plain.jpg')}")`);   // 책상 그림에서 덮인 책을 지운 것
+      head(scr, ((G.D.dialogues.S92_pick_slot || {}).text || '내 번호를 눌러 주세요').replace(/\.$/, ''), 'S92_pick_slot');
+      const area = G.el('div', 'bk-area', scr), stage = G.el('div', 'bk-stage', area);
+      // 10/2 선생님: 펼친 책 둘레로 남색 표지 안쪽이 보이게 (표지가 종이보다 조금 큼)
+      const board = G.el('div', 'bk-board', stage); ['l', 'r'].forEach(x => { G.el('div', 'bk-cv ' + x, board).style.backgroundImage = `url("${A('back.jpg')}")`; });
+      const bookEl = G.el('div', 'bk-book', stage);
+      const N = list.length; let sel = 0, busy = false, pf = null;
+      // 10/2 선생님: 양피지 쪽 가운데에 그 칸의 마지막 장소 그림(수채, 겉으로 갈수록 연하게), 번호와 이름은 나눔손글씨로 작게. 빈 칸은 제목 그림
+      const SC = { plaza: 'plaza', plaza2: 'plaza', market: 'market', library: 'library', forest: 'forest', s2hall: 's2hall', s2rest: 's2rest', s2school: 's2school' };
+      const pic = (d) => d && SC[d.place] ? G.asset('assets/scenes/' + SC[d.place] + '_color.jpg') : A('illust.jpg');
+      const paper = (p) => { G.el('div', 'bk-paper', p).style.backgroundImage = `url("${A('parchment_page.jpg')}")`; G.el('div', 'bk-gut', p); };
+      const pages = list.map((it, k) => {
+        const d = it.data, p = G.el('div', 'bk-page' + (k % 2 ? ' pr' : ' pl'), bookEl); paper(p);
+        G.el('div', 'bk-ill', p).style.backgroundImage = `url("${pic(d)}")`;
+        const c = G.el('div', 'bk-slot' + (d ? '' : ' empty'), p);
+        c.setAttribute('role', 'button'); c.setAttribute('aria-label', it.slot + '번' + (d && d.name ? ' ' + d.name : ''));
+        G.el('div', 'cap', c, it.slot + '번 ' + (d ? (d.name ? esc(d.name) : '이어 하기') : '새로 하기'));
+        if (d) G.el('div', 'meta', c, G.icon('icon_star') + (d.stars || 0) + '/8');
+        G.onTap(c, () => { if (moved || busy) return; if (k === sel) choose(); else mark(k); });
+        return p;
+      });
+      if (N % 2) { const p = G.el('div', 'bk-page pr', bookEl); paper(p); pages.push(p); }
+      if (!N) G.el('div', 'rv-empty', area, mode === 'new' ? '빈 번호가 없어요. 선생님께 말해 주세요.' : '아직 저장된 게임이 없어요.');
+      const nav = G.el('div', 'rv-nav', scr);
+      const back = G.btn('pill', '돌아가기', nav, () => { cleanup(); pick(null); }, '돌아가기');
+      const prev = G.btn('pill round rv-arrow prev', G.icon('icon_next'), nav, () => go(-1), '앞 장');
+      const ok = G.btn('pill gold rv-ok', G.icon('icon_ok') + ' 이 번호로', nav, () => choose(), '이 번호로');
+      const next = G.btn('pill round rv-arrow', G.icon('icon_next'), nav, () => go(1), '다음 장');
+      back.classList.add('rv-back');
+      if (!N) ok.disabled = true;
+      const slots = () => [...bookEl.querySelectorAll('.bk-slot')];
+      const mark = (k) => { sel = k; slots().forEach((c, i) => c.classList.toggle('sel', i === k)); };
+      const spread = () => pf ? pf.getCurrentPageIndex() - (pf.getCurrentPageIndex() % 2) : 0;
+      const arrows = () => { const s = spread(); prev.style.visibility = s > 0 ? '' : 'hidden'; next.style.visibility = s + 2 < N ? '' : 'hidden'; };
+      const go = (dir) => {
+        if (!pf || busy) return; const s = spread() + dir * 2; if (s < 0 || s >= N) return;
+        G.audio.sfx('sfx_page', 0.7, 0.95 + Math.random() * 0.1); mark(s);
+        if (G.reduced()) { pf.turnToPage(s); arrows(); return; }
+        busy = true; dir > 0 ? pf.flipNext('top') : pf.flipPrev('top');
+      };
+      const choose = async () => {
+        if (!N || busy) return; busy = true;
+        const c = slots()[sel]; if (c) c.classList.add('picked'); G.audio.stopVoice(); G.audio.sfx('sfx_tap', 0.7);
+        await G.wait(0.35); cleanup(); pick(list[sel]);
+      };
+      // 화면 맞추기: 책이 머리글과 버튼 사이에 다 보이게
+      const fit = () => {
+        const ar = area.getBoundingClientRect(); if (!ar.width) return;
+        const sc = Math.min(ar.height / 890, ar.width / 1380);
+        stage.style.transform = `translate(${ar.width / 2 - 960 * sc}px, ${ar.height / 2 - 507.5 * sc}px) scale(${sc})`;
+      };
+      if (N) try {
+        pf = new St.PageFlip(bookEl, { width: 625, height: 805, size: 'fixed', showCover: false, usePortrait: false, autoSize: false, drawShadow: true, maxShadowOpacity: 0.45, flippingTime: 650, useMouseEvents: false, showPageCorners: false, mobileScrollSupport: false });
+        pf.loadFromHTML(pages);
+        pf.on('flip', () => { busy = false; arrows(); });
+      } catch (e) { console.error(e); pf = null; }
+      mark(0); arrows();
+      // 밀어서 넘기기
+      let sx = null, moved = false;
+      area.addEventListener('pointerdown', (e) => { sx = e.clientX; moved = false; });
+      area.addEventListener('pointermove', (e) => { if (sx !== null && Math.abs(e.clientX - sx) > 40) moved = true; });
+      area.addEventListener('pointerup', (e) => { if (sx === null) return; const dx = e.clientX - sx; sx = null; if (Math.abs(dx) > 40) { go(dx < 0 ? 1 : -1); setTimeout(() => moved = false, 50); } });
+      const key = (e) => { if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1); else if (e.key === 'Enter') choose(); };
+      window.addEventListener('keydown', key);
+      const cleanup = () => { window.removeEventListener('keydown', key); G.onResize = null; };
+      G.onResize = fit; requestAnimationFrame(fit);
+      say('S92_pick_slot', '내 번호를 눌러 주세요.');
     });
   }
   // 번호 카드 돌려 고르기. 카드가 둥글게 돌아가며 가운데 카드가 크게 보임
