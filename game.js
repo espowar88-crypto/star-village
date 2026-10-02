@@ -2485,8 +2485,12 @@ G.flows = (() => {
     if (!done('market_ask')) {
       await G.dialog.play(['S04_rumi_01'], P); if (!ok()) return;
       // 무엇을 물어도 괜찮음: 고른 질문에 봄이 아주머니가 대답하고, 모두 해솔 사서 이야기로 이어짐
-      const i = await G.dialog.choose([opt('S04_opt_01', 'icon_star'), opt('S04_opt_02', 'opt_road'), opt('S04_opt_03', 'opt_apple')], true); if (!ok()) return;
-      await G.dialog.play([['S04_bom_03', 'S04_bom_04', 'S04_bom_05'][i]], P); if (!ok()) return;
+      let i = await G.dialog.choose([opt('S04_opt_01', 'icon_star'), opt('S04_opt_02', 'opt_road'), opt('S04_opt_03', 'opt_apple')], true); if (!ok()) return;
+      if (i === 2) {   // 10/2 선생님: 과일을 물으면 대답한 뒤 다시 고르기 (별·길 질문만 남김)
+        await G.dialog.play(['S04_bom_05'], P); if (!ok()) return;
+        i = await G.dialog.choose([opt('S04_opt_01', 'icon_star'), opt('S04_opt_02', 'opt_road')], true); if (!ok()) return;
+      }
+      await G.dialog.play([['S04_bom_03', 'S04_bom_04'][i]], P); if (!ok()) return;
       complete('market_ask');
     }
     if (!done('market_map')) {
@@ -3410,7 +3414,7 @@ G.p4 = (() => {
   // 10/1 선생님: 지도에서 말을 건 주민이 별가루를 줌 (worldmap.js가 주민 말 뒤에 부름)
   P.villagerDust = async (vid, el, fx, x, y) => {
     const line = ((G.D.story || {}).dustGive || {})[vid], k = 'map:' + vid; if (!line || dustSt().includes(k)) return;
-    await G.dialog.play([line], { partner: G.D.portraits[vid] ? vid : undefined });
+    await G.dialog.play([].concat(line), { partner: G.D.portraits[vid] ? vid : undefined });
     await gain(k, el, fx, x, y);
   };
   P.villagerHas = (vid) => !!(((G.D.story || {}).dustGive || {})[vid]) && !!G.st && !dustSt().includes('map:' + vid);
@@ -3780,8 +3784,12 @@ G.p4 = (() => {
       if (!done('market_bom')) { await G.dialog.play(['S04_bom_01', 'S04_bom_02'], P_); if (!ok()) return; complete('market_bom'); }
       if (!done('market_ask')) {
         await G.dialog.play(['S04_rumi_01'], P_); if (!ok()) return;
-        const i = await G.dialog.choose([opt('S04_opt_01', 'icon_star'), opt('S04_opt_02', 'opt_road'), opt('S04_opt_03', 'opt_apple')], true); if (!ok()) return;
-        await G.dialog.play([['S04_bom_03', 'S04_bom_04', 'S04_bom_05'][i]], P_); if (!ok()) return;
+        let i = await G.dialog.choose([opt('S04_opt_01', 'icon_star'), opt('S04_opt_02', 'opt_road'), opt('S04_opt_03', 'opt_apple')], true); if (!ok()) return;
+        if (i === 2) {   // 10/2 선생님: 과일을 물으면 대답한 뒤 다시 고르기 (별·길 질문만 남김)
+          await G.dialog.play(['S04_bom_05'], P_); if (!ok()) return;
+          i = await G.dialog.choose([opt('S04_opt_01', 'icon_star'), opt('S04_opt_02', 'opt_road')], true); if (!ok()) return;
+        }
+        await G.dialog.play([['S04_bom_03', 'S04_bom_04'][i]], P_); if (!ok()) return;
         complete('market_ask');
       }
       if (!done('market_map')) {
