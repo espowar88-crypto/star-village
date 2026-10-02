@@ -4942,7 +4942,7 @@ G.teacher = (() => {
     s = sec(p, '9. 화면');
     r = row(s);
     const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    tb(fsOn ? '전체 화면 끄기' : '전체 화면', r, () => { wantFs = false; fullscreen(!fsOn).then(render); });
+    tb(fsOn ? '전체 화면 끄기' : '전체 화면', r, () => { wantFs = false; fsOff = fsOn; fullscreen(!fsOn).then(render); });
     G.el('div', 't-note', s, '전체 화면에서는 ESC를 한 번 더 눌러야 이 설정이 열려요 (브라우저 규칙). 아이폰은 “홈 화면에 추가”로 쓰면 전체 화면이 돼요.');
     const pn = layer.querySelector('.t-panel'); if (pn) pn.scrollTop = scroll;
   }
@@ -4957,11 +4957,19 @@ G.teacher = (() => {
   function fullscreen(on) {
     const d = document, el = d.documentElement;
     try {
-      if (on) return Promise.resolve((el.requestFullscreen || el.webkitRequestFullscreen || (() => { })).call(el)).catch(() => { });
+      if (on) return Promise.resolve((el.requestFullscreen || el.webkitRequestFullscreen || (() => { })).call(el))
+        .then(() => { try { return screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); } catch (e) { } }).catch(() => { });
       return Promise.resolve((d.exitFullscreen || d.webkitExitFullscreen || (() => { })).call(d)).catch(() => { });
     } catch (e) { return Promise.resolve(); }
   }
   T.fs = fullscreen;
+  // 10/2 선생님: 휴대폰·태블릿은 늘 전체 화면(가로). 홈 화면 앱은 처음부터 전체 화면, 브라우저로 열었거나 뒤로 가기로 빠져나왔으면 다음 누르기에서 다시 전체 화면
+  // (교사 설정에서 '전체 화면 끄기'를 누르면 다시 켤 때까지 그대로 둠. 아이폰 사파리는 지원 안 함 → 홈 화면에 추가)
+  let fsOff = false;
+  if (matchMedia('(pointer: coarse)').matches) {
+    const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement) || matchMedia('(display-mode: fullscreen)').matches;
+    document.addEventListener('pointerup', () => { if (!fsOff && !T.open && !isFs()) fullscreen(true); }, true);
+  }
   // 9/30 선생님: 휴대폰·태블릿에서 ESC 대신 누르는 [선생님 설정] 버튼 (왼쪽 가장자리 가운데). icon_teacher.png가 오면 그림, 없으면 글자
   if (matchMedia('(pointer: coarse)').matches) {
     const b = G.el('button', 'tbtn', G.$('#game')); b.type = 'button'; b.setAttribute('aria-label', '선생님 설정'); b.textContent = '설정';
