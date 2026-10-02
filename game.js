@@ -3937,6 +3937,8 @@ G.s2 = (() => {
 .s2-zone.hint { animation: thint 1.6s ease-in-out infinite; }
 .s2-zl { position: absolute; left: 50%; bottom: -34px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; white-space: nowrap; font-family: var(--f-title); font-size: 46px; color: var(--brown); background: #FFF4E0; border-radius: 30px; padding: 4px 22px; box-shadow: 0 6px 12px rgba(0, 0, 0, .35); }
 .s2-zl img { height: 54px; }
+.s2-zl { z-index: 3; }   /* 10/2 이름표가 옆 자리 칸에 가려지지 않게 */
+.s2-zone[data-k="phones"] .s2-zl { left: auto; right: 0; transform: none; }
 .s2-seated { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; object-position: 50% 12%; background: #FFF4E0; border: 5px solid #FFD66B; animation: s2pop .5s ease-out; }
 .s2-tray { position: absolute; z-index: 6; display: flex; align-items: center; justify-content: center; gap: calc(var(--u) * 22); background: rgba(255, 248, 236, .95); border: calc(var(--u) * 4) solid rgba(138, 106, 78, .55); border-radius: calc(var(--u) * 34); padding: calc(var(--u) * 10) calc(var(--u) * 22); }
 .s2-person { flex: none; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 4); border: calc(var(--u) * 4) solid #e0b96a; background: #fff6dc; border-radius: calc(var(--u) * 24); padding: calc(var(--u) * 6) calc(var(--u) * 10); cursor: grab; font-family: var(--f-title); font-size: calc(var(--u) * 26 * var(--ts)); color: var(--brown); white-space: nowrap; }
@@ -3944,6 +3946,8 @@ G.s2 = (() => {
 .s2-person.hint { animation: thint 1.6s ease-in-out infinite; }
 .s2-person.dragging { opacity: .35; }
 .s2-person.done { display: none; }
+.s2-tray.side { flex-direction: column; padding: calc(var(--u) * 16) calc(var(--u) * 12); }
+.s2-tray.side.many { display: grid; grid-template-columns: repeat(2, auto); }
 .s2-wob { animation: s2wob .4s ease-in-out; }
 @keyframes s2wob { 0%, 100% { rotate: 0deg; } 25% { rotate: -4deg; } 75% { rotate: 4deg; } }
 .s2-win { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 12px; transition: background .3s, box-shadow .3s; }
@@ -4584,7 +4588,15 @@ G.s2 = (() => {
         return { p, b };
       });
       S.layout = () => {
-        const [x, y, w, h] = area(S), u = G.stage.u, th = tray.getBoundingClientRect().height || u * 180;
+        const [x, y, w, h] = area(S), u = G.stage.u;
+        // 10/2 선생님: 가로로 넓은 화면은 사람 카드를 오른쪽 세로 줄로 두고 객석 그림을 크게 (루미 버튼 자리는 비움)
+        const side = w / h > 1.45; tray.classList.toggle('side', side); tray.classList.toggle('many', people.length > 2);
+        if (side) {
+          const tw = tray.getBoundingClientRect().width || u * 260, bl = S.root.querySelector('.pz-bl'), lw = bl ? bl.getBoundingClientRect().width * 0.7 : 0;
+          Object.assign(tray.style, { left: (x + w - tw) + 'px', top: (y + h / 2) + 'px', transform: 'translateY(-50%)' });
+          B.fit([x + lw, y, w - tw - lw - u * 20, h]); return;
+        }
+        const th = tray.getBoundingClientRect().height || u * 180;
         Object.assign(tray.style, { left: (x + w / 2) + 'px', top: (y + h - th) + 'px', transform: 'translateX(-50%)' });
         B.fit([x, y, w, h - th - u * 20]);
       };
