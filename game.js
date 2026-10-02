@@ -385,8 +385,11 @@ G.save = (() => {
       // 화면 맞추기: 책이 머리글과 버튼 사이에 다 보이게
       const fit = () => {
         const ar = area.getBoundingClientRect(); if (!ar.width) return;
-        const sc = Math.min(ar.height / 890, ar.width / 1380);
-        stage.style.transform = `translate(${ar.width / 2 - 960 * sc}px, ${ar.height / 2 - 507.5 * sc}px) scale(${sc})`;
+        // 10/2 선생님: 휴대폰에서 책이 작아서, 버튼을 책 양옆·구석으로 옮기고 그 사이를 책이 다 씀
+        const R = (b) => b.getBoundingClientRect(), side = Math.max(R(prev).right, R(back).right) - ar.left, side2 = ar.right - Math.min(R(next).left, R(ok).left);
+        const w = ar.width - 2 * (Math.max(side, side2) + 4), h = ar.height - 6;
+        const sc = Math.min(h / 890, w / 1380);
+        stage.style.transform = `translate(${ar.width / 2 - 960 * sc}px, ${3 + h / 2 - 507.5 * sc}px) scale(${sc})`;
       };
       if (N) try {
         pf = new St.PageFlip(bookEl, { width: 625, height: 805, size: 'fixed', showCover: false, usePortrait: false, autoSize: false, drawShadow: true, maxShadowOpacity: 0.45, flippingTime: 650, useMouseEvents: false, showPageCorners: false, mobileScrollSupport: false });
@@ -402,7 +405,7 @@ G.save = (() => {
       const key = (e) => { if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1); else if (e.key === 'Enter') choose(); };
       window.addEventListener('keydown', key);
       const cleanup = () => { window.removeEventListener('keydown', key); G.onResize = null; };
-      G.onResize = fit; requestAnimationFrame(fit);
+      G.onResize = fit; requestAnimationFrame(fit); if (window.ResizeObserver) { const ro = new ResizeObserver(() => { if (scr.isConnected) fit(); else ro.disconnect(); }); [ok, back].forEach(b => ro.observe(b)); }   // 글꼴·그림이 늦게 오면 버튼 폭이 바뀜
       say('S92_pick_slot', '내 번호를 눌러 주세요.');
     });
   }
