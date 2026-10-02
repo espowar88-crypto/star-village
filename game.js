@@ -2946,20 +2946,25 @@ G.cut.add({
     // (다) 별이 하늘로 올라가고 카메라가 별을 따라 밤하늘로 갔다가 광장으로 돌아옴 (10/1 선생님: 별자리 잇기는 아직 없음)
     c.sfx('sfx_starfall', 0.6);
     const { W, H } = G.stage, POS = [[.5, .42], [.3, .3], [.7, .3], [.2, .55], [.8, .55], [.38, .66], [.62, .66], [.5, .2], [.5, .8]], wl = V.el.parentNode;
-    // 10/2 선생님: 카메라가 따라 올라가면 하늘과 마을 사이 이음새가 보여서, 화면이 살짝 어두워졌다가 밤하늘이 나오고 다시 광장으로 돌아옴
-    const sky = G.el('div', 'c11-sky', root); sky.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`; sky.style.opacity = 0;
-    const slots = G.STARS.map((s, i) => { const e = G.el('div', 'c11-slot' + (s.id === 'road' ? ' me' : ''), sky, G.starSvg(s, true)); Object.assign(e.style, { left: POS[i % POS.length][0] * 100 + '%', top: POS[i % POS.length][1] * 100 + '%' }); return e; });
-    const dim = G.el('div', '', root); dim.style.cssText = 'position:absolute;inset:0;background:#0b0e22;opacity:0;pointer-events:none';
-    const veil = async (a, b, t) => { if (c.rm) dim.style.opacity = b; else await c.tween(a, b, t, k => dim.style.opacity = k, 'io'); };
-    await c.wait(0.4); await veil(0, 1, 0.7);
-    sky.style.opacity = 1; pillar.style.opacity = 0;
-    await veil(1, 0, 0.7);
+    // 10/2 시안(하늘 번지게): 카메라가 밤하늘로 따라 올라감. 하늘 그림 아래쪽을 지붕 위로 길게 겹쳐 아래로 갈수록 투명하게 (이음새 없음)
+    const E = Math.round(H * 0.5);
+    const sky = G.el('div', 'c11-sky', root); sky.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
+    Object.assign(sky.style, { bottom: 'auto', height: (H + E) + 'px', opacity: 0 });
+    const fade = `linear-gradient(to bottom, #000 0, #000 ${H}px, transparent ${H + E}px)`; sky.style.maskImage = sky.style.webkitMaskImage = fade;
+    const slots = G.STARS.map((s, i) => { const e = G.el('div', 'c11-slot' + (s.id === 'road' ? ' me' : ''), sky, G.starSvg(s, true)); Object.assign(e.style, { left: POS[i % POS.length][0] * 100 + '%', top: POS[i % POS.length][1] * H + 'px' }); return e; });
+    // 10/2 선생님: 올라가는 별은 맨 앞에 보이게 (빛 기둥 꼭대기에서 나타나 밤하늘 제자리까지)
+    const big = G.el('div', 'c11-star', root, G.starSvg(star)); big.style.zIndex = 5;
+    const sx0 = bx, sy0 = by - 120 * u, sx1 = POS[0][0] * W, sy1 = POS[0][1] * H;
+    Object.assign(big.style, { left: sx0 + 'px', top: sy0 + 'px', opacity: 0 });
+    await c.tween(0, 1, 0.5, k => { big.style.opacity = k; big.style.transform = `translate(-50%,-50%) scale(${0.5 + 0.5 * k})`; }, 'out');
+    const pan = (k) => { const d = H * k; wl.style.transform = `translateY(${d}px)`; sky.style.transform = `translateY(${d - H}px)`; sky.style.opacity = Math.min(1, k * 2.5); pillar.style.translate = `0 ${d}px`; };
+    const fly = (k) => { pan(k); big.style.left = (sx0 + (sx1 - sx0) * k) + 'px'; big.style.top = (sy0 + (sy1 - sy0) * k - Math.sin(k * Math.PI) * 60 * u) + 'px'; big.style.transform = `translate(-50%,-50%) scale(${1 - 0.21 * k})`; };
+    if (c.rm) fly(1); else await c.tween(0, 1, 2.4, fly, 'io');
     const me = slots[G.STARS.findIndex(s => s.id === 'road')];
-    me.classList.add('lit'); c.sfx('sfx_chime', 0.7); U.burst(c, root, POS[0][0] * W, POS[0][1] * H, 14);
+    big.remove(); me.classList.add('lit'); c.sfx('sfx_chime', 0.7); U.burst(c, root, POS[0][0] * W, POS[0][1] * H, 14);
     await c.wait(1.6);
-    await veil(0, 1, 0.6);
-    sky.remove(); pillar.remove();
-    await veil(1, 0, 0.6); dim.remove();
+    if (c.rm) pan(0); else await c.tween(1, 0, 2.0, pan, 'io');
+    wl.style.transform = ''; sky.remove(); pillar.remove();
     // (마) 광장으로 돌아와 가로등이 차례로 켜지고 완전한 색
     const col = V.colorImg; col.style.visibility = '';
     for (const l of V.lamps) { if (!l.el.classList.contains('on')) { l.el.classList.add('on'); c.sfx('sfx_chime', 0.35); await c.wait(0.3); } }
