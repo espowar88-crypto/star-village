@@ -4399,12 +4399,12 @@ G.s2 = (() => {
     if (id === 'daon2') {
       if (!done('s2school_fix')) { await play(['SD02_daon_02'], { partner: 'daon' }); return; }
       if (!done('s2school_ask')) return askKids(ctx);
-      await play([done('s2school_card') ? 'SD02_daon_08' : 'SD02_daon_06'], { partner: 'daon' }); return;
+      await play([done('s2school_card') ? 'SD02_daon_08' : 'SD02_daon_10'], { partner: 'daon' }); return;
     }
     if (id === 'v5') { if (!done('s2school_ask')) return askKids(ctx); await play(['SD02_v5_01'], { partner: 'v5' }); return; }
     if (id === 'board') {   // 칠판: 단장님의 리듬 카드
       if (done('s2school_card')) { await play(['SD02_daon_09'], { partner: 'daon' }); return; }
-      await play(['SD02_daon_07', 'SD02_daon_08', 'SD02_daon_09'], { partner: 'daon' }); if (!ok()) return;
+      await play(['SD02_daon_08', 'SD02_daon_07', 'SD02_daon_09'], { partner: 'daon' }); if (!ok()) return;
       await presentItem('rhythm'); if (!ok()) return;
       await colorIn(V); if (!ok()) return;
       complete('s2school_card'); return;
@@ -4456,7 +4456,7 @@ G.s2 = (() => {
     G.dialog.open('v5'); await ask('SD02_ply_01'); if (!ok()) return;
     await play(['SD02_v5_01'], { partner: 'v5', keep: true }); if (!ok()) return;
     G.dialog.open('daon'); await ask('SD02_ply_01'); if (!ok()) return;
-    await play(['SD02_daon_05', 'SD02_rumi_11', 'SD02_daon_06'], { partner: 'daon' }); if (!ok()) return;
+    await play(['SD02_daon_05', 'SD02_rumi_11', 'SD02_daon_06', 'SD02_daon_10'], { partner: 'daon' }); if (!ok()) return;
     complete('s2school_ask');
     await play(['SD02_rumi_12']);
   }
@@ -4542,7 +4542,7 @@ G.s2 = (() => {
       if (!done('s2hall_duri')) {
         await play(['SD03_duri_01', 'SD03_duri_02', 'SD03_duri_03', 'SD03_duri_04'], { ...o, keep: true }); if (!ok()) return;
         await ask('SD03_ply_01', 'icon_star'); if (!ok()) return;
-        await play(['SD03_duri_05', 'SD03_duri_06', 'SD03_rumi_06'], o); if (!ok()) return;
+        await play(['SD03_hero_01', 'SD03_duri_05', 'SD03_duri_06', 'SD03_rumi_06'], o); if (!ok()) return;
         complete('s2hall_duri'); return;
       }
       await play([!done('s2hall_seats') ? 'SD03_duri_06' : !done('s2hall_score') ? 'SD03_duri_07' : 'SD03_duri_09'], o); return;
@@ -4764,7 +4764,7 @@ G.s2 = (() => {
       if (done('s2plaza_concert')) { await play(['SD05_duri_02'], { partner: 'duri' }); return; }
       await play(['SD05_duri_01'], { partner: 'duri' }); if (!ok()) return;
       await play(['SD05_miru_01'], { partner: 'miru' }); if (!ok()) return;
-      await play(['SD05_daon_01'], { partner: 'daon' }); if (!ok()) return;
+      await play(['SD05_daon_01', 'SD05_daon_02'], { partner: 'daon' }); if (!ok()) return;
       await play(['SD05_duri_02'], { partner: 'duri' }); if (!ok()) return;
       await concert(V, S); if (!ok()) return;
       const s = G.STARS.find(q => q.id === 'sound'), st = G.el('div', 's2-star', G.$('#overlay'), G.starSvg(s));
