@@ -3882,7 +3882,7 @@ G.s2 = (() => {
   function obj(parent, name, x, y, w, cls = '') { const e = G.el('img', 's2-obj ' + cls, parent); e.src = ART(name); e.alt = ''; Object.assign(e.style, { left: x + 'px', top: y + 'px', width: w + 'px' }); return e; }
   function loudMark(parent, x, y, cls = '') { const e = G.el('div', 's2-loud ' + cls, parent, G.artImg('mark_loud') || G.icon('icon_sound')); Object.assign(e.style, { left: x + 'px', top: y + 'px', animationDelay: (-Math.random()).toFixed(2) + 's' }); return e; }
   function wave(parent, x, y, size, times = 1) {
-    const m = G.el('div', 's2-wave', parent, G.artImg('wind_wave') || G.icon('icon_sound')); Object.assign(m.style, { left: x + 'px', top: y + 'px', width: size + 'px', height: size + 'px' });
+    const m = G.el('div', 's2-wave', parent, G.artImg('sound_notes') || G.artImg('wind_wave') || G.icon('icon_sound')); Object.assign(m.style, { left: x + 'px', top: y + 'px', width: size + 'px', height: size + 'px' });
     const a = m.animate && m.animate([{ transform: 'translate(-50%,-50%) scale(.5)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 1, offset: .45 }, { transform: 'translate(-50%,-50%) scale(1.3)', opacity: 0 }], { duration: 1400, iterations: times });
     if (a) a.finished.then(() => m.remove()).catch(() => m.remove()); else setTimeout(() => m.remove(), 1400 * times);
     return m;
@@ -4966,12 +4966,13 @@ G.flow = (() => {
   };
 
   // ---- U1 타이틀 ----
+  // 10/2 새 제목 연출은 선생님 확인 중(제목연출 스레드, 시안 별이사라진마을/제목연출/). 그동안은 예전 화면에 새 이름만
   F.title = () => {
     F.reset(); G.screen = 'title'; G.st = null;
     const ov = G.$('#overlay');
     const t = G.el('div', 'title-screen', ov); t.style.backgroundImage = `url("${G.asset('assets/ui/title_bg.jpg')}")`;
     const m = G.el('div', 't-main', t);
-    G.el('h1', '', m, '별이 사라진 마을'); G.el('div', 't-sub', m, '길의 별');
+    G.el('h1', '', m, '별의 스펙트럼'); G.el('div', 't-sub', m, '길의 별');
     const lu = G.el('img', 't-lumi', t); lu.src = G.asset('assets/chars/lumi_big.png'); lu.alt = '';
     const b = G.btn('pill gold t-start', G.icon('icon_star') + ' 시작하기', t, () => F.start(), '시작하기');
     if (G.isTouch) G.el('div', 't-note', t, '소리가 안 들리면 옆의 무음 스위치를 확인해 주세요.');
