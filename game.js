@@ -4034,11 +4034,13 @@ G.s2 = (() => {
   const ORIG = {};
   let isExp = false;
   const expanded = () => !!G.st && done('s2_begin');
+  const MOBILE = /iP(hone|ad|od)|Android/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   function sync() {
     if (!ORIG.places) { ORIG.places = G.D.places; ORIG.mood = G.D.mood; }
     isExp = expanded();
     if (!isExp) { G.D.places = ORIG.places; G.D.mood = ORIG.mood; return; }
     const M = D2().map;
+    if (MOBILE && M.places.map.small) Object.assign(M.places.map, M.places.map.small);   // 휴대폰·태블릿은 작은 지도 그림 (큰 그림은 iOS에서 안 보임)
     G.D.places = M.places;
     G.D.mood = Object.assign({}, M.mood, { villagers: M.mood.villagers.filter(v => !v.s2 || (v.s2 === true ? done('s2_fog') : flagOn(v.s2))) });
   }
