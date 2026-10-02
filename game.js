@@ -361,27 +361,34 @@ G.save = (() => {
       back.classList.add('rv-back');
       if (N < 2) { prev.style.visibility = next.style.visibility = 'hidden'; }
       if (!N) ok.disabled = true;
-      // 카드 자리: 가운데에서 떨어진 칸 수(원처럼 이어짐)에 따라 옆으로, 뒤로, 살짝 돌려서
-      const layout = (instant) => {
-        const w = stage.clientWidth, cw = cards[0] ? cards[0].offsetWidth : 0;
-        const gapX = Math.min(cw * 0.78, w * 0.26), show = N <= 3 ? 1 : 2;
+      // 10/2 선생님: 빙글 돌기 대신 책장 넘기기. 가운데 한 장만 보이고, 넘기면 앞장이 왼쪽 끝을 축으로 사라락 넘어감
+      const layout = () => {
         cards.forEach((c, k) => {
-          let d = k - cur; if (N > 2) { d = ((d % N) + N) % N; if (d > N / 2) d -= N; }
-          const a = Math.abs(d), vis = a <= show + 0.5;
-          c.style.transition = instant ? 'none' : '';
-          c.style.transform = `translate(-50%,-50%) translateX(${d * gapX}px) translateZ(${-a * cw * 0.55}px) rotateY(${-d * 28}deg) scale(${a ? 0.82 : 1})`;
-          c.style.opacity = vis ? (a ? (a > 1 ? 0.35 : 0.7) : 1) : 0;
-          c.style.zIndex = 100 - a; c.style.pointerEvents = vis ? '' : 'none';
-          c.classList.toggle('front', a === 0); c.tabIndex = a === 0 ? 0 : -1;
+          const on = k === cur;
+          c.style.transition = 'none'; c.style.transform = 'translate(-50%,-50%)';
+          c.style.opacity = on ? 1 : 0; c.style.zIndex = on ? 2 : 1; c.style.pointerEvents = on ? '' : 'none';
+          c.classList.toggle('front', on); c.tabIndex = on ? 0 : -1;
         });
       };
-      const go = (k) => { if (!N || busy) return; const was = cur; cur = ((k % N) + N) % N; G.audio.sfx('sfx_page', 0.35); layout(); if (was !== cur) turn(cards[cur], k > was); };
-      // 10/1 선생님: 양피지를 넘기는 느낌 (앞장이 한쪽 끝을 축으로 넘어가며 사라짐)
-      const turn = (c, fwd) => {
-        if (G.reduced() || !c.animate) return;
-        const pg = G.el('div', 'rv-turn' + (fwd ? '' : ' back'), c);
-        const a = pg.animate([{ transform: 'rotateY(0deg)', opacity: 1 }, { transform: `rotateY(${fwd ? -100 : 100}deg)`, opacity: 0.2 }], { duration: 480, easing: 'ease-in' });
-        a.onfinish = () => pg.remove();
+      // 넘어가는 장: 앞면(카드 복사본) + 뒷면(양피지 뒤쪽)
+      const leaf = (c) => {
+        const w = c.offsetWidth, h = c.offsetHeight, f = G.el('div', 'rv-flip', ring);
+        f.style.width = w + 'px'; f.style.height = h + 'px'; f.style.marginLeft = -w / 2 + 'px'; f.style.marginTop = -h / 2 + 'px';
+        const face = c.cloneNode(true); face.classList.remove('front', 'picked'); face.classList.add('rv-face'); face.setAttribute('aria-hidden', 'true'); face.removeAttribute('style');
+        f.appendChild(face); G.el('div', 'rv-shade', face); G.el('div', 'rv-back', f);
+        return f;
+      };
+      const go = (k) => {
+        if (N < 2 || busy) return; const was = cur; cur = ((k % N) + N) % N; if (was === cur) return;
+        const fwd = k > was; G.audio.sfx('sfx_page', 0.7, 0.95 + Math.random() * 0.1);
+        if (G.reduced() || !ring.animate) { layout(); return; }
+        busy = true;
+        const f = leaf(cards[fwd ? was : cur]), T = 720, ease = 'cubic-bezier(.45,.05,.35,1)';   // 앞으로: 지금 장이 넘어감, 뒤로: 앞 장이 되돌아와 덮음
+        if (fwd) layout();
+        const fr = [{ transform: 'rotateY(0deg)' }, { transform: 'rotateY(-180deg)' }];
+        const a = f.animate(fwd ? fr : fr.reverse(), { duration: T, easing: ease });
+        f.querySelector('.rv-shade').animate([{ opacity: fwd ? 0 : 0.4 }, { opacity: fwd ? 0.4 : 0 }], { duration: T / 2, easing: ease, delay: fwd ? 0 : T / 2, fill: 'both' });
+        a.onfinish = () => { f.remove(); if (!fwd) layout(); busy = false; };
       };
       const choose = async () => {
         if (!N || busy) return; busy = true;
