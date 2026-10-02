@@ -3801,8 +3801,9 @@ G.s2 = (() => {
 .s2-obj { position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 19; }
 .s2-obj.pop { animation: s2pop .6s ease-out; }
 @keyframes s2pop { 0% { scale: .3; opacity: 0; } 70% { scale: 1.15; opacity: 1; } 100% { scale: 1; } }
-.s2-loud { position: absolute; width: 170px; height: 170px; transform: translate(-50%, -50%); pointer-events: none; z-index: 24; animation: s2buzz 1.1s ease-in-out infinite; filter: drop-shadow(0 0 10px rgba(255, 120, 90, .7)); }
-.s2-loud img { width: 100%; height: 100%; object-fit: contain; }
+.s2-loud { position: absolute; width: 170px; height: 170px; transform: translate(-50%, -50%); pointer-events: none; z-index: 24; filter: drop-shadow(0 0 6px rgba(255, 120, 90, .55)); }
+.s2-note { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); opacity: 0; }
+.s2-note img, .s2-note svg { width: 100%; height: 100%; object-fit: contain; display: block; }
 @keyframes s2buzz { 0%, 100% { rotate: -4deg; scale: .92; } 25% { rotate: 5deg; scale: 1.08; } 50% { rotate: -3deg; scale: 1; } 75% { rotate: 4deg; scale: 1.1; } }
 .s2-loud.map { width: 230px; height: 230px; z-index: 2996; }
 .s2-loud.gone { animation: s2out .6s ease-in forwards; }
@@ -3884,11 +3885,30 @@ G.s2 = (() => {
   // ================= 작은 도구 =================
   const ART = (n) => G.art(n) || '';
   function obj(parent, name, x, y, w, cls = '') { const e = G.el('img', 's2-obj ' + cls, parent); e.src = ART(name); e.alt = ''; Object.assign(e.style, { left: x + 'px', top: y + 'px', width: w + 'px' }); return e; }
-  function loudMark(parent, x, y, cls = '') { const e = G.el('div', 's2-loud ' + cls, parent, G.artImg('mark_loud') || G.icon('icon_sound')); Object.assign(e.style, { left: x + 'px', top: y + 'px', animationDelay: (-Math.random()).toFixed(2) + 's' }); return e; }
+  // 음표 그림 (10/2 선생님): 조용한 곳은 하늘색 음표가 천천히 솟아오르고, 시끄러운 곳은 산호색 음표가 물 튀듯 사방으로 튐
+  const note = (box, kind, h) => { const e = G.el('div', 's2-note', box, G.artImg('note_' + kind + '_' + (1 + (Math.random() * 2 | 0))) || G.icon('icon_sound'));
+    e.style.width = (h * .85) + 'px'; e.style.height = h + 'px'; return e; };
+  const fly = (e, frames, ms) => { const a = e.animate && e.animate(frames, { duration: ms, easing: 'cubic-bezier(.2,.7,.4,1)' }); if (a) a.finished.then(() => e.remove()).catch(() => e.remove()); else setTimeout(() => e.remove(), ms); };
+  function splash(box, size, n) {
+    for (let i = 0; i < n; i++) { const h = size * (.26 + Math.random() * .1), e = note(box, 'loud', h);
+      const ang = (i / n + Math.random() * .25) * Math.PI * 2, r = size * (.32 + Math.random() * .18), dx = Math.cos(ang) * r, dy = Math.sin(ang) * r * .8, rot = (Math.random() - .5) * 70;
+      fly(e, [{ transform: 'translate(-50%,-50%) scale(.3)', opacity: 0 },
+        { transform: `translate(-50%,-50%) translate(${dx * .7}px,${dy * .7 - size * .14}px) rotate(${rot * .6}deg) scale(1.05)`, opacity: 1, offset: .35 },
+        { transform: `translate(-50%,-50%) translate(${dx}px,${dy + size * .1}px) rotate(${rot}deg) scale(.75)`, opacity: 0 }], 950 + Math.random() * 250); }
+  }
+  function loudMark(parent, x, y, cls = '') { const e = G.el('div', 's2-loud ' + cls, parent, ''); Object.assign(e.style, { left: x + 'px', top: y + 'px' });
+    const size = cls.includes('map') ? 230 : 170;
+    if (G.reduced && G.reduced()) { for (const [dx, rot] of [[-.18, -14], [.18, 12]]) { const n = note(e, 'loud', size * .34); n.style.opacity = 1; n.style.transform = `translate(-50%,-50%) translate(${dx * size}px,0) rotate(${rot}deg)`; } return e; }
+    const tick = () => { if (!e.isConnected || e.classList.contains('gone')) return; if (!G.paused) splash(e, size, G.settings && G.settings.light ? 2 : 4); setTimeout(tick, 600 + Math.random() * 250); };
+    setTimeout(tick, Math.random() * 400); return e; }
   function wave(parent, x, y, size, times = 1) {
-    const m = G.el('div', 's2-wave', parent, G.artImg('sound_notes') || G.artImg('wind_wave') || G.icon('icon_sound')); Object.assign(m.style, { left: x + 'px', top: y + 'px', width: size + 'px', height: size + 'px' });
-    const a = m.animate && m.animate([{ transform: 'translate(-50%,-50%) scale(.5)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 1, offset: .45 }, { transform: 'translate(-50%,-50%) scale(1.3)', opacity: 0 }], { duration: 1400, iterations: times });
-    if (a) a.finished.then(() => m.remove()).catch(() => m.remove()); else setTimeout(() => m.remove(), 1400 * times);
+    const m = G.el('div', 's2-wave', parent, ''); Object.assign(m.style, { left: x + 'px', top: y + 'px', width: size + 'px', height: size + 'px' });
+    const n = 3 * times, gap = 1400 / 3;
+    for (let i = 0; i < n; i++) setTimeout(() => { if (!m.isConnected) return; const e = note(m, 'calm', size * .32), sx = (Math.random() - .5) * size * .4, sw = (Math.random() < .5 ? -1 : 1) * size * .08;
+      fly(e, [{ transform: `translate(-50%,-50%) translate(${sx}px,${size * .2}px) scale(.6)`, opacity: 0 },
+        { transform: `translate(-50%,-50%) translate(${sx + sw}px,${-size * .1}px) scale(1)`, opacity: 1, offset: .4 },
+        { transform: `translate(-50%,-50%) translate(${sx - sw * .5}px,${-size * .5}px) scale(.9)`, opacity: 0 }], 1600); }, i * gap);
+    setTimeout(() => m.remove(), n * gap + 1700);
     return m;
   }
   const spark = (el, n = 10) => { if (!el || !el.getBoundingClientRect) return; const r = el.getBoundingClientRect(), ov = G.$('#overlay'); if (G.settings && G.settings.light) n = 4;
