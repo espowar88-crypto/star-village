@@ -5114,6 +5114,16 @@ G.titleBook = (ov, onStart) => {
   };
 };
 
+/* ---- bgfill.js ---- */
+// bgfill.js — 10/2 선생님: 배경이 단색으로 비어 있던 화면에 어울리는 그림을 흐릿하게 깖
+// 그림은 assets/ui/bg/<이름>.jpg (미리 흐리게 만든 작은 그림). 여기서는 CSS 변수 --bg-<이름>만 정하고, 어디에 깔지는 style.css 맨 끝
+'use strict';
+(() => {
+  const r = document.documentElement.style;
+  for (const k of ['mode', 'slots', 'library', 'plaza', 'market', 'forest', 's2hall', 's2rest'])
+    r.setProperty('--bg-' + k, `url("${G.asset('assets/ui/bg/' + k + '.jpg')}")`);
+})();
+
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
