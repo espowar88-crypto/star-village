@@ -54,6 +54,11 @@ G.svgStar = (fill, stroke, sw = 6) => `<svg viewBox="0 0 100 100"><path d="M50 6
 G.layout = () => {
   const vv = window.visualViewport;
   let W = Math.round(vv ? vv.width : window.innerWidth), H = Math.round(vv ? vv.height : window.innerHeight);
+  // 10/3 선생님(아이폰 17): 홈 화면 앱에서 아래 홈 막대 높이만큼 화면을 덜 알려 줘 남색 띠가 남음 → 아이폰 홈 화면 앱은 기기 화면 크기를 그대로 씀
+  if (navigator.standalone && /iPhone/.test(navigator.userAgent)) {
+    const a = Math.min(screen.width, screen.height), c = Math.max(screen.width, screen.height);
+    [W, H] = window.innerHeight > window.innerWidth ? [a, c] : [c, a];
+  }
   // 10/2 선생님: 휴대폰을 세로로 들면(아이폰은 가로 고정이 안 됨) 게임 화면을 90도 돌려 가로처럼 보여 줌
   const rot = G.isTouch && H > W * 1.05; G.rot = rot ? W : 0;
   if (rot) [W, H] = [H, W];
