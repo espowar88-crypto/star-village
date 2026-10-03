@@ -4851,6 +4851,7 @@ G.s2 = (() => {
         const u = await G.p4.useItem('piece_sound', H.btn, { say, hint: 'SD05_rumi_03' }); if (!u || !ok()) return;
       }
       await starRise(V, H); if (!ok()) return;
+      await play(['SD05_chief_02', 'SD05_chief_03'], { partner: 'chief' }); if (!ok()) return;   // 10/3 선생님: 길의 별처럼 촌장님 정리 멘트
       if (!cleared('s2plaza')) G.st.cleared.push('s2plaza');   // 별을 올리면 바로 엔딩 (C7 없이)
       complete('s2plaza_star'); if (!ok()) return;
       await ending();
@@ -4880,6 +4881,7 @@ G.s2 = (() => {
     const { W, H: SH } = G.stage, wl = V.el.parentNode, S = V.S, ped = S.hotspots.find(h => h.id === 'pedestal').rect;
     const layer = G.el('div', 'layer', ov); layer.style.pointerEvents = 'none';
     G.hud.hide(true);
+    V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
     // (가) 인물들이 받침대 둘레로 모임
     const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1], x1: to[0], y1: to[1] }; }).filter(Boolean);
     const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
