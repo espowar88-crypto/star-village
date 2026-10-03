@@ -53,8 +53,14 @@ G.svgStar = (fill, stroke, sw = 6) => `<svg viewBox="0 0 100 100"><path d="M50 6
 // ---------- 화면 크기: 기준 1920x1080, 비율이 달라도 검은 띠 없이 채움 ----------
 G.layout = () => {
   const vv = window.visualViewport;
-  const W = Math.round(vv ? vv.width : window.innerWidth), H = Math.round(vv ? vv.height : window.innerHeight);
+  let W = Math.round(vv ? vv.width : window.innerWidth), H = Math.round(vv ? vv.height : window.innerHeight);
+  // 10/2 선생님: 휴대폰을 세로로 들면(아이폰은 가로 고정이 안 됨) 게임 화면을 90도 돌려 가로처럼 보여 줌
+  const rot = G.isTouch && H > W * 1.05; G.rot = rot ? W : 0;
+  if (rot) [W, H] = [H, W];
+  document.documentElement.classList.toggle('rot90', rot);
   const game = G.$('#game'); game.style.width = W + 'px'; game.style.height = H + 'px';
+  game.style.transform = rot ? `translateX(${H}px) rotate(90deg)` : '';
+  document.documentElement.style.setProperty('--vw', W / 100 + 'px'); document.documentElement.style.setProperty('--vh', H / 100 + 'px');
   const ws = Math.max(H / 1080, W / 2400);                 // 세계(지도·장면) 배율: 높이 1080을 채움
   // 글자·버튼 배율: 전자칠판은 세계와 같게, 휴대폰은 손가락 크기(약 11mm)를 위해 더 크게, 그러나 화면을 넘지 않게
   let u = Math.max(H / 1080, 0.6); u = Math.min(u, W / 1500, H / 640);
@@ -63,12 +69,27 @@ G.layout = () => {
   G.stage = { W, H, ws, u, bu, portrait: H > W * 1.05 };
   document.documentElement.style.setProperty('--u', u + 'px');
   document.documentElement.style.setProperty('--bu', bu + 'px');
-  G.$('#rotate').classList.toggle('on', G.stage.portrait && G.isTouch);
-  if (G.stage.portrait && G.isTouch && G.audio && G.audio.ready && !G._rotSaid) { G._rotSaid = 1; G.audio.voice('S92_rotate'); }
+  G.$('#rotate').classList.toggle('on', G.stage.portrait && G.isTouch && !rot);
+  if (rot && G.audio && G.audio.ready && !G._rotSaid) { G._rotSaid = 1; G.audio.voice('S92_rotate'); }
   if (G.onResize) G.onResize();
   for (const f of G.resizers) { try { f(); } catch (e) { console.error(e); } }
 };
 G.resizers = new Set();
+// 돌린 동안에는 누른 자리·크기 값을 게임 기준으로 바꿔 줌 → 끌기·퍼즐 코드는 그대로 둠 (화면 (sx, sy) = 게임 (x, y): x = sy, y = 세로 폭 - sx)
+G.rot = 0;
+(() => {
+  const gd = (o, k) => o && Object.getOwnPropertyDescriptor(o, k);
+  for (const [o, X, Y] of [[MouseEvent.prototype, 'clientX', 'clientY'], [MouseEvent.prototype, 'pageX', 'pageY'], [window.Touch && Touch.prototype, 'clientX', 'clientY'], [window.Touch && Touch.prototype, 'pageX', 'pageY']]) {
+    const dx = gd(o, X), dy = gd(o, Y); if (!dx || !dy || !dx.get || !dy.get) continue;
+    Object.defineProperty(o, X, { configurable: true, enumerable: true, get() { return G.rot ? dy.get.call(this) : dx.get.call(this); } });
+    Object.defineProperty(o, Y, { configurable: true, enumerable: true, get() { return G.rot ? G.rot - dx.get.call(this) : dy.get.call(this); } });
+  }
+  const gb = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function () { const r = gb.call(this); return G.rot ? new DOMRect(r.top, G.rot - r.right, r.height, r.width) : r; };
+  const ef = Document.prototype.elementFromPoint, efs = Document.prototype.elementsFromPoint;
+  Document.prototype.elementFromPoint = function (x, y) { return G.rot ? ef.call(this, G.rot - y, x) : ef.call(this, x, y); };
+  if (efs) Document.prototype.elementsFromPoint = function (x, y) { return G.rot ? efs.call(this, G.rot - y, x) : efs.call(this, x, y); };
+})();
 G.isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
 // ---------- 게임 시계 (교사용 설정이 열리면 멈춤) ----------
