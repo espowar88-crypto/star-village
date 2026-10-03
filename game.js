@@ -4201,6 +4201,20 @@ G.s2 = (() => {
     if (isExp && G.D.places === D2().map.places) decorate(V);
     return V;
   };
+  // 색 번짐 (10/3 프레임 끊김): 예전에는 매 프레임 큰 지도 그림의 마스크를 다시 그려 휴대폰에서 끊김.
+  // 이제 컬러 지도 한 장을 그 구역 마스크로 한 번만 덮고 투명도만 바꿈(GPU), 끝나면 마스크를 한 번 고침
+  async function bloom(V, ids, dur) {
+    const zs = G.D.mood.zones.filter(z => ids.includes(z.id)), col = V.colorImg;
+    const ov = G.el('img', 'bg', V.imgs); ov.src = col.src; ov.width = V.W; ov.height = V.H; ov.alt = '';
+    const m = zs.map(z => `radial-gradient(ellipse ${z.r[0]}px ${z.r[1]}px at ${z.center[0]}px ${z.center[1]}px, #000 0%, #000 42%, rgba(0,0,0,.55) 72%, transparent 100%)`).join(',');
+    Object.assign(ov.style, { maskImage: m, webkitMaskImage: m, opacity: 0, willChange: 'opacity', transition: `opacity ${dur}s ease-out` });
+    if (ov.decode) await ov.decode().catch(() => { });
+    ov.getBoundingClientRect(); ov.style.opacity = 1;
+    await G.wait(dur);
+    for (const id of ids) V.s2.b[id] = { a: 1, g: 1 };
+    if (V.el.isConnected) V.applyMask();
+    ov.remove();
+  }
   function decorate(V) {
     const M = D2().map.places.map;
     V.s2 = { b: {}, loud: {}, fog: null };
@@ -4216,8 +4230,8 @@ G.s2 = (() => {
     // 처음 색이 돌아오는 구역: 작은 자국에서 크게 번짐 (C7과 함께)
     const fresh = G.D.mood.zones.filter(z => z.s2 && z.s2 !== 's2_end' && flagOn(z.s2) && !(G.st.s2bloom || []).includes(z.id));
     if (fresh.length) {
-      for (const z of fresh) V.s2.b[z.id] = { a: 0, g: 0.25 };
-      G.wait(0.9).then(() => G.tween(0, 1, G.reduced() ? 0.4 : 2.6, k => { if (!V.el.isConnected) return; for (const z of fresh) V.s2.b[z.id] = { a: k, g: G.reduced() ? 1 : 0.25 + 0.75 * k }; V.applyMask(); }, 'out')).then(() => {
+      for (const z of fresh) V.s2.b[z.id] = { a: 0, g: 1 };
+      G.wait(0.9).then(() => V.el.isConnected && bloom(V, fresh.map(z => z.id), G.reduced() ? 0.4 : 2.6)).then(() => {
         for (const z of fresh) { delete V.s2.b[z.id]; (G.st.s2bloom = G.st.s2bloom || []).push(z.id); }
         G.save.write(); if (V.el.isConnected) V.applyMask();
       });
@@ -4509,7 +4523,7 @@ G.s2 = (() => {
     G.dialog.open('v5'); await ask('SD02_ply_01'); if (!ok()) return;
     await play(['SD02_v5_01'], { partner: 'v5', keep: true }); if (!ok()) return;
     G.dialog.open('daon'); await ask('SD02_ply_01'); if (!ok()) return;
-    await play(['SD02_daon_05', 'SD02_rumi_11', 'SD02_daon_06', 'SD02_daon_10'], { partner: 'daon' }); if (!ok()) return;
+    await play(['SD02_daon_05', 'SD02_daon_06', 'SD02_daon_10', 'SD02_rumi_11'], { partner: 'daon' }); if (!ok()) return;
     complete('s2school_ask');
     await play(['SD02_rumi_12']);
   }
@@ -4859,15 +4873,26 @@ G.s2 = (() => {
     G.audio.music(S.music);
   }
   // 별이 받침대에서 하늘로 + 불꽃놀이
-  // 10/3 선생님: 길의 별(C11)처럼 빛 기둥 → 기둥 꼭대기에서 별이 나타남 → 카메라가 밤하늘로 따라 올라가 제자리에 → 광장으로 돌아옴
+  // 10/3 선생님: 길의 별(C11)과 똑같이. 이 별 이야기의 인물들이 받침대 둘레로 모여 함께 올림 → 빛을 잃은 별이 받침대로 → 빛 기둥 → 기둥 꼭대기에서 별 → 카메라가 밤하늘로 → 광장으로 돌아와 가로등·색·불꽃놀이·「소리의 별」
+  const GATHER = { chief: [900, 520], duri: [1380, 430], daon: [1310, 690], miru: [960, 720] };   // 받침대(1098,502,203,215) 둘레 자리 (그림 왼쪽 위)
   async function starRise(V, H) {
-    const s = G.STARS.find(q => q.id === 'sound'), r = H.btn.getBoundingClientRect(), ov = G.$('#overlay'), u = G.stage.u, rm = G.reduced();
-    const { W, H: SH } = G.stage, wl = V.el.parentNode, bx = r.left + r.width / 2, by = r.top + r.height * 0.35;
+    const s = G.STARS.find(q => q.id === 'sound'), ov = G.$('#overlay'), u = G.stage.u, rm = G.reduced();
+    const { W, H: SH } = G.stage, wl = V.el.parentNode, S = V.S, ped = S.hotspots.find(h => h.id === 'pedestal').rect;
     const layer = G.el('div', 'layer', ov); layer.style.pointerEvents = 'none';
+    G.hud.hide(true);
+    // (가) 인물들이 받침대 둘레로 모임
+    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1], x1: to[0], y1: to[1] }; }).filter(Boolean);
+    const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
+    if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
+    const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
+    // (나) 빛을 잃은 별이 주인공에게서 받침대로
+    const piece = G.el('div', 'c11-item', layer, G.icon('item_piece_sound')); Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
+    await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
+    G.audio.sfx('sfx_star', 0.9);
     const pillar = G.el('div', 'c11-pillar', layer); Object.assign(pillar.style, { left: bx + 'px', top: by + 'px' });
-    G.audio.sfx('sfx_star', 0.8);
-    await G.tween(0, 1, rm ? 0.3 : 1.0, k => { pillar.style.transform = `translate(-50%,-100%) scaleY(${k})`; pillar.style.opacity = k; }, 'out');
-    G.audio.sfx('sfx_sparkle', 0.8); await G.wait(rm ? 0.1 : 0.5);
+    await G.tween(0, 1, rm ? 0.3 : 1.0, k => { pillar.style.transform = `translate(-50%,-100%) scaleY(${k})`; pillar.style.opacity = k; piece.style.opacity = 1 - k; }, 'out');
+    piece.remove(); G.audio.sfx('sfx_sparkle', 0.8); await G.wait(rm ? 0.1 : 0.5);
+    // (다) 별이 하늘로, 카메라가 따라 올라가 밤하늘 제자리에
     G.audio.sfx('sfx_starfall', 0.6);
     const POS = [[.5, .42], [.3, .3], [.7, .3], [.2, .55], [.8, .55], [.38, .66], [.62, .66], [.5, .2], [.5, .8]], si = G.STARS.indexOf(s), E = Math.round(SH * 0.5);
     const sky = G.el('div', 'c11-sky', layer); sky.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
@@ -4885,11 +4910,17 @@ G.s2 = (() => {
     await G.wait(1.6);
     if (rm) pan(0); else await G.tween(1, 0, 2.0, pan, 'io');
     wl.style.transform = ''; sky.remove(); pillar.remove();
-    G.audio.sfx('sfx_sparkle', 0.8);
-    await G.fireworkShow(layer, 3.5, 1);
-    await G.wait(0.6);
+    // (마) 가로등이 차례로 켜지고 광장이 완전한 색, 불꽃놀이, 모두 기뻐함
+    for (const l of V.lamps) if (!l.el.classList.contains('on')) { l.el.classList.add('on'); G.audio.sfx('sfx_chime', 0.35); await G.wait(0.3); }
+    const col = V.colorImg; col.style.visibility = ''; col.style.opacity = 1;
+    G.fireworkShow(layer, 5);
+    for (const k of ['chief', 'duri', 'daon', 'miru', 'hero']) { const sp = V.spr[k]; if (sp && !rm && sp.img.animate && sp.img.style.display !== 'none') sp.img.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-16px)' }, { transform: 'translateY(0)' }], { duration: 500, iterations: 2 }); }
+    // (바) 「소리의 별」
+    const t = G.el('div', 'cut-title c11-title', layer, s.name || '소리의 별'); t.style.opacity = 0;
+    await G.tween(0, 1, 0.6, k => { t.style.opacity = k; t.style.transform = `translate(-50%,-50%) scale(${0.8 + 0.2 * k})`; }, 'out');
+    await G.wait(2.4);
     if (layer.animate) await layer.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }).finished.catch(() => { });
-    layer.remove();
+    layer.remove(); G.hud.hide(false);
   }
 
   // ================= 소리의 별-6: 엔딩 =================
@@ -4912,11 +4943,10 @@ G.s2 = (() => {
       G.audio.music('music_night');
       G.$('#fade').classList.remove('on');
       // 별이 하늘로
-      const s = G.STARS.find(q => q.id === 'sound'), st = G.el('div', 's2-star', MV.fx, G.starSvg(s)); Object.assign(st.style, { left: '4980px', top: '2000px', width: '160px', height: '160px', zIndex: 3010 });
-      G.tween(0, 1, rm ? 0.3 : 3.0, k => { st.style.top = (2000 - 700 * k) + 'px'; }, 'io');
+      // 10/3 선생님: 별은 광장 받침대에서 이미 올렸으니 지도에서는 다시 올리지 않음
       await play(['SD06_nar_01']); if (!ok()) return;
       // 편안한 소리가 돌아옴: 소리 구역 전체에 색
-      if (MV.s2) { const z = 's2all'; MV.s2.b[z] = { a: 0, g: 0.3 }; G.audio.sfx('sfx_sparkle', 0.7); G.tween(0, 1, rm ? 0.3 : 2.6, k => { MV.s2.b[z] = { a: k, g: 0.3 + 0.7 * k }; MV.applyMask(); }, 'out'); }
+      if (MV.s2) { G.audio.sfx('sfx_sparkle', 0.7); bloom(MV, ['s2all'], rm ? 0.3 : 2.6); }
       MV.setLamps(5, true);
       await play(['SD06_nar_02']); if (!ok()) return;
       const rest = D2().restMarks.map(at => { const e = G.el('div', 's2-restmark', MV.fx, G.artImg('mark_rest') || ''); Object.assign(e.style, { left: at[0] + 'px', top: at[1] + 'px' }); e.animate && e.animate([{ scale: .2, opacity: 0 }, { scale: 1.2, opacity: 1 }, { scale: 1 }], { duration: 700, easing: 'ease-out' }); return e; });
@@ -4926,7 +4956,7 @@ G.s2 = (() => {
       await play(['SD06_duri_01'], { partner: 'duri' }); if (!ok()) return;
       await play(['SD06_chief_01'], { partner: 'chief' }); if (!ok()) return;
       await play(['SD06_rumi_01']); if (!ok()) return;
-      rest.forEach(e => e.remove()); st.remove();
+      rest.forEach(e => e.remove());
       // 밤하늘: 되찾은 별 둘, 다음 별(말의 별)이 깜박임
       await sky(); if (!ok()) return;
       // 되찾은 별 2/8 저장
