@@ -58,6 +58,8 @@ G.layout = () => {
   if (navigator.standalone && /iPhone/.test(navigator.userAgent)) {
     const a = Math.min(screen.width, screen.height), c = Math.max(screen.width, screen.height);
     [W, H] = window.innerHeight > window.innerWidth ? [a, c] : [c, a];
+    // 10/3 선생님: 처음 화면에서만 아래 띠가 남음 → 켜자마자는 문서 높이가 홈 막대만큼 짧게 잡혀 그 아래가 그려지지 않음. 문서도 기기 화면 크기로 맞춤
+    for (const e of [document.documentElement, document.body]) { e.style.width = W + 'px'; e.style.height = H + 'px'; }
   }
   // 10/2 선생님: 휴대폰을 세로로 들면(아이폰은 가로 고정이 안 됨) 게임 화면을 90도 돌려 가로처럼 보여 줌
   const rot = G.isTouch && H > W * 1.05; G.rot = rot ? W : 0;
@@ -5440,6 +5442,7 @@ G.flow = (() => {
   window.addEventListener('resize', G.layout);
   if (window.visualViewport) visualViewport.addEventListener('resize', G.layout);
   window.addEventListener('orientationchange', () => setTimeout(G.layout, 300));
+  for (const t of [100, 500, 1500]) setTimeout(G.layout, t);   // 10/3: 아이폰 홈 화면 앱은 켠 직후 화면 크기가 늦게 맞춰짐 → 몇 번 더 맞춤
   // 다른 탭으로 가면 소리를 멈춤
   document.addEventListener('visibilitychange', () => { if (document.hidden) G.audio.pause(); else if (!G.paused) G.audio.resume(); });
   const ld = G.$('#loading'); if (ld) ld.remove();
