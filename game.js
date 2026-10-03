@@ -4859,13 +4859,32 @@ G.s2 = (() => {
     G.audio.music(S.music);
   }
   // 별이 받침대에서 하늘로 + 불꽃놀이
+  // 10/3 선생님: 길의 별(C11)처럼 빛 기둥 → 기둥 꼭대기에서 별이 나타남 → 카메라가 밤하늘로 따라 올라가 제자리에 → 광장으로 돌아옴
   async function starRise(V, H) {
-    const s = G.STARS.find(q => q.id === 'sound'), r = H.btn.getBoundingClientRect(), ov = G.$('#overlay'), u = G.stage.u;
+    const s = G.STARS.find(q => q.id === 'sound'), r = H.btn.getBoundingClientRect(), ov = G.$('#overlay'), u = G.stage.u, rm = G.reduced();
+    const { W, H: SH } = G.stage, wl = V.el.parentNode, bx = r.left + r.width / 2, by = r.top + r.height * 0.35;
     const layer = G.el('div', 'layer', ov); layer.style.pointerEvents = 'none';
-    const st = G.el('div', 's2-star', layer, G.starSvg(s)); Object.assign(st.style, { left: (r.left + r.width / 2) + 'px', top: (r.top + r.height * 0.3) + 'px', width: u * 150 + 'px', height: u * 150 + 'px', position: 'absolute' });
+    const pillar = G.el('div', 'c11-pillar', layer); Object.assign(pillar.style, { left: bx + 'px', top: by + 'px' });
     G.audio.sfx('sfx_star', 0.8);
-    const y0 = r.top + r.height * 0.3, y1 = G.stage.H * 0.16;
-    await G.tween(0, 1, G.reduced() ? 0.4 : 2.2, k => { st.style.top = (y0 + (y1 - y0) * k) + 'px'; st.style.width = st.style.height = (u * (150 + 90 * k)) + 'px'; }, 'io');
+    await G.tween(0, 1, rm ? 0.3 : 1.0, k => { pillar.style.transform = `translate(-50%,-100%) scaleY(${k})`; pillar.style.opacity = k; }, 'out');
+    G.audio.sfx('sfx_sparkle', 0.8); await G.wait(rm ? 0.1 : 0.5);
+    G.audio.sfx('sfx_starfall', 0.6);
+    const POS = [[.5, .42], [.3, .3], [.7, .3], [.2, .55], [.8, .55], [.38, .66], [.62, .66], [.5, .2], [.5, .8]], si = G.STARS.indexOf(s), E = Math.round(SH * 0.5);
+    const sky = G.el('div', 'c11-sky', layer); sky.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
+    Object.assign(sky.style, { bottom: 'auto', height: (SH + E) + 'px', opacity: 0 });
+    sky.style.maskImage = sky.style.webkitMaskImage = `linear-gradient(to bottom, #000 0, #000 ${SH}px, transparent ${SH + E}px)`;
+    const slots = G.STARS.map((q, i) => { const e = G.el('div', 'c11-slot' + (i < si ? ' lit' : '') + (i === si ? ' me' : ''), sky, G.starSvg(q, i <= si)); Object.assign(e.style, { left: POS[i % POS.length][0] * 100 + '%', top: POS[i % POS.length][1] * SH + 'px' }); return e; });
+    const big = G.el('div', 'c11-star', layer, G.starSvg(s)); big.style.zIndex = 5;
+    const sx0 = bx, sy0 = by - 120 * u, sx1 = POS[si][0] * W, sy1 = POS[si][1] * SH;
+    Object.assign(big.style, { left: sx0 + 'px', top: sy0 + 'px', opacity: 0 });
+    await G.tween(0, 1, 0.5, k => { big.style.opacity = k; big.style.transform = `translate(-50%,-50%) scale(${0.5 + 0.5 * k})`; }, 'out');
+    const pan = (k) => { const d = SH * k; wl.style.transform = `translateY(${d}px)`; sky.style.transform = `translateY(${d - SH}px)`; sky.style.opacity = Math.min(1, k * 2.5); pillar.style.translate = `0 ${d}px`; };
+    const fly = (k) => { pan(k); big.style.left = (sx0 + (sx1 - sx0) * k) + 'px'; big.style.top = (sy0 + (sy1 - sy0) * k - Math.sin(k * Math.PI) * 60 * u) + 'px'; big.style.transform = `translate(-50%,-50%) scale(${1 - 0.21 * k})`; };
+    if (rm) fly(1); else await G.tween(0, 1, 2.4, fly, 'io');
+    big.remove(); slots[si].classList.add('lit'); G.audio.sfx('sfx_chime', 0.7);
+    await G.wait(1.6);
+    if (rm) pan(0); else await G.tween(1, 0, 2.0, pan, 'io');
+    wl.style.transform = ''; sky.remove(); pillar.remove();
     G.audio.sfx('sfx_sparkle', 0.8);
     await G.fireworkShow(layer, 3.5, 1);
     await G.wait(0.6);
