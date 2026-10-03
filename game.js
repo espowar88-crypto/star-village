@@ -874,10 +874,11 @@ G.dialog = (() => {
   // 동작 그림 바꾸기. 그림이 보는 쪽(face)과 선 자리(side)를 맞춰 뒤집음: 왼쪽 자리는 오른쪽을, 오른쪽 자리는 왼쪽을 보게
   function setPose(img, q) {
     if (!img) return;
-    const P = G.D.portraits[img.dataset.who], src = (P.poses && P.poses[q]) || P.img;
+    const P = G.D.portraits[img.dataset.who], face = (P.faces || {})[q] || P.face || 'L', M = (P.mirror || {})[q];
+    let src = (P.poses && P.poses[q]) || P.img, flip = face === img.dataset.side;
+    if (flip && M) { src = M; flip = false; }   // 10/3: 글자가 든 그림(루미 물음표)은 CSS로 뒤집지 않고 미리 뒤집어 둔 그림을 씀
     if (img.dataset.src !== src) { img.dataset.src = src; img.src = G.asset(src); }
-    const face = (P.faces || {})[q] || P.face || 'L';
-    img.classList.toggle('flip', face === img.dataset.side);
+    img.classList.toggle('flip', flip);
   }
   function poseFor(key, id) { return ((G.D.poses || {})[id] || {})[key] || '01'; }
   function tapThrough(x, y) {
