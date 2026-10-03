@@ -289,7 +289,7 @@ G.audio = (() => {
 })();
 
 /* ---- save.js ---- */
-// save.js — 저장 칸 (U2, GDD 6-4·11-6). 자동 저장만 있음. 칸 지우기·늘리기는 교사용 설정에서만
+// save.js — 저장 칸 (U2, GDD 6-4·11-6). 자동 저장만 있음. 칸 지우기는 교사용 설정과 [이어 하기] 번호 고르기(10/3, 한 번 더 물음)에서
 'use strict';
 G.save = (() => {
   const S = {};
@@ -317,12 +317,16 @@ G.save = (() => {
   // 새로 하기: 빈 번호만, 이어 하기: 저장된 번호만. 가운데 카드를 누르거나 [이 번호로]를 누르면 고름. 양옆 화살표·밀기·방향키로 돌림
   // 고른 칸 번호를 돌려줌 { slot, data } (새로 하기는 data 없음)
   S.screen = () => new Promise(async (done) => {
+    let mode = null;
     for (;;) {
-      const mode = await chooseMode();
+      if (!mode) mode = await chooseMode();
       const list = [];
       for (let i = 1; i <= S.count(); i++) { const d = S.load(i); if (mode === 'new' ? !d : !!d) list.push({ slot: i, data: d }); }
+      if (mode === 'cont' && !list.length) { mode = null; continue; }   // 다 지웠으면 처음 고르기로
       const r = await bookPick(mode, list);
+      if (r && r.deleted) continue;   // 지운 뒤에는 남은 번호로 다시 보여 줌
       if (r) { done(r); return; }
+      mode = null;
     }
   });
   function screenBase(cls) {
@@ -393,18 +397,30 @@ G.save = (() => {
       const next = G.btn('pill round rv-arrow', G.icon('icon_next'), nav, () => go(1), '다음 장');
       back.classList.add('rv-back');
       if (!N) ok.disabled = true;
+      // 10/3 선생님: 저장된 번호를 지우는 버튼. 누르면 정말 지울지 한 번 더 묻고, [지우기]를 눌러야 지워짐
+      let asking = false;
+      if (mode === 'cont' && N) G.btn('pill warn rv-del', '지우기', nav, () => {
+        if (busy || asking) return; asking = true;
+        const it = list[sel], d = it.data || {};
+        const m = G.el('div', 'modal', scr), sh = G.el('div', 'sheet del-ask', m);
+        G.el('h3', '', sh, `${it.slot}번${d.name ? ' ' + esc(d.name) : ''} 저장을 정말 지울까요?`);
+        G.el('p', '', sh, '지우면 되돌릴 수 없어요.');
+        const br = G.el('div', 'btn-row', sh);
+        G.btn('pill warn', '지우기', br, () => { S.del(it.slot); G.audio.sfx('sfx_tap', 0.7); cleanup(); pick({ deleted: true }); }, '지우기');
+        G.btn('pill', '그만두기', br, () => { m.remove(); asking = false; }, '그만두기');
+      }, '저장 지우기');
       const slots = () => [...bookEl.querySelectorAll('.bk-slot')];
       const mark = (k) => { sel = k; slots().forEach((c, i) => c.classList.toggle('sel', i === k)); };
       const spread = () => pf ? pf.getCurrentPageIndex() - (pf.getCurrentPageIndex() % 2) : 0;
       const arrows = () => { const s = spread(); prev.style.visibility = s > 0 ? '' : 'hidden'; next.style.visibility = s + 2 < N ? '' : 'hidden'; };
       const go = (dir) => {
-        if (!pf || busy) return; const s = spread() + dir * 2; if (s < 0 || s >= N) return;
+        if (!pf || busy || asking) return; const s = spread() + dir * 2; if (s < 0 || s >= N) return;
         G.audio.sfx('sfx_page', 0.7, 0.95 + Math.random() * 0.1); mark(s);
         if (G.reduced()) { pf.turnToPage(s); arrows(); return; }
         busy = true; dir > 0 ? pf.flipNext('top') : pf.flipPrev('top');
       };
       const choose = async () => {
-        if (!N || busy) return; busy = true;
+        if (!N || busy || asking) return; busy = true;
         const c = slots()[sel]; if (c) c.classList.add('picked'); G.audio.stopVoice(); G.audio.sfx('sfx_tap', 0.7);
         await G.wait(0.35); cleanup(); pick(list[sel]);
       };
