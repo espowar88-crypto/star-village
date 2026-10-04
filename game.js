@@ -5588,7 +5588,7 @@ G.s3 = (() => {
   // ---- 퍼즐 K: 손님마다 주문하는 방법이 다름 (말, 가리키기, 몸짓, 쪽지). 손님을 누르면 주문, 메뉴를 손님에게 ----
   const HOW = {   // 손님 카드 아래 작은 표시 (그림만)
     say: () => `<div class="s3-how">${G.icon('icon_sound')}</div>`,
-    point: () => `<div class="s3-how"><svg viewBox="0 0 100 60" width="110" height="66"><path d="M10 40 h45 a8 8 0 0 0 0-16 h-12 l30 0 a7 7 0 0 0 0-14 h-40 q-20 0-23 20z" fill="#F6D2B4" stroke="#4A3B32" stroke-width="4" stroke-linejoin="round"/><path d="M78 17 l14 0 m-6 -6 l6 6 l-6 6" stroke="#F4A259" stroke-width="5" fill="none" stroke-linecap="round"/></svg></div>`,
+    point: () => G.art('hand_point') ? `<div class="s3-how"><img src="${G.art('hand_point')}" alt="" style="height:72px"></div>` : `<div class="s3-how"><svg viewBox="0 0 100 60" width="110" height="66"><path d="M10 40 h45 a8 8 0 0 0 0-16 h-12 l30 0 a7 7 0 0 0 0-14 h-40 q-20 0-23 20z" fill="#F6D2B4" stroke="#4A3B32" stroke-width="4" stroke-linejoin="round"/><path d="M78 17 l14 0 m-6 -6 l6 6 l-6 6" stroke="#F4A259" stroke-width="5" fill="none" stroke-linecap="round"/></svg></div>`,
     fan: () => `<div class="s3-how"><svg class="s3-fan" viewBox="0 0 60 70" width="64" height="74"><rect x="14" y="10" width="32" height="44" rx="14" fill="#F6D2B4" stroke="#4A3B32" stroke-width="4"/><path d="M8 30 q-6 -14 4 -22 M52 30 q6 -14 -4 -22" stroke="#7DBBE3" stroke-width="4" fill="none"/></svg><svg class="s3-drop" viewBox="0 0 20 30" width="22" height="34"><path d="M10 2 q8 14 8 18 a8 8 0 0 1 -16 0 q0-4 8-18z" fill="#7DBBE3"/></svg></div>`,
     note: (gu) => `<div class="s3-how"><div class="s3-paper">${gu.note}</div></div>`,
   };
@@ -5926,6 +5926,7 @@ G.s3 = (() => {
 
   // ---- 퍼즐 I: 손가락 숫자 신호. 바우 아저씨가 편 손가락을 세어 자물쇠 숫자를 맞춤 (어렵게: 두 손으로 6~9) ----
   function handSvg(n) {   // 손 하나 (손가락 n개 폄, 0~5)
+    const art = n >= 1 && G.art('hand_f' + n); if (art) return `<img src="${art}" alt="" style="width:120px;height:144px;object-fit:contain">`;   // 선생님 그림 hand_f1~f5
     let f = '';
     const X = [22, 38, 54, 70];
     for (let i = 0; i < 4; i++) f += i < Math.min(4, n - (n >= 5 ? 1 : 0)) ? `<rect x="${X[i] - 7}" y="6" width="14" height="50" rx="7" fill="#D9A27A" stroke="#4A3B32" stroke-width="3"/>` : `<rect x="${X[i] - 7}" y="40" width="14" height="22" rx="7" fill="#D9A27A" stroke="#4A3B32" stroke-width="3"/>`;
