@@ -4049,9 +4049,16 @@ G.s2 = (() => {
 .s2-calm .s2-breath img { width: 46%; height: 46%; object-fit: contain; }
 @keyframes s2breath { 0%, 100% { scale: .75; } 50% { scale: 1.15; } }
 .s2-calm .s2-calm-t { font-family: var(--f-title); font-size: calc(var(--u) * 50 * var(--ts)); color: var(--paper); }
+.s2-drop { position: absolute; width: 0; height: 0; pointer-events: none; z-index: 2990; }
+.s2-drop i { position: absolute; left: -95px; top: -60px; width: 190px; height: 120px; border-radius: 50%; border: 7px dashed #FFD66B; background: rgba(255, 214, 107, .22); box-shadow: 0 0 30px rgba(255, 214, 107, .9); animation: s2drop 1.1s ease-in-out infinite; }
+.s2-drop .arrow { left: 0; top: -125px; }
+@keyframes s2drop { 0%, 100% { transform: scale(.92); opacity: .75; } 50% { transform: scale(1.06); opacity: 1; } }
+.reduce .s2-drop i { animation: none; }
 .reduce .s2-loud, .reduce .s2-glow, .reduce .s2-calm .s2-breath { animation: none; }
 .c11-slot.s2-next { opacity: .85; filter: none; animation: s2blink 1.2s ease-in-out infinite; }
 @keyframes s2blink { 0%, 100% { opacity: .35; } 50% { opacity: 1; filter: drop-shadow(0 0 22px rgba(242, 155, 176, 1)); } }
+.s2-cnotes { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 2995; }
+.s2-cnotes .s2-note { left: auto; top: auto; filter: drop-shadow(0 0 10px rgba(125, 187, 227, .9)); }
 .s2-concert { position: absolute; width: 900px; height: 900px; margin: -450px 0 0 -450px; border-radius: 50%; pointer-events: none; z-index: 17; mix-blend-mode: screen; opacity: 0;
   background: radial-gradient(circle, rgba(255, 236, 170, .6) 0%, rgba(200, 160, 240, .35) 40%, rgba(200, 160, 240, 0) 70%); }
 `;
@@ -4469,6 +4476,10 @@ G.s2 = (() => {
   const labelOf = (def, id) => (def.hotspots.find(h => h.id === id) || {}).label;
   const noiseNeed = (def) => def.noise.order.filter(k => !def.noise.lv[k] || G.lv(def.noise.lv[k]));
   function tennis(V, def, anim) { const t = def.tennis, x = t.reduce((a, q) => a + q[0], 0) / t.length, y = Math.max(...t.map(q => q[1])); obj(V.fx, 'item_tennis', x + 90, y - 10, 80, anim ? 'pop' : ''); }   // 테니스공 주머니를 의자 옆에
+  function dropSpot(V, def) {   // 의자 다리 자리: 반짝이는 점선 원 + 위에서 가리키는 화살표
+    const r = def.hotspots.find(h => h.id === 'chair').rect, x = r[0] + r[2] / 2, y = r[1] + r[3] * 0.78;
+    const e = G.el('div', 's2-drop', V.fx, '<i></i><div class="arrow">' + G.arrowHtml() + '</div>'); Object.assign(e.style, { left: x + 'px', top: y + 'px' }); return e;
+  }
   function bellLight(V, def) { const g = G.el('div', 's2-glow', V.fx); Object.assign(g.style, { left: def.bellLight[0] + 'px', top: def.bellLight[1] + 'px' }); return g; }
   function quiet(V, k) { const e = V.s2 && V.s2.loud[k]; if (e) { e.classList.add('gone'); setTimeout(() => e.remove(), 650); delete V.s2.loud[k]; } }
   function bushWaves(V, def) {
@@ -4521,7 +4532,8 @@ G.s2 = (() => {
     if (!done('s2f_chair')) {
       await play(['SD02_daon_03'], { partner: 'daon' }); if (!ok()) return;
       await play(['SD02_rumi_07']); if (!ok()) return;
-      const u = await G.p4.useItem('tennis', hotBtn(V, labelOf(S, 'chair')), { say, hint: 'SD02_rumi_07' }); if (!ok() || !u) return;
+      const spot = dropSpot(V, S);   // 10/4 선생님: 테니스공을 어디에 놓을지 잘 안 보임 → 의자 다리에 반짝 원과 화살표
+      const u = await G.p4.useItem('tennis', hotBtn(V, labelOf(S, 'chair')), { say, hint: 'SD02_rumi_07' }); spot.remove(); if (!ok() || !u) return;
       tennis(V, S, true); quiet(V, 'chair'); mark('s2f_chair');
       await play(['SD02_rumi_08']); if (!ok()) return;
     }
@@ -4536,9 +4548,12 @@ G.s2 = (() => {
       G.audio.sfx('sfx_chime', 0.15, 1.2); bellLight(V, S); quiet(V, 'bell'); mark('s2f_bell');
     }
     if (need.includes('locker') && !done('s2f_locker')) {
-      say('SD02_rumi_06');
-      await waitTap(hotBtn(V, labelOf(S, 'locker')), { hint: 'SD02_rumi_06' }); if (!ok()) return;
-      G.audio.sfx('sfx_click', 0.25, 0.8); quiet(V, 'locker'); mark('s2f_locker');
+      // 10/4 선생님: 덜컹거린다는 말만 반복하지 않고, 문을 눌러 닫고 '딸깍' 하고 끝나게
+      await play(['SD02_rumi_13']); if (!ok()) return;
+      const lk = hotBtn(V, labelOf(S, 'locker'));
+      await waitTap(lk, { hint: 'SD02_rumi_13' }); if (!ok()) return;
+      G.audio.sfx('sfx_door', 0.25, 1.1); setTimeout(() => G.audio.sfx('sfx_click', 0.3, 0.8), 260); spark(lk, 8); quiet(V, 'locker'); mark('s2f_locker');
+      await play(['SD02_rumi_14']); if (!ok()) return;
     }
     complete('s2school_fix');
     await play(['SD02_rumi_10']);
@@ -4884,19 +4899,36 @@ G.s2 = (() => {
     }
   };
   // 짧은 음악회: 부드러운 음악, 박자는 가로등 빛과 무대 빛으로도
+  // 10/4 선생님: 효과가 부족함 → 약 10초 동안 하늘색 음표가 무대와 사람들 위로 천천히 떠오르고, 모두 박자에 맞춰 살살 몸을 흔듦
+  const CONCERT_MUSIC = 'music_title';   // 오케스트라 음원을 받으면 'music_concert'로 바꿈
+  function floatNote(box, x, y) {
+    const h = 60 + Math.random() * 40, e = note(box, 'calm', h), sw = (Math.random() < .5 ? -1 : 1) * (30 + Math.random() * 40), up = 260 + Math.random() * 200, rot = (Math.random() - .5) * 30;
+    e.style.left = x + 'px'; e.style.top = y + 'px';
+    fly(e, [{ transform: 'translate(-50%,-50%) scale(.5)', opacity: 0 },
+      { transform: `translate(-50%,-50%) translate(${sw}px,${-up * .3}px) rotate(${rot}deg) scale(1)`, opacity: .95, offset: .25 },
+      { transform: `translate(-50%,-50%) translate(${-sw * .6}px,${-up * .7}px) rotate(${-rot}deg) scale(1)`, opacity: .85, offset: .7 },
+      { transform: `translate(-50%,-50%) translate(${sw * .4}px,${-up}px) rotate(${rot * .5}deg) scale(.9)`, opacity: 0 }], 3600 + Math.random() * 1200);
+  }
   async function concert(V, S) {
-    const g = G.gen, rm = G.reduced();
-    G.audio.music('music_title');
+    const g = G.gen, rm = G.reduced(), light = G.settings && G.settings.light;
+    G.audio.music(CONCERT_MUSIC);
     const glow = G.el('div', 's2-concert', V.fx); Object.assign(glow.style, { left: '1200px', top: '560px' });
-    const people = ['chief', 'daon', 'duri', 'miru', 'hero'].map(k => V.spr[k] && V.spr[k].img).filter(Boolean);
-    const n = rm ? 3 : 10;
-    for (let i = 0; i < n && g === G.gen; i++) {
-      G.tween(0, 1, 0.55, k => glow.style.opacity = Math.sin(k * Math.PI) * 0.8);
+    const box = G.el('div', 's2-cnotes', V.fx);
+    const sps = ['chief', 'daon', 'duri', 'miru', 'hero'].map(k => V.spr[k]).filter(q => q && q.img.style.display !== 'none'), people = sps.map(q => q.img);
+    people.forEach(p => p.style.transformOrigin = '50% 100%');   // 발을 붙인 채 살살 흔들기
+    const from = sps.map(q => [q.def.rect[0] + q.def.rect[2] / 2, q.def.rect[1] + 10]);
+    from.push([1200, 520], [1050, 600], [1350, 600]);   // 무대 둘레
+    const beats = rm ? 4 : 8, per = rm ? 1 : 1.25;   // 약 10초
+    for (let i = 0; i < beats && g === G.gen; i++) {
+      G.tween(0, 1, per * 0.9, k => glow.style.opacity = Math.sin(k * Math.PI) * 0.6);
       V.lamps.forEach((l, j) => l.el.classList.toggle('on', (i + j) % 2 === 0));
-      if (!rm) people.forEach((p, j) => p.animate && p.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-14px)' }, { transform: 'translateY(0)' }], { duration: 420, delay: j * 60 }));
-      await G.wait(0.65);
+      if (!rm) people.forEach((p, j) => p.animate && p.animate([{ transform: 'rotate(0deg)' }, { transform: `rotate(${j % 2 ? 3 : -3}deg)` }, { transform: 'rotate(0deg)' }, { transform: `rotate(${j % 2 ? -3 : 3}deg)` }, { transform: 'rotate(0deg)' }], { duration: per * 1000, easing: 'ease-in-out' }));
+      const n = rm ? 1 : light ? 2 : 4;
+      for (let k = 0; k < n; k++) setTimeout(() => { if (g !== G.gen || !box.isConnected || G.paused) return; const [x, y] = from[Math.random() * from.length | 0]; floatNote(box, x + (Math.random() - .5) * 80, y - 20); }, k * per * 1000 / n);
+      await G.wait(per);
     }
     glow.remove(); V.lamps.forEach(l => l.el.classList.add('on'));
+    setTimeout(() => box.remove(), 5000);   // 떠 있던 음표는 끝까지 올라가 사라짐
     G.audio.music(S.music);
   }
   // 별이 받침대에서 하늘로 + 불꽃놀이
@@ -5114,9 +5146,13 @@ G.s3 = (() => {
 .s3-face.on .pf { box-shadow: 0 0 26px rgba(255, 214, 107, 1); }
 .s3-bub { position: absolute; width: 170px; height: 150px; background: #fff; border: 5px solid #8a6a4e; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: left .9s, top .9s; }
 .s3-bub img { width: 100px; height: 100px; object-fit: contain; }
-.s3-knot { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: radial-gradient(circle, #fff3c9 0%, #f4a259 60%, #b0663a 100%); box-shadow: 0 0 0 5px #fff, 0 6px 10px rgba(0,0,0,.4); }
+.s3-knot { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 0; padding: 0; pointer-events: none; background: radial-gradient(circle, #fff3c9 0%, #f4a259 60%, #b0663a 100%); box-shadow: 0 0 0 5px #fff, 0 6px 10px rgba(0,0,0,.4); }
 .s3-knot.under { filter: grayscale(.7) brightness(.8); }
 .s3-cardrow { display: flex; gap: calc(var(--u) * 10); margin-top: calc(var(--u) * 8); flex-wrap: wrap; }
+/* 10/4 선생님: 하랑이 대사 창을 낮게 → 괄호 글을 앞에, 그림 카드를 가운데 쪽에 한 줄로 */
+#dialog .dlg-text:has(.s3-cardrow) { display: flex; align-items: center; gap: calc(var(--u) * 30); flex-wrap: nowrap; }
+#dialog .dlg-text:has(.s3-cardrow) .s3-cardrow { margin-top: 0; flex: 1; justify-content: center; flex-wrap: nowrap; }
+#dialog .dlg-box:has(.s3-cardrow) { min-height: 0; }
 .s3-cardrow .c { display: flex; flex-direction: column; align-items: center; background: #fffaf0; border: calc(var(--u) * 4) solid #e0b96a; border-radius: calc(var(--u) * 16); padding: calc(var(--u) * 4) calc(var(--u) * 8); font-size: calc(var(--u) * 24); transition: transform .2s; }
 .s3-cardrow .c img { width: calc(var(--u) * 76); height: calc(var(--u) * 76); object-fit: contain; }
 .s3-cardrow .c.on { transform: translateY(calc(var(--u) * -8)) scale(1.08); box-shadow: 0 0 calc(var(--u) * 20) rgba(255, 214, 107, 1); }
@@ -5141,7 +5177,7 @@ G.s3 = (() => {
 .s3-dial .num { width: 150px; height: 150px; border-radius: 26px; background: #fff; border: 6px solid #8a6a4e; display: flex; align-items: center; justify-content: center; font-size: 100px; }
 .s3-dial button { width: 130px; height: 80px; border: 0; border-radius: 22px; background: #FFD66B; box-shadow: 0 6px 0 #c98f14; cursor: pointer; padding: 0; }
 .s3-dial button svg { width: 60px; height: 40px; }
-.s3-ring { position: absolute; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: transparent; touch-action: none; }
+.s3-ring { position: absolute; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: transparent; touch-action: none; z-index: 2; }
 .s3-ring svg { width: 100%; height: 100%; }
 .s3-spot { position: absolute; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 6px solid #fff; background: rgba(255, 214, 107, .85); font-size: 52px; color: var(--brown); cursor: pointer; padding: 0; transition: opacity .5s, transform .3s; }
 .s3-spot.out { opacity: .2; pointer-events: none; transform: scale(.7); }
@@ -5160,8 +5196,33 @@ G.s3 = (() => {
 .s3-guest span { white-space: nowrap; font-size: 28px; }
 .s3-guest .got { height: 110px; } .s3-guest .got img { width: 110px; height: 110px; object-fit: contain; animation: s3in .4s ease-out; }
 .s3-guest.ok { border-color: #7FB77E; }
-.s3-how { display: flex; align-items: flex-end; justify-content: center; gap: 6px; height: 80px; }
+.s3-how { display: flex; align-items: flex-end; justify-content: center; gap: 6px; height: 104px; }
 .s3-how .ico { height: 64px; }
+.s3-reedbg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 28px; }
+.s3-veil { position: absolute; inset: 0; border-radius: 28px; background: #0b0f22; opacity: .85; pointer-events: none; }
+.s3-lglow { position: absolute; border-radius: 50%; background: radial-gradient(circle, rgba(255, 226, 150, .75) 0%, rgba(255, 200, 110, .35) 35%, transparent 70%); opacity: 0; pointer-events: none; mix-blend-mode: screen; }
+.s3-hidstar { position: absolute; opacity: .12; pointer-events: none; transition: opacity 1s, transform 1s; }
+.s3-hidstar svg { width: 100%; height: 100%; }
+.s3-hidstar.on { z-index: 3; opacity: 1; transform: scale(1.6); filter: drop-shadow(0 0 24px rgba(255, 190, 220, 1)); animation: s3twk 1s ease-in-out .9s infinite; }
+@keyframes s3twk { 0%, 100% { transform: scale(1.6) rotate(0deg); } 50% { transform: scale(1.8) rotate(8deg); } }
+.reduce .s3-hidstar.on { animation: none; }
+.s3-dshow { position: absolute; border: 6px solid #e0b96a; border-radius: 22px; overflow: hidden; background: #fff; box-shadow: 0 8px 0 #c9a45c; pointer-events: none; }
+.s3-dshow img, .s3-dshow svg { width: 100%; height: 100%; display: block; object-fit: cover; }
+.s3-dshow > b { position: absolute; left: 10px; top: 4px; font-size: 44px; color: #8a6a4e; text-shadow: 0 0 6px #fff; }
+.s3-flipgrab { position: absolute; width: 160px; height: 200px; margin-left: -80px; cursor: grab; touch-action: none; z-index: 20; border-radius: 40px; }
+.s3-flipgrab .tr { position: absolute; left: 66px; bottom: 60px; width: 28px; height: 440px; border-radius: 14px; background: repeating-linear-gradient(to top, rgba(255, 214, 107, .9) 0 22px, transparent 22px 40px); opacity: .8; animation: s3up 1.2s linear infinite; }
+.s3-flipgrab .hd { position: absolute; left: 10px; bottom: 0; width: 140px; height: 140px; border-radius: 50%; background: #FFF4E0; border: 6px solid #e0b96a; box-shadow: 0 8px 0 #c9a45c; display: flex; align-items: center; justify-content: center; }
+.s3-flipgrab .hd img { width: 110px; height: 110px; object-fit: contain; pointer-events: none; }
+@keyframes s3up { to { background-position: 0 -40px; } }
+.reduce .s3-flipgrab .tr { animation: none; }
+.s3-pointer { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; pointer-events: none; z-index: 30; }
+.s3-pointer svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.s3-pointer path { fill: none; stroke: #F29BB0; stroke-width: 10; stroke-linecap: round; animation: s3dash 1s linear infinite; }
+@keyframes s3dash { to { stroke-dashoffset: -64; } }
+.s3-phand { position: absolute; width: 110px; height: 110px; margin: -110px 0 0 -55px; animation: s3poke .7s ease-in-out infinite; }
+.s3-phand img { width: 100%; height: 100%; object-fit: contain; transform: rotate(-90deg); filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); }
+@keyframes s3poke { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(26px); } }
+.reduce .s3-pointer path, .reduce .s3-phand { animation: none; }
 .s3-paper { background: #fffdf3; border: 4px solid #c9b48a; border-radius: 10px; padding: 6px 14px; font-size: 32px; transform: rotate(-3deg); white-space: nowrap; }
 .s3-torn { position: absolute; right: 0; top: 0; bottom: 0; width: 220px; background: repeating-linear-gradient(170deg, #cfdcec 0 30px, #b9c8dc 30px 34px); clip-path: polygon(30% 0, 100% 0, 100% 100%, 10% 100%, 40% 80%, 15% 60%, 45% 40%, 20% 20%); }
 .s3-water { background: linear-gradient(#3f6fb0, #2d4f8a); overflow: hidden; }
@@ -5535,19 +5596,44 @@ G.s3 = (() => {
         path.setAttribute('d', `M${x0} ${y0} C${c1} ${y0 + wig}, ${c1 + 200} ${y1 - wig}, ${x1} ${y1}`);
         Object.assign(path.style, { fill: 'none', stroke: COL[i % 4], strokeWidth: 16, strokeLinecap: 'round', transition: 'opacity .6s' }); svg.appendChild(path);
         const L = path.getTotalLength ? path.getTotalLength() : 1000, pt = path.getPointAtLength ? path.getPointAtLength(L * (0.3 + 0.4 * (z + 0.5) / n)) : { x: 800, y: (y0 + y1) / 2 };
-        const kn = G.btn('s3-knot', '', S.B, () => pull(z), '매듭'); S.at(kn, pt.x, pt.y); kn.style.zIndex = 5 + z;
-        return { i, z, path, kn, done: false };
+        const kn = G.el('div', 's3-knot', S.B); S.at(kn, pt.x, pt.y); kn.style.zIndex = 5 + z;   // 10/4: 매듭은 누르는 단추가 아니라 실이 겹친 자리 표시
+        return { i, z, path, kn, done: false, x0, y0, y1, c1, wig };
+      });
+      // 10/4 선생님: 누르기만 하면 쉬움 → 말풍선(실 끝)을 잡고 주인에게 끌어 와서 실을 풂. 위에 있는 실부터 풀 수 있고, 아래 실을 당기면 팽팽해지며 제자리로
+      const toB = (e) => { const r = S.B.getBoundingClientRect(), k = r.width / 1600; return [(e.clientX - r.left) / k, (e.clientY - r.top) / k]; };
+      const redraw = (t, bx, by, k) => { const cx = t.c1 * (1 - k) + (t.x0 + bx) / 2 * k, w = t.wig * (1 - k); t.path.setAttribute('d', `M${t.x0} ${t.y0} C${cx} ${t.y0 + w}, ${cx + 200 * (1 - k)} ${by - w}, ${bx} ${by}`); };
+      th.forEach(t => {
+        const b = bubs[t.i]; b.style.touchAction = 'none'; b.style.cursor = 'grab'; b.setAttribute('role', 'button'); b.setAttribute('aria-label', P[t.i].name + '의 실 끝');
+        let st = null;
+        b.addEventListener('pointerdown', (e) => {
+          if (fin || busy || t.done || G.dialog.active) return; clear();
+          if (t !== top()) { st = { blocked: true, id: e.pointerId, p0: toB(e), bx: 1300, by: t.y1 }; try { b.setPointerCapture(e.pointerId); } catch (_) { } return; }
+          b.style.transition = 'none'; st = { id: e.pointerId, p0: toB(e), bx: 1300, by: t.y1 }; try { b.setPointerCapture(e.pointerId); } catch (_) { } G.audio.sfx('sfx_tap', 0.4);
+        });
+        b.addEventListener('pointermove', (e) => {
+          if (!st || e.pointerId !== st.id) return; const [x, y] = toB(e), dx = x - st.p0[0], dy = y - st.p0[1];
+          if (st.blocked) { if (Math.hypot(dx, dy) > 30 && !st.tug) { st.tug = true; const tp = top(); wob(b); if (tp) { wob(bubs[tp.i]); tp.kn.classList.add('s3-hint'); setTimeout(() => tp.kn.classList.remove('s3-hint'), 1500); } G.audio.sfx('sfx_tap', 0.4); S.say('WD01_rumi_21'); } return; }
+          const bx = Math.max(300, Math.min(1300, 1300 + dx)), by = Math.max(60, Math.min(800, t.y1 + dy)), k = (1300 - bx) / 1000;
+          S.at(b, bx, by - 75); redraw(t, bx, by, k); st.bx = bx; st.by = by;
+        });
+        const up = (e) => {
+          if (!st || e.pointerId !== st.id) return; const s0 = st; st = null; if (s0.blocked) return;
+          b.style.transition = '';
+          if (s0.bx < 640) { pull(t.z); return; }
+          G.tween(0, 1, 0.3, k => { const bx = s0.bx + (1300 - s0.bx) * k, by = s0.by + (t.y1 - s0.by) * k; S.at(b, bx, by - 75); redraw(t, bx, by, (1300 - bx) / 1000); }, 'out');
+        };
+        b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
       });
       let fin = false, busy = false, arrow = null;
       const top = () => { for (let z = th.length - 1; z >= 0; z--) if (!th[z].done) return th[z]; return null; };
-      const mark2 = () => { const t = top(); th.forEach(q => { q.kn.classList.toggle('under', !q.done && q !== t); q.kn.classList.toggle('s3-hint', easy && q === t); }); };
+      const mark2 = () => { const t = top(); th.forEach(q => { q.kn.classList.toggle('under', !q.done && q !== t); q.kn.classList.toggle('s3-hint', easy && q === t); bubs[q.i].classList.toggle('s3-hint', easy && q === t); }); };
       mark2();
-      S.say('WD01_rumi_05');
+      S.say('WD01_rumi_20');
       async function pull(z) {
         if (fin || busy || G.dialog.active) return; clear();
         const t = th[z]; if (t.done) return;
-        if (t !== top()) { wob(t.kn); G.audio.sfx('sfx_tap', 0.4); S.say('WD01_rumi_05'); return; }
-        busy = true; t.done = true; G.audio.sfx('sfx_chime', 0.5, 1 + z * 0.1);
+        if (t !== top()) { wob(t.kn); G.audio.sfx('sfx_tap', 0.4); S.say('WD01_rumi_20'); return; }
+        busy = true; t.done = true; G.audio.sfx('sfx_chime', 0.5, 1 + z * 0.1); bubs[t.i].classList.remove('s3-hint');
         t.kn.remove(); t.path.style.opacity = 0;
         const b = bubs[t.i]; S.at(b, 300, ys[t.i] - 75); faces[t.i].classList.add('on'); spark(b, 8);
         const p = P[t.i]; await G.wait(0.9); if (!ok()) return;
@@ -5558,7 +5644,7 @@ G.s3 = (() => {
       async function win() { if (fin) return; fin = true; cur = null; G.help.off(); clear(); S.hush(); G.audio.sfx('sfx_sparkle', 0.7); await G.wait(0.8); S.end(); res(ok()); }
       function clear() { if (arrow) arrow.remove(); arrow = null; th.forEach(q => q.kn.classList.remove('hint')); }
       cur = { solve: () => { th.forEach(q => { q.done = true; q.kn.remove(); q.path.style.opacity = 0; }); win(); } };
-      G.help.set({ l1: () => S.say('WD01_rumi_05'), l2: () => { const t = top(); if (t && !arrow) arrow = arrowAt(S, t.kn); }, l3: () => { const t = top(); if (t) t.kn.classList.add('s3-hint'); }, clear });
+      G.help.set({ l1: () => S.say('WD01_rumi_20'), l2: () => { const t = top(); if (t && !arrow) arrow = arrowAt(S, bubs[t.i]); }, l3: () => { const t = top(); if (t) { t.kn.classList.add('s3-hint'); bubs[t.i].classList.add('s3-hint'); } }, clear });
     });
   }
 
@@ -5640,9 +5726,9 @@ G.s3 = (() => {
 
   // ---- 퍼즐 K: 손님마다 주문하는 방법이 다름 (말, 가리키기, 몸짓, 쪽지). 손님을 누르면 주문, 메뉴를 손님에게 ----
   const HOW = {   // 손님 카드 아래 작은 표시 (그림만)
-    say: () => `<div class="s3-how">${G.icon('icon_sound')}</div>`,
-    point: () => G.art('hand_point') ? `<div class="s3-how"><img src="${G.art('hand_point')}" alt="" style="height:72px"></div>` : `<div class="s3-how"><svg viewBox="0 0 100 60" width="110" height="66"><path d="M10 40 h45 a8 8 0 0 0 0-16 h-12 l30 0 a7 7 0 0 0 0-14 h-40 q-20 0-23 20z" fill="#F6D2B4" stroke="#4A3B32" stroke-width="4" stroke-linejoin="round"/><path d="M78 17 l14 0 m-6 -6 l6 6 l-6 6" stroke="#F4A259" stroke-width="5" fill="none" stroke-linecap="round"/></svg></div>`,
-    fan: () => `<div class="s3-how"><svg class="s3-fan" viewBox="0 0 60 70" width="64" height="74"><rect x="14" y="10" width="32" height="44" rx="14" fill="#F6D2B4" stroke="#4A3B32" stroke-width="4"/><path d="M8 30 q-6 -14 4 -22 M52 30 q6 -14 -4 -22" stroke="#7DBBE3" stroke-width="4" fill="none"/></svg><svg class="s3-drop" viewBox="0 0 20 30" width="22" height="34"><path d="M10 2 q8 14 8 18 a8 8 0 0 1 -16 0 q0-4 8-18z" fill="#7DBBE3"/></svg></div>`,
+    say: () => G.art('hint_say') ? `<div class="s3-how"><img src="${G.art('hint_say')}" alt="" style="height:100px"></div>` : `<div class="s3-how">${G.icon('icon_sound')}</div>`,
+    point: () => G.art('hint_point') ? `<div class="s3-how"><img src="${G.art('hint_point')}" alt="" style="height:100px"></div>` : G.art('hand_point') ? `<div class="s3-how"><img src="${G.art('hand_point')}" alt="" style="height:72px"></div>` : `<div class="s3-how"><svg viewBox="0 0 100 60" width="110" height="66"><path d="M10 40 h45 a8 8 0 0 0 0-16 h-12 l30 0 a7 7 0 0 0 0-14 h-40 q-20 0-23 20z" fill="#F6D2B4" stroke="#4A3B32" stroke-width="4" stroke-linejoin="round"/><path d="M78 17 l14 0 m-6 -6 l6 6 l-6 6" stroke="#F4A259" stroke-width="5" fill="none" stroke-linecap="round"/></svg></div>`,
+    fan: () => G.art('hint_hot') ? `<div class="s3-how"><img src="${G.art('hint_hot')}" alt="" style="height:100px"></div>` : `<div class="s3-how"><svg class="s3-fan" viewBox="0 0 60 70" width="64" height="74"><rect x="14" y="10" width="32" height="44" rx="14" fill="#F6D2B4" stroke="#4A3B32" stroke-width="4"/><path d="M8 30 q-6 -14 4 -22 M52 30 q6 -14 -4 -22" stroke="#7DBBE3" stroke-width="4" fill="none"/></svg><svg class="s3-drop" viewBox="0 0 20 30" width="22" height="34"><path d="M10 2 q8 14 8 18 a8 8 0 0 1 -16 0 q0-4 8-18z" fill="#7DBBE3"/></svg></div>`,
     note: (gu) => `<div class="s3-how"><div class="s3-paper">${gu.note}</div></div>`,
   };
   function orders() {
@@ -5666,9 +5752,22 @@ G.s3 = (() => {
         const x = gs.find(z => z.q === q); if (x.done) return;
         if (sel) return give(sel, q.id);
         clear(); G.audio.sfx('sfx_tap', 0.4);
-        if (q.how === 'point') { const it = items[q.want]; it.classList.add('s3-hint'); setTimeout(() => it.classList.remove('s3-hint'), 3000); }
+        if (q.how === 'point') pointAt(e, items[q.want]);   // 10/4 선생님: 무엇을 가리키는지 안 보임 → 학생 손끝에서 그 카드까지 점선이 이어지고, 손가락이 카드 위에서 콕콕
         await play([q.line], { partner: q.id }); if (!ok()) return;
         x.heard = true; if (easy) items[q.want].classList.add('hint');
+      }
+      function pointAt(from, it) {
+        S.B.querySelectorAll('.s3-pointer').forEach(q => q.remove());
+        const L = (el) => [parseFloat(el.style.left) || 0, parseFloat(el.style.top) || 0, el.offsetWidth, el.offsetHeight];
+        const [fx, fy, fw, fh] = L(from), [tx, ty, tw] = L(it), x0 = fx + fw / 2, y0 = fy + fh - 40, x1 = tx + tw / 2, y1 = ty - 70;
+        const box = G.el('div', 's3-pointer', S.B), ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('width', 1600); svg.setAttribute('height', 900); box.appendChild(svg);
+        const ln = document.createElementNS(ns, 'path'); ln.setAttribute('d', `M${x0} ${y0} Q${(x0 + x1) / 2} ${Math.max(y0, y1) + 60} ${x1} ${y1}`); svg.appendChild(ln);
+        const len = ln.getTotalLength ? ln.getTotalLength() : 600; ln.style.strokeDasharray = '6 26'; ln.style.strokeDashoffset = 0;
+        const h = G.el('div', 's3-phand', box, G.art('hand_point') ? `<img src="${G.art('hand_point')}" alt="">` : '');
+        Object.assign(h.style, { left: x1 + 'px', top: y1 + 'px' });
+        it.classList.add('s3-hint');
+        setTimeout(() => { box.remove(); it.classList.remove('s3-hint'); }, 6000);
       }
       function pick(k, b) { if (fin || G.dialog.active) return; G.audio.sfx('sfx_tap', 0.5); Object.values(items).forEach(c => c.classList.remove('sel')); sel = sel === k ? null : k; if (sel) b.classList.add('sel'); }
       async function give(k, gid) {
@@ -5865,12 +5964,23 @@ G.s3 = (() => {
       async function calmDone() {
         off(); refl.style.filter = ''; G.audio.sfx('sfx_sparkle', 0.6);
         await play(['WD03_rumi_05']); if (!ok()) return;
-        flipB = G.btn('s3-btn s3-hint', '뒤집어 보기', S.B, () => flip(), '뒤집어 보기'); S.at(flipB, 640, 780);
+        // 10/4 선생님: 버튼 대신 손을 잡고 위로 끌어 올리면 간판이 따라 뒤집힘 (반쯤 넘기 전에 놓으면 제자리로)
+        flipB = G.el('div', 's3-flipgrab s3-hint', S.B, `<div class="tr"></div><div class="hd">${G.art('hand_hold') || G.art('hand_wave') ? `<img src="${G.art('hand_hold') || G.art('hand_wave')}" alt="">` : ''}</div>`);
+        flipB.setAttribute('role', 'button'); flipB.setAttribute('aria-label', '잡고 위로 끌어 뒤집기'); S.at(flipB, 740, 600);
+        const hd = flipB.querySelector('.hd'), R = 420; let st = null;
+        const set = (k) => { refl.style.transform = `scaleY(${(-1 + 2 * k).toFixed(3)})`; hd.style.transform = `translateY(${(-R * k).toFixed(0)}px)`; };
+        flipB.addEventListener('pointerdown', (e) => { if (fin || G.dialog.active) return; clear(); flipB.classList.remove('s3-hint'); st = { y: e.clientY, s: S.B.getBoundingClientRect().height / 900, id: e.pointerId }; try { flipB.setPointerCapture(e.pointerId); } catch (_) { } G.audio.sfx('sfx_tap', 0.4); });
+        flipB.addEventListener('pointermove', (e) => { if (!st || e.pointerId !== st.id) return; const k = Math.max(0, Math.min(1, (st.y - e.clientY) / st.s / R)); st.k = k; set(k); if (k > 0.97) { st = null; flip(1); } });
+        const up = (e) => { if (!st || e.pointerId !== st.id) return; const k = st.k || 0; st = null;
+          if (k > 0.55) flip(k); else { G.tween(k, 0, 0.35, set, 'out'); if (k < 0.05) { flipB.classList.add('s3-hint'); S.say('WD03_rumi_05'); } } };
+        flipB.addEventListener('pointerup', up); flipB.addEventListener('pointercancel', up);
+        G.onTap(flipB, () => { if (G.reduced()) flip(0); });   // 몸이 불편해 끌기 어려운 경우를 위해: 움직임 줄이기 설정에서는 누르기만 해도 됨
       }
-      async function flip() {
-        if (fin) return; fin = true; cur = null; G.help.off(); clear(); if (flipB) flipB.remove();
-        G.audio.sfx('sfx_tap', 0.5);
-        await G.tween(-1, 1, G.reduced() ? 0.2 : 0.9, v => refl.style.transform = `scaleY(${v})`, 'io'); if (!ok()) return;
+      async function flip(k0 = 0) {
+        if (fin) return; fin = true; cur = null; G.help.off(); clear();
+        G.audio.sfx('sfx_page', 0.6);
+        await G.tween(k0, 1, G.reduced() ? 0.2 : 0.5 * (1 - k0) + 0.15, k => refl.style.transform = `scaleY(${(-1 + 2 * k).toFixed(3)})`, 'out'); if (!ok()) return;
+        if (flipB) flipB.remove();
         spark(refl, 12); await play(['WD03_rumi_06']); if (!ok()) return;
         S.end();
         await presentItem('codeB'); if (!ok()) return;
@@ -5909,11 +6019,13 @@ G.s3 = (() => {
       }
       function solveOne(i, r) {
         const p = pics[i]; if (p.done) return; p.done = true; p.b.classList.remove('sel'); p.b.classList.add('ok'); p.b.querySelector('.w').textContent = cardWord(p.k);
-        G.audio.voice('S93_card_' + p.k); spark(p.b, 6); at = -1;
+        lastV = G.audio.voice('S93_card_' + p.k); spark(p.b, 6); at = -1;
         setTimeout(() => r.classList.remove('lit'), 900);
         if (pics.every(q => q.done)) win();
       }
-      async function win() { if (fin) return; fin = true; cur = null; G.help.off(); clear(); S.hush(); await G.wait(1.0); if (!ok()) return;
+      let lastV = null;
+      // 10/4 선생님: 마지막 카드 '와 줘'가 '와'만 나옴 → 카드 소리가 끝까지 나온 뒤에 루미 말로 넘어감
+      async function win() { if (fin) return; fin = true; cur = null; G.help.off(); clear(); if (lastV) await lastV; if (!ok()) return; S.hush(); await G.wait(0.6); if (!ok()) return;
         await play(['WD03_rumi_08']); S.end(); res(ok()); }
       function clear() { if (arrow) arrow.remove(); arrow = null; pics.forEach(q => q.b.classList.remove('s3-hint')); rows.forEach(r => r.classList.remove('s3-hint')); }
       const next = () => pics.find(q => !q.done);
@@ -6057,7 +6169,7 @@ G.s3 = (() => {
     }
     if (id === 'diary') {
       if (done('s3h_diary')) { await play(['WD04_rumi_09']); return; }
-      await play(['WD04_rumi_07', 'WD04_rumi_08']); if (!ok()) return;
+      await play(['WD04_rumi_20']); if (!ok()) return;   // 10/4: 하랑이가 먼저 보여 줌 (바람에 섞이는 것은 퍼즐 안에서)
       const w = await diary(); if (!ok() || !w) return;
       await play(['WD04_rumi_09', 'WD04_rumi_10']); if (!ok()) return;
       complete('s3h_diary'); return;
@@ -6156,9 +6268,21 @@ G.s3 = (() => {
       const slots = order.map((_, i) => { const e = S.at(G.el('div', 's3-dslot', S.B, `<b>${i + 1}</b>`), sx + i * (pw + 20), 80, pw, ph + 20); return { e, v: null }; });
       const pics = shuffle(order).map((v, i) => { const b = G.btn('s3-dpic', diaryPic(v), S.B, () => tap(b), '그림'); b.dataset.v = v; S.at(b, sx + i * (pw + 20), 480, pw, ph); return b; });
       let fin = false, at = 0, arrow = null;
-      S.say('WD04_rumi_08');
+      // 10/4 선생님: 단서 없이 찍게 됨 → 하랑이가 먼저 일기를 순서대로 한 장씩 보여 줌 → 바람이 불어 그림이 날아가 섞임 → 기억해서 다시 놓기
+      pics.forEach(p => p.style.visibility = 'hidden');
+      (async () => {
+        const rm = G.reduced(), show = order.map((v, i) => { const e = S.at(G.el('div', 's3-dshow', S.B, diaryPic(v) + `<b>${i + 1}</b>`), sx + i * (pw + 20), 80, pw, ph + 20); e.style.opacity = 0; return e; });
+        await G.wait(0.4); if (!ok()) return;
+        for (const e of show) { G.audio.sfx('sfx_page', 0.5); if (rm) e.style.opacity = 1; else G.tween(0, 1, 0.45, k => { e.style.opacity = k; e.style.transform = `scale(${1.25 - 0.25 * k})`; }, 'out'); await G.wait(easy ? 1.6 : 1.3); if (!ok()) return; }
+        await G.wait(1.2); if (!ok()) return;
+        G.audio.sfx('sfx_wind', 0.5, 0.9);
+        await Promise.all(show.map((e, i) => rm ? (e.remove(), null) : G.tween(0, 1, 0.9, k => { e.style.transform = `translate(${(i % 2 ? 1 : -1) * 200 * k}px,${380 * k}px) rotate(${(i % 2 ? 1 : -1) * 40 * k}deg)`; e.style.opacity = 1 - k; }, 'in').then(() => e.remove()))); if (!ok()) return;
+        pics.forEach((p, i) => { p.style.visibility = ''; if (!rm && p.animate) p.animate([{ transform: `translateY(-260px) rotate(${(i % 2 ? 1 : -1) * 30}deg)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 600, delay: i * 70, easing: 'ease-out', fill: 'backwards' }); });
+        await play(['WD04_rumi_07']); if (!ok()) return;
+        S.say('WD04_rumi_08');
+      })();
       function tap(b) {
-        if (fin || G.dialog.active || b.classList.contains('used')) return; clear();
+        if (fin || G.dialog.active || b.classList.contains('used') || b.style.visibility === 'hidden') return; clear();
         if (+b.dataset.v !== order[at]) { wob(b); G.audio.sfx('sfx_tap', 0.4); S.say('WD04_rumi_08'); if (easy) pics.find(p => +p.dataset.v === order[at]).classList.add('s3-hint'); return; }
         b.classList.add('used'); slots[at].e.innerHTML = diaryPic(order[at]) + `<b>${at + 1}</b>`; slots[at].e.classList.add('on'); G.audio.sfx('sfx_chime', 0.45, 0.9 + at * 0.1); spark(slots[at].e, 6);
         at++; if (at >= n) win();
@@ -6177,7 +6301,7 @@ G.s3 = (() => {
       const g = G.gen, ok = () => g === G.gen, SP = D3().spots, ids = SP.lv[G.level()] || SP.lv.normal, star = SP.list.find(s => s.id === SP.star);
       const S = screen('s3-twenty', 1600, 900);
       const map = S.at(G.el('div', 's3-panel s3-reedmap', S.B), 40, 20, 1100, 860);
-      map.innerHTML = `<svg viewBox="0 0 1100 860" width="1100" height="860"><rect width="1100" height="860" rx="28" fill="#9cc79a"/><path d="M0 230 Q550 120 1100 260 V500 Q550 420 0 520Z" fill="#5d86c4"/>` +
+      map.innerHTML = G.art('bg_reedmap') ? `<img class="s3-reedbg" src="${G.art('bg_reedmap')}" alt="">` : `<svg viewBox="0 0 1100 860" width="1100" height="860"><rect width="1100" height="860" rx="28" fill="#9cc79a"/><path d="M0 230 Q550 120 1100 260 V500 Q550 420 0 520Z" fill="#5d86c4"/>` +
         `<path d="M600 530 Q800 420 1010 200" stroke="#A0764F" stroke-width="30" fill="none" stroke-linecap="round"/><path d="M600 530 Q800 420 1010 200" stroke="#7a5638" stroke-width="30" stroke-dasharray="4 26" fill="none"/>` +
         `<g fill="#9A97A8" stroke="#4A3B32" stroke-width="4"><path d="M120 620 l40 -50 60 10 30 50z"/><path d="M90 380 l30 -40 50 8 26 40z"/></g>` +
         `<g stroke="#5f9a5c" stroke-width="7">${[[260, 700], [300, 680], [430, 720], [470, 700], [620, 620], [660, 600], [700, 640]].map(([x, y]) => `<path d="M${x} ${y + 60} l6 -70"/>`).join('')}</g></svg>`;
@@ -6215,13 +6339,17 @@ G.s3 = (() => {
       const g = G.gen, ok = () => g === G.gen, secs = D3().hold[G.level()] || [2];
       const S = screen('s3-hold', 1600, 900);
       const dark = S.at(G.el('div', 's3-panel s3-dark', S.B), 40, 20, 1520, 860);
-      dark.innerHTML = `<svg viewBox="0 0 1520 860" width="1520" height="860"><rect width="1520" height="860" rx="28" fill="#141a33"/><g stroke="#2f4a3a" stroke-width="12">${[...Array(28)].map((_, i) => `<path d="M${40 + i * 52} 860 l${(i % 3) * 6 - 6} -${220 + (i * 53) % 160}"/>`).join('')}</g></svg>`;
+      // 10/4 선생님: 배경 그림(bg_reednight)이 오면 그 그림, 없으면 코드 그림
+      dark.innerHTML = G.art('bg_reednight') ? `<img class="s3-reedbg" src="${G.art('bg_reednight')}" alt="">` : `<svg viewBox="0 0 1520 860" width="1520" height="860"><rect width="1520" height="860" rx="28" fill="#141a33"/><g stroke="#2f4a3a" stroke-width="12">${[...Array(28)].map((_, i) => `<path d="M${40 + i * 52} 860 l${(i % 3) * 6 - 6} -${220 + (i * 53) % 160}"/>`).join('')}</g></svg>`;
+      const hid = G.el('div', 's3-hidstar', dark, G.starSvg(G.STARS.find(q => q.id === 'word') || G.STARS[2], true)); S.at(hid, 760 - 60, 241 - 60, 120, 120);   // 갈대 사이에 숨은 별 (그림 프롬프트에서 별 자리 50%, 28%)
+      const veil = G.el('div', 's3-veil', dark);   // 어둠: 등불이 밝아질수록 걷힘 (숨은 별도 어둠 아래)
       const light = G.el('div', 's3-lightc', dark);
       const POS = secs.length > 1 ? [[460, 470], [1060, 470]] : [[760, 470]];
       const rings = secs.map((sec, i) => {
         const b = G.el('button', 's3-ring', dark); b.type = 'button'; b.setAttribute('aria-label', '등불'); S.at(b, POS[i][0] - 130, POS[i][1] - 130, 260, 260);
         b.innerHTML = `<img src="${ART('item_lantern')}" alt="" style="position:absolute;left:55px;top:50px;width:150px;height:150px"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="7"/><circle class="arc" cx="50" cy="50" r="45" fill="none" stroke="#FFD66B" stroke-width="7" stroke-dasharray="283" stroke-dashoffset="283" transform="rotate(-90 50 50)"/></svg>`;
-        const R = { b, sec, k: 0, down: false, done: false, arc: b.querySelector('.arc') };
+        const R = { b, sec, k: 0, down: false, done: false, arc: b.querySelector('.arc'), img: b.querySelector('img') };
+        R.glow = G.el('div', 's3-lglow', dark); S.at(R.glow, POS[i][0] - 300, POS[i][1] - 300, 600, 600);   // 누르고 있으면 점점 밝아지는 빛
         b.addEventListener('pointerdown', (e) => { if (fin || R.done || G.dialog.active) return; R.down = true; try { b.setPointerCapture(e.pointerId); } catch (_) { } G.audio.sfx('sfx_tap', 0.3); G.help.poke(); });
         const up = () => { R.down = false; }; b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
         b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { R.down = true; e.preventDefault(); } }); b.addEventListener('keyup', up);
@@ -6235,12 +6363,16 @@ G.s3 = (() => {
           if (R.done) continue;
           R.k = Math.max(0, Math.min(1, R.k + (R.down ? dt / R.sec : -dt * 0.35)));
           R.arc.style.strokeDashoffset = 283 * (1 - R.k);
+          R.glow.style.opacity = R.k.toFixed(3); R.glow.style.transform = `scale(${(0.5 + 0.5 * R.k).toFixed(3)})`; R.img.style.filter = `brightness(${(0.6 + 0.7 * R.k).toFixed(2)})`;
+          veil.style.opacity = (0.85 - 0.35 * rings.reduce((a, q) => a + q.k, 0) / rings.length).toFixed(3);
           if (R.k >= 1) { R.done = true; R.down = false; G.audio.sfx('sfx_chime', 0.5, 1.2); R.b.classList.add('lit');
             const c = G.el('div', 's3-glowc', dark); S.at(c, POS[rings.indexOf(R)][0] - 260, POS[rings.indexOf(R)][1] - 260, 520, 520); }
         }
         if (rings.every(R => R.done)) win();
       });
-      async function win() { if (fin) return; fin = true; off(); cur = null; G.help.off(); S.hush(); light.classList.add('on'); G.audio.sfx('sfx_sparkle', 0.7); await G.wait(1.4); S.end(); res(ok()); }
+      // 두 등불이 다 밝아지면 어둠이 걷히고 갈대 사이의 별이 반짝이며 커짐
+      async function win() { if (fin) return; fin = true; off(); cur = null; G.help.off(); S.hush(); light.classList.add('on'); G.audio.sfx('sfx_sparkle', 0.7);
+        G.tween(veil.style.opacity || 0.5, 0, 1.0, v => veil.style.opacity = v); hid.classList.add('on'); await G.wait(0.9); spark(hid, 12); G.audio.sfx('sfx_star', 0.6); await G.wait(2.2); S.end(); res(ok()); }
       cur = { solve: () => { rings.forEach(R => { R.k = 1; R.down = true; }); } };
       G.help.set({ l1: () => S.say('WD04_rumi_13'), l2: () => { }, l3: () => { const R = rings.find(q => !q.done); if (R) R.b.classList.add('s3-hint'); }, clear: () => rings.forEach(R => R.b.classList.remove('s3-hint')) });
     });
@@ -6681,7 +6813,7 @@ G.titleBook = (ov, onStart) => {
   // 제목·글귀 (10/2 선생님 붓글씨 그림, 단색·테두리 없음): 순서 지도 값이 작은 곳부터 붓이 지나가듯 드러남
   const brush = (cls, name, x, y, w, h) => { const cv = G.el('canvas', 'tb-brush ' + cls, stage); cv.width = w; cv.height = h;
     Object.assign(cv.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); return { cv, y, src: [A(name + '.png'), A(name + '_order.png')] }; };
-  const T1 = brush('tb-t1', 'title_brush', 400, 70, 1120, 304), T2 = brush('tb-t2', 'motto_brush', 610, 404, 700, 72);
+  const T1 = brush('tb-t1', 'title_brush', 400, 70, 1120, 304), T2 = brush('tb-t2', 'motto_brush', 680, 411, 560, 58);   // 10/4 선생님: 부제목 20% 작게 (가운데는 그대로)
   const prep = async (b) => { if (b.o) return b;
     const [ink, ord] = await Promise.all(b.src.map(img)); const w = b.cv.width, h = b.cv.height, c = b.cv.getContext('2d');
     b.c = c; b.ink = ink;
@@ -6702,8 +6834,9 @@ G.titleBook = (ov, onStart) => {
   const showAll = (b) => prep(b).then(() => b.full ? b.c.putImageData(b.full, 0, 0) : reveal(b, 1));
   const openB = G.btn('pill gold tb-open', G.icon('icon_star') + ' 책 펴기', t, () => open(), '책 펴기');
   const startB = G.btn('pill gold t-start', G.icon('icon_star') + ' 시작하기', t, () => { if (t.classList.contains('done')) onStart(); }, '시작하기');
+  startB.style.setProperty('--paper', `url("${A('paper.jpg')}")`);   // 10/4 선생님: 시작하기 단추를 연한 버터색 종이로
   if (G.isTouch) G.el('div', 't-note', t, '소리가 안 들리면 옆의 무음 스위치를 확인해 주세요.');
-  G.el('div', 't-ver', t, G.VERSION + '<br>선생님 설정: ESC 또는 왼쪽 위 3초 누르기');
+  // 10/4 선생님: 첫 화면 오른쪽 아래 글자(판 날짜, 선생님 설정 안내)는 없앰
   const fit = () => { if (!stage.isConnected) return; const { W, H } = G.stage, s = Math.max(W / 1920, H / 1080); stage.style.transform = `translate(-50%, -50%) scale(${s})`;
     const c = Math.max(0, (1080 - H / s) / 2); T1.cv.style.top = (T1.y + c) + 'px'; T2.cv.style.top = (T2.y + c) + 'px'; shade.style.top = c + 'px'; }; // 휴대폰처럼 위아래가 잘리면 제목을 내림
   fit(); if (!G._tbFit) { G._tbFit = 1; G.resizers.add(() => { const f = G.$('.tb-stage'); if (f && f._fit) f._fit(); }); } stage._fit = fit;
@@ -6812,7 +6945,7 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-04)';   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-05)';   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
@@ -6860,9 +6993,27 @@ G.flow = (() => {
       st = G.save.fresh(pick.slot); st.name = name;
     }
     G.st = st; G.save.write();
+    try { sessionStorage.setItem('bs_play', String(st.slot)); } catch (_) { }   // 10/4: 놀던 중 화면이 새로 켜지면 처음 화면 대신 바로 이어 하기
     G.$('#overlay').innerHTML = '';
     if (!st.done.includes('meet_lumi')) F.intro();
     else F.resume();
+  };
+  // 10/4 선생님: 놀다가 처음 화면으로 돌아가는 일 → 휴대폰이 메모리가 모자라 탭을 다시 켜거나 새 판이 깔릴 때 페이지가 새로 켜짐.
+  // 같은 탭에서 놀던 중이었다면 제목 연출 없이 [이어서 하기] 한 번만 누르면(소리를 켜려면 한 번 눌러야 함) 하던 곳으로 돌아감
+  F.quick = () => {
+    let slot = null; try { slot = sessionStorage.getItem('bs_play'); } catch (_) { }
+    const st = slot && G.save.load(+slot);
+    if (!st || !st.done || !st.done.includes('meet_lumi')) return false;
+    F.reset(); G.screen = 'title'; G.st = null;
+    const ov = G.$('#overlay'), box = G.el('div', 'quick-resume', ov);
+    G.el('div', 'qr-msg', box, `${st.slot}번${st.name ? ' ' + String(st.name).replace(/[<>&"]/g, '') : ''} 하던 곳에서 이어서 해요`);
+    G.btn('pill gold qr-go', G.icon('icon_star') + ' 이어서 하기', box, () => {
+      if (matchMedia('(pointer: coarse)').matches) G.teacher.fs(true);
+      G.audio.unlock(); G.audio.sfx('sfx_tap', 0.6);
+      G.st = st; ov.innerHTML = ''; F.resume();
+    }, '이어서 하기');
+    G.btn('pill qr-title', '처음 화면', box, () => { try { sessionStorage.removeItem('bs_play'); } catch (_) { } F.title(); }, '처음 화면');
+    return true;
   };
   // 쓰던 칸: 마지막으로 간 곳의 마을 지도
   F.resume = async () => {
@@ -6966,5 +7117,5 @@ G.flow = (() => {
   // 다른 탭으로 가면 소리를 멈춤
   document.addEventListener('visibilitychange', () => { if (document.hidden) G.audio.pause(); else if (!G.paused) G.audio.resume(); });
   const ld = G.$('#loading'); if (ld) ld.remove();
-  G.flow.title();
+  if (!G.flow.quick()) G.flow.title();
 })();
