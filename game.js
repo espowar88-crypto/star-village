@@ -1415,14 +1415,17 @@ G.cut = (() => {
       const num = G.el('div', 'ch-num chapter-number', box, (G.D.story.chapterStar || '길의 별') + '-' + T[0]);   // 10/1 선생님: "제 1장" 대신 "길의 별-1"
       const line = G.el('div', 'ch-line', box, G.artImg('chapter_line') || '<i></i>');
       const tt = G.el('div', 'ch-title chapter-title', box, T[1]);
-      const txt = [num, line, tt]; txt.forEach(e => e.style.opacity = 0);
+      // 10/4 피드백: 하늘에 진짜 아홉 별 모양. 되찾은 별은 빛나고, 이번 장의 별 자리는 깜박, 나머지는 빈 자리
+      const cur = /^s(\d+)_/.test(key) ? +key.match(/^s(\d+)_/)[1] - 1 : 0, row = G.el('div', 'ch-stars', root);
+      G.STARS.forEach((s, i) => G.el('i', i < cur ? 'lit' : i === cur ? 'now' : '', row, G.starSvg(s, true)));
+      const txt = [num, line, tt, row]; txt.forEach(e => e.style.opacity = 0);
       root.style.opacity = opts.cover ? 1 : 0;   // 10/1 cover: 그림이 처음부터 화면을 덮음 (장소 모습이 먼저 비치지 않게)
       if (document.fonts && document.fonts.load) await Promise.race([Promise.all([document.fonts.load('300 40px MaruBuri', num.textContent), document.fonts.load('700 90px MaruBuri', T[1])]).catch(() => { }), c.wait(1.2)]);   // 글꼴이 오기 전에 글자가 먼저 보이지 않게 (늦으면 대신 글꼴로)
       c.sfx('sfx_chime', 0.5);
       const fin = (e, at, d) => c.wait(c.rm ? 0 : at).then(() => c.tween(0, 1, c.rm ? 0.2 : d, v => e.style.opacity = v, 'out'));
       await Promise.all([
         c.tween(0, 1, c.rm ? 0.2 : 0.9, v => { if (!opts.cover) root.style.opacity = v; bg.style.transform = c.rm ? '' : `scale(${1.06 - 0.06 * v})`; }, 'out'),
-        fin(num, 0.35, 0.8), fin(line, 0.6, 0.8), fin(tt, 0.8, 1.0),
+        fin(num, 0.35, 0.8), fin(line, 0.6, 0.8), fin(tt, 0.8, 1.0), fin(row, 0.2, 0.8),
       ]);
       await Promise.all([c.voice(T[2], false), c.wait(G.fast() ? 0.6 : 2.0)]);
       await c.tween(1, 0, c.rm ? 0.2 : 0.7, v => txt.forEach(e => e.style.opacity = v));
@@ -5199,6 +5202,21 @@ G.s3 = (() => {
 .s3-hour { position: relative; width: calc(var(--u) * 260); height: calc(var(--u) * 260); }
 .s3-hour img { position: absolute; inset: 22%; width: 56%; height: 56%; object-fit: contain; }
 .s3-hour svg { width: 100%; height: 100%; }
+.s3-act { flex-direction: column; gap: calc(var(--u) * 20); background: rgba(15, 18, 38, .35); }   /* 10/4 카드 내밀기 */
+.s3-actcard { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 8); background: #FFF8E8; border: calc(var(--u) * 6) solid #F29BB0; border-radius: calc(var(--u) * 26); padding: calc(var(--u) * 18) calc(var(--u) * 26); cursor: pointer; font: inherit; color: #4A3B32; }
+.s3-actcard img { width: calc(var(--u) * 200); height: calc(var(--u) * 200); object-fit: contain; }
+.s3-actcard span { font-size: calc(var(--u) * 46); }
+.s3-act.go .s3-actcard { transition: transform .3s; transform: scale(1.15); }
+.s3-act.go .s3-wtip { opacity: 0; }
+.s3-waitq { flex-direction: column; gap: calc(var(--u) * 18); touch-action: none; }   /* 10/4 손 떼고 기다리기 */
+.s3-hour .s3-wpage { position: absolute; inset: 22%; background: #FFF8E8; border: calc(var(--u) * 5) solid #F29BB0; border-radius: calc(var(--u) * 18); display: flex; align-items: center; justify-content: center; }
+.s3-hour .s3-wpage img { position: static; width: 82%; height: 82%; object-fit: contain; }
+.s3-waitq.end .s3-wpage { animation: s3in .5s ease-out; transform: scale(1.25); }
+.s3-waitq.paused .s3-hour { opacity: .6; }
+.s3-wtip { font-size: calc(var(--u) * 40); color: #FFF6D6; text-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
+.s3-shh { position: absolute; top: calc(var(--sat) + var(--u) * 60); left: 50%; transform: translateX(-50%); background: #FFF8E8; color: #4A3B32; font-size: calc(var(--u) * 38); padding: calc(var(--u) * 14) calc(var(--u) * 30); border-radius: calc(var(--u) * 30); opacity: 0; pointer-events: none; }
+.s3-shh.on { animation: s3shh 2.4s ease-out; }
+@keyframes s3shh { 0% { opacity: 0; } 12%, 75% { opacity: 1; } 100% { opacity: 0; } }
 .reduce .s3-rip, .reduce .s3-fan, .reduce .s3-drop, .reduce .s3-card.hint { animation: none; }
 `;
   { const st = document.createElement('style'); st.id = 's3-style'; st.textContent = CSS; document.head.appendChild(st); }
@@ -5553,6 +5571,14 @@ G.s3 = (() => {
       if (!G.lv('hard') && V.spr.g_v4) V.spr.g_v4.img.style.display = 'none';
       if (!G.lv('normal') && V.spr.g_v6) V.spr.g_v6.img.style.display = 'none';
     }
+    if (id === 's3harang' && !cleared(id)) {   // 10/4 피드백: 회색 마을에서도 하랑이 그림(벽·창가·탁자·상자)만 처음부터 색이 있음
+      const P = [[584, 343, 612, 343, 612, 385, 584, 385], [599, 400, 642, 400, 642, 441, 599, 441], [970, 447, 1017, 447, 1017, 489, 970, 489],
+        [847, 420, 866, 420, 866, 443, 847, 443], [892, 417, 909, 417, 909, 441, 892, 441], [929, 415, 945, 415, 945, 440, 929, 440],
+        [989, 510, 1115, 506, 1126, 542, 997, 551], [842, 664, 908, 662, 910, 708, 845, 710]];
+      const d = P.map(q => 'M' + q.join(' ') + 'Z').join('');
+      const pic = G.el('img', 'bg s3-drawcol', null); pic.src = V.colorImg.src; pic.width = V.W; pic.height = V.H; pic.alt = ''; pic.style.clipPath = `path('${d}')`;
+      V.colorImg.after(pic);
+    }
     if (id === 's3harang' && done('s3h_star')) { const r = def.hotspots.find(h => h.id === 'reeds').rect; pop(V.fx, 'card_star', r[0] + r[2] / 2, r[1] + 20, 80); }
     if (id === 's3plaza' && done('s3plaza_relay')) for (const [k, at] of Object.entries(def.feastDust || {})) dustBtn(V, 's3plaza:' + k, at[0], at[1]);
   }
@@ -5590,7 +5616,9 @@ G.s3 = (() => {
       complete('s3cafe_menu');
       // 편지를 전함 → 하랑이 이야기 → 창문 단서
       await play(['WD02_rumi_08']); if (!ok()) return;
-      await play(['WD02_moa_10', 'WD02_moa_11', 'WD02_moa_12', 'WD02_moa_13', 'WD02_moa_14'], o); if (!ok()) return;
+      await play(['WD02_moa_10', 'WD02_moa_11'], o); if (!ok()) return;
+      if (!await cardAct('harang', '하랑 카드를 눌러 보아요')) return;   // 10/4 피드백: 긴 대사 사이 누르기
+      await play(['WD02_moa_12', 'WD02_moa_13', 'WD02_moa_14'], o); if (!ok()) return;
       await play(['WD02_rumi_09']); if (!ok()) return;
       await play(['WD02_moa_15'], o); if (!ok()) return;
       say('WD02_rumi_10'); return;
@@ -5601,7 +5629,9 @@ G.s3 = (() => {
       const w = await rub(); if (!ok() || !w) return;
       await play(['WD02_rumi_11']); if (!ok()) return;
       await presentItem('codeA'); if (!ok()) return;
-      await play(['WD02_moa_16', 'WD02_moa_20', 'WD02_moa_17', 'WD02_moa_18'], o); if (!ok()) return;
+      await play(['WD02_moa_16', 'WD02_moa_20'], o); if (!ok()) return;
+      if (!await cardAct('go', '가자 카드로 대답해요')) return;   // 10/4 피드백
+      await play(['WD02_moa_17', 'WD02_moa_18'], o); if (!ok()) return;
       await colorIn(V); if (!ok()) return;
       complete('s3cafe_window'); return;
     }
@@ -5785,7 +5815,11 @@ G.s3 = (() => {
       await play(['WD03_rumi_15']); if (!ok()) return;
       await crossBoat(V, S); if (!ok()) return;
       if (V.spr.bau) V.spr.bau.img.style.display = ''; if (V.spr.bauFar) V.spr.bauFar.img.style.display = 'none';
-      await play(['WD03_bau_03', 'WD03_bau_04', 'WD03_bau_05', 'WD03_bau_06', 'WD03_bau_07', 'WD03_bau_08', 'WD03_bau_09'], o); if (!ok()) return;
+      await play(['WD03_bau_03'], o); if (!ok()) return;
+      if (!await cardAct('good', '좋아 카드로 대답해요')) return;   // 10/4 피드백: "내 손짓 신호 어때?"에 엄지 척
+      await play(['WD03_bau_04', 'WD03_bau_05', 'WD03_bau_06'], o); if (!ok()) return;
+      if (!await cardAct('hi', '손을 흔드는 카드로 인사해요')) return;   // 손짓과 그림으로 얘기하는 바우 아저씨에게
+      await play(['WD03_bau_07', 'WD03_bau_08', 'WD03_bau_09'], o); if (!ok()) return;
       await colorIn(V); if (!ok()) return;
       complete('s3dock_boat'); return;
     }
@@ -6004,7 +6038,7 @@ G.s3 = (() => {
       // 루미가 재촉하자 하랑이가 카드 책을 덮고 고개를 돌림
       if (hs) { hs.style.transition = 'transform .5s'; hs.style.transform = 'scaleX(-1)'; }
       G.audio.sfx('sfx_door', 0.15, 1.6);
-      await play(['WD04_rumi_04'], { keep: true }); if (!ok()) return;
+      await play(['WD04_rumi_04'], { ...o, keep: true }); if (!ok()) return;   // 10/4: 덮는 순간 하랑이 얼굴(흥, 그림 02)이 보이게
       await ask('WD04_ply_01', 'icon_good'); if (!ok()) return;
       await waitQuiet(); if (!ok()) return;   // 정말로 잠깐 기다림 (모래시계)
       await play(['WD04_rumi_05']); if (!ok()) return;
@@ -6013,7 +6047,12 @@ G.s3 = (() => {
       await play(['WD04_rumi_06']); if (!ok()) return;
       const R = D3().reply[G.level()] || D3().reply.normal;
       const w = await strip({ mode: 'free', slots: [], n: R.slots, cards: R.cards, hintCards: R.hint, hint: 'WD04_rumi_06', head: '카드로 대답하기' }); if (!ok() || !w) return;
-      await play(['WD04_harang_05', 'WD04_harang_06'], o); if (!ok()) return;
+      await play(['WD04_harang_05'], o); if (!ok()) return;
+      // 10/4 피드백: 이번엔 학생이 카드로 묻기 (너, 별, 봤어?) → 하랑이가 그림 일기를 보여 줌
+      await play(['WD04_rumi_19']); if (!ok()) return;
+      const Q = G.lv('normal') ? ['you', 'star', 'saw'] : ['star', 'saw'], QC = G.lv('hard') ? ['you', 'star', 'saw', 'me', 'lake', 'draw'] : G.lv('normal') ? ['you', 'star', 'saw', 'me'] : Q;
+      const q = await strip({ mode: 'menu', slots: Q, cards: shuffle(QC), hint: 'WD04_rumi_19', head: '카드로 물어보기' }); if (!ok() || !q) return;
+      await play(['WD04_harang_06'], o); if (!ok()) return;
       complete('s3h_meet'); return;
     }
     if (id === 'diary') {
@@ -6051,13 +6090,46 @@ G.s3 = (() => {
     }
     if (id === 'cardbox') { G.audio.voice('S93_card_' + shuffle(['hi', 'friend', 'star', 'draw'])[0]); }
   };
-  // 기다려 주기: 모래시계가 다 찰 때까지 조용히 (약 3초, 누를 것 없음)
-  async function waitQuiet() {
-    const m = G.el('div', 'modal s3-waitq', G.$('#overlay')), sec = G.reduced() || G.fast() ? 1 : 3;
-    m.innerHTML = `<div class="s3-hour"><img src="${cardImg('wait')}" alt=""><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="8"/><circle class="arc" cx="50" cy="50" r="44" fill="none" stroke="#FFD66B" stroke-width="8" stroke-dasharray="276" stroke-dashoffset="276" transform="rotate(-90 50 50)"/></svg></div>`;
-    const arc = m.querySelector('.arc');
-    await G.tween(0, 1, sec, k => arc.style.strokeDashoffset = 276 * (1 - k), 'lin');
-    G.audio.sfx('sfx_chime', 0.3, 1.2); await G.wait(0.3); m.remove();
+  // 10/4 피드백 (대사 3줄 넘으면 한 번 누르기): 긴 대사 사이에 주인공이 카드를 내밀어 대답 (카드 소리)
+  function cardAct(k, tip) {
+    return new Promise((res) => {
+      const g = G.gen, m = G.el('div', 'modal s3-act', G.$('#overlay'));
+      const b = G.btn('s3-actcard s3-hint', `<img src="${cardImg(k)}" alt=""><span>${cardWord(k)}</span>`, m, async () => {
+        if (b.disabled) return; b.disabled = true; b.classList.remove('s3-hint'); G.audio.sfx('sfx_tap', 0.5); spark(b, 8); m.classList.add('go');
+        await G.audio.voice('S93_card_' + k); await G.wait(0.3); m.remove(); res(g === G.gen);
+      }, cardWord(k));
+      G.el('div', 's3-wtip', m, tip);
+    });
+  }
+  // 기다려 주기 (10/4 피드백: 직접 해 봄). 손을 떼고 있으면 모래시계가 차고, 그동안 하랑이가 카드 책을 한 장씩 넘김.
+  //   그 사이 화면을 누르면 모래시계가 잠깐 멈추고 루미가 작게 "쉿". 처음부터가 아니라 멈췄다 이어서 참 (벌이 아님). 다 차면 하랑이가 카드를 척 내밂
+  function waitQuiet() {
+    return new Promise((res) => {
+      const g = G.gen, ok = () => g === G.gen, sec = G.reduced() || G.fast() ? 1.5 : G.lv('hard') ? 5 : G.lv('normal') ? 4 : 3;
+      const m = G.el('div', 'modal s3-waitq', G.$('#overlay'));
+      const dl = G.$('#dialog'); if (dl) dl.style.visibility = 'hidden';   // 기다리는 동안 대사 창([다음])을 감춤 (누를 것이 없다는 것이 보이게)
+      m.innerHTML = `<div class="s3-hour"><div class="s3-wpage"><img src="${cardImg('hi')}" alt=""></div><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="8"/><circle class="arc" cx="50" cy="50" r="44" fill="none" stroke="#FFD66B" stroke-width="8" stroke-dasharray="276" stroke-dashoffset="276" transform="rotate(-90 50 50)"/></svg></div>` +
+        `<div class="s3-wtip">손을 떼고 기다려요</div><div class="s3-shh">${G.txt('WD04_rumi_18')}</div>`;
+      const arc = m.querySelector('.arc'), pg = m.querySelector('.s3-wpage'), pic = pg.querySelector('img'), shh = m.querySelector('.s3-shh');
+      const PAGES = ['star', 'draw', 'friend', 'lake', 'good', 'look', 'okay'];
+      let t = 0, hold = 0, down = false, flip = 0, n = 0, lastShh = -9, fin = false;
+      const turn = () => { pic.src = cardImg(PAGES[n++ % PAGES.length]); G.audio.sfx('sfx_page', 0.25, 1.2); if (pg.animate && !G.reduced()) pg.animate([{ transform: 'rotateY(80deg)' }, { transform: 'rotateY(0)' }], { duration: 260, easing: 'ease-out' }); };
+      const press = (e) => { if (fin) return; down = true; hold = 1.2; m.classList.add('paused');
+        if (G.t - lastShh > 3) { lastShh = G.t; G.audio.voice('WD04_rumi_18'); shh.classList.remove('on'); void shh.offsetWidth; shh.classList.add('on'); } };
+      const lift = () => { down = false; };
+      m.addEventListener('pointerdown', press); m.addEventListener('pointerup', lift); m.addEventListener('pointercancel', lift); m.addEventListener('pointerleave', lift);
+      const off = G.every(dt => {
+        if (!ok() || !m.isConnected) { off(); if (dl) dl.style.visibility = ''; res(); return; }
+        if (down || hold > 0) { hold = down ? 1.2 : hold - dt; if (hold <= 0) m.classList.remove('paused'); return; }
+        t += dt; flip += dt; arc.style.strokeDashoffset = 276 * (1 - Math.min(1, t / sec));
+        if (flip > 0.8 && t < sec) { flip = 0; turn(); }
+        if (t >= sec) { off(); done(); }
+      });
+      async function done() {
+        fin = true; pic.src = cardImg('okay'); G.audio.sfx('sfx_chime', 0.35, 1.2); m.classList.remove('paused'); m.classList.add('end');   // 하랑이가 카드를 척
+        await G.wait(G.fast() ? 0.4 : 0.9); m.remove(); if (dl) dl.style.visibility = ''; res();
+      }
+    });
   }
 
   // ---- 퍼즐 J: 그림 일기 순서. 바람에 섞인 그림을 일어난 차례대로 놓기 (그림은 별의 자리로 알 수 있음) ----
@@ -6600,6 +6672,7 @@ G.titleBook = (ov, onStart) => {
   // 책장 넘김 도구가 쪽의 style을 통째로 바꾸므로 그림은 안쪽 칸에 둠
   const page = (bg, hard) => { const p = G.el('div', 'tb-page', bookEl); G.el('div', 'tb-pimg', p).style.backgroundImage = `url("${A(bg)}")`; if (hard) p.dataset.density = 'hard'; pages.push(p); };
   page('cover.jpg', true); for (let i = 0; i < 6; i++) page('paper.jpg'); page('back.jpg', true);
+  { const ct = G.el('div', 'tb-ctitle', pages[0]), m = `url("${A('title_brush.png')}")`; ct.style.webkitMaskImage = m; ct.style.maskImage = m; }   // 10/4: 표지에 게임 이름 (붓글씨 그림을 금색으로)
   const draw = G.el('div', 'tb-draw', cam);
   const co = G.el('canvas', '', draw), sk = G.el('canvas', '', draw); G.el('div', 'tb-gutter', draw);
   const CW = 1180, CH = 787; [co, sk].forEach(c => { c.width = CW; c.height = CH; });
@@ -6739,7 +6812,7 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '프로토타입 4 (2026-10-01 오후)';
+G.VERSION = '별의 스펙트럼 (2026-10-04)';   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
