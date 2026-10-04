@@ -184,10 +184,15 @@ G.audio = (() => {
   A.pause = () => { if (A.ready && A.ctx.state === 'running') A.ctx.suspend(); if (musicEl) musicEl.pause(); try { speechSynthesis.pause(); } catch (e) { } };
   A.resume = () => { if (A.ready) A.ctx.resume(); if (musicEl && musicName) musicEl.play().catch(() => { }); try { speechSynthesis.resume(); } catch (e) { } };
 
+  // 10/4 선생님: 인터넷 없는 판을 폴더(zip)로. PC에서 파일로 열면(file:) fetch가 막혀서, 소리는 같은 이름의 .js(글자로 바꾼 소리)를 script로 불러옴
+  const FILE = location.protocol === 'file:', jsWait = {};
+  window.__snd = (u, b64) => { const w = jsWait[u]; if (w) { delete jsWait[u]; w.ok(Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer); } };
+  const fileBuf = (url) => new Promise((ok, no) => { const sc = document.createElement('script'); jsWait[url] = { ok }; sc.src = url + '.js'; sc.onload = () => { sc.remove(); if (jsWait[url]) { delete jsWait[url]; no(new Error('없음 ' + url)); } }; sc.onerror = () => { sc.remove(); delete jsWait[url]; no(new Error('없음 ' + url)); }; document.head.appendChild(sc); });
   async function loadBuf(url) {
     if (A.buffers.has(url)) { const b = A.buffers.get(url); A.buffers.delete(url); A.buffers.set(url, b); return b; }
-    const r = await fetch(url); if (!r.ok) throw new Error('없음 ' + url);
-    const ab = await r.arrayBuffer();
+    let ab;
+    if (FILE && !url.startsWith('data:')) ab = await fileBuf(url);
+    else { const r = await fetch(url); if (!r.ok) throw new Error('없음 ' + url); ab = await r.arrayBuffer(); }
     const buf = await new Promise((ok, no) => A.ctx.decodeAudioData(ab, ok, no));
     A.buffers.set(url, buf);
     while (A.buffers.size > 24) A.buffers.delete(A.buffers.keys().next().value);   // 오래된 것부터 버림
@@ -254,10 +259,12 @@ G.audio = (() => {
   }
   A.music = async (name) => {
     if (!A.ready || name === musicName) return;
+    const pl = loops[musicName]; if (pl) { try { pl.stop(); } catch (e) { } delete loops[musicName]; }   // 풀어서 반복하던 앞 음악 멈춤
     const old = musicEl, oldNode = musicNode; musicName = name; musicEl = null; musicNode = null;
     if (old) fadeOutEl(old, oldNode);
     if (!name) return;
     const p = 'assets/audio/' + name + '.mp3';
+    if (FILE) return loopBuffer(p, gMusic, name);   // 폴더 판: 음악도 .js로 풀어서 반복
     try {
       const el = new Audio(); el.loop = true; el.preload = 'auto'; el.src = await mediaUrl(p);
       if (musicName !== name) return;
