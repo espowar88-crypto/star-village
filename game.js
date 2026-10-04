@@ -5201,10 +5201,10 @@ G.s3 = (() => {
 .s3-reedbg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 28px; }
 .s3-veil { position: absolute; inset: 0; border-radius: 28px; background: #0b0f22; opacity: .85; pointer-events: none; }
 .s3-lglow { position: absolute; border-radius: 50%; background: radial-gradient(circle, rgba(255, 226, 150, .75) 0%, rgba(255, 200, 110, .35) 35%, transparent 70%); opacity: 0; pointer-events: none; mix-blend-mode: screen; }
-.s3-hidstar { position: absolute; opacity: .12; pointer-events: none; transition: opacity 1s, transform 1s; }
-.s3-hidstar svg { width: 100%; height: 100%; }
-.s3-hidstar.on { z-index: 3; opacity: 1; transform: scale(1.6); filter: drop-shadow(0 0 24px rgba(255, 190, 220, 1)); animation: s3twk 1s ease-in-out .9s infinite; }
-@keyframes s3twk { 0%, 100% { transform: scale(1.6) rotate(0deg); } 50% { transform: scale(1.8) rotate(8deg); } }
+.s3-hidstar { position: absolute; opacity: 0; pointer-events: none; transition: opacity 1s, transform 1s; }
+.s3-hidstar svg, .s3-hidstar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }   /* 그림 속 별 위에 겹쳐 반짝임 */
+.s3-hidstar.on { z-index: 3; opacity: 1; transform: scale(1.3); filter: drop-shadow(0 0 24px rgba(255, 190, 220, 1)); animation: s3twk 1s ease-in-out .9s infinite; }
+@keyframes s3twk { 0%, 100% { transform: scale(1.3) rotate(0deg); } 50% { transform: scale(1.5) rotate(8deg); } }
 .reduce .s3-hidstar.on { animation: none; }
 .s3-dshow { position: absolute; border: 6px solid #e0b96a; border-radius: 22px; overflow: hidden; background: #fff; box-shadow: 0 8px 0 #c9a45c; pointer-events: none; }
 .s3-dshow img, .s3-dshow svg { width: 100%; height: 100%; display: block; object-fit: cover; }
@@ -5586,7 +5586,7 @@ G.s3 = (() => {
       const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg'); svg.setAttribute('width', 1600); svg.setAttribute('height', 900); svg.style.position = 'absolute'; svg.style.left = svg.style.top = 0; S.B.appendChild(svg);
       const COL = ['#E88D7A', '#7DBBE3', '#7FB77E', '#B58BC4'];
       const faces = P.map((p, i) => {
-        const f = S.at(G.el('div', 's3-face', S.B, (G.D.portraits[p.id] ? `<img class="pf" src="${G.asset(G.D.portraits[p.id].img)}" alt="">` : `<img class="pf" src="${cardImg('dog')}" alt="" style="object-fit:contain">`) + `<span>${p.name}</span>`), 110, ys[i] - 75); return f; });
+        const f = S.at(G.el('div', 's3-face', S.B, (G.D.portraits[p.id] ? `<img class="pf" src="${G.asset(G.D.portraits[p.id].img)}" alt="">` : `<img class="pf" src="${G.art('face_dog') || cardImg('dog')}" alt="" style="object-fit:contain">`) + `<span>${p.name}</span>`), 110, ys[i] - 75); return f; });
       const bubs = P.map((p, i) => S.at(G.el('div', 's3-bub', S.B, `<img src="${ART(p.pic)}" alt="">`), 1300, ys[perm[i]] - 75));
       // 실: 사람 i → 말풍선 i (그 말풍선은 perm[i] 줄에). 위·아래 순서 = 그린 순서 (마지막이 맨 위)
       const order = shuffle(P.map((_, i) => i));
@@ -6341,10 +6341,10 @@ G.s3 = (() => {
       const dark = S.at(G.el('div', 's3-panel s3-dark', S.B), 40, 20, 1520, 860);
       // 10/4 선생님: 배경 그림(bg_reednight)이 오면 그 그림, 없으면 코드 그림
       dark.innerHTML = G.art('bg_reednight') ? `<img class="s3-reedbg" src="${G.art('bg_reednight')}" alt="">` : `<svg viewBox="0 0 1520 860" width="1520" height="860"><rect width="1520" height="860" rx="28" fill="#141a33"/><g stroke="#2f4a3a" stroke-width="12">${[...Array(28)].map((_, i) => `<path d="M${40 + i * 52} 860 l${(i % 3) * 6 - 6} -${220 + (i * 53) % 160}"/>`).join('')}</g></svg>`;
-      const hid = G.el('div', 's3-hidstar', dark, G.starSvg(G.STARS.find(q => q.id === 'word') || G.STARS[2], true)); S.at(hid, 760 - 60, 241 - 60, 120, 120);   // 갈대 사이에 숨은 별 (그림 프롬프트에서 별 자리 50%, 28%)
+      const hid = G.el('div', 's3-hidstar', dark, G.starSvg(G.STARS.find(q => q.id === 'word') || G.STARS[2], true)); S.at(hid, 872 - 62, 540 - 62, 124, 124);   // 갈대 사이에 숨은 별: 선생님 그림(bg_reednight) 속 별 자리 위에 겹침
       const veil = G.el('div', 's3-veil', dark);   // 어둠: 등불이 밝아질수록 걷힘 (숨은 별도 어둠 아래)
       const light = G.el('div', 's3-lightc', dark);
-      const POS = secs.length > 1 ? [[460, 470], [1060, 470]] : [[760, 470]];
+      const POS = secs.length > 1 ? [[330, 725], [1240, 725]] : [[780, 725]];   // 그림 속 빈 흙길 자리
       const rings = secs.map((sec, i) => {
         const b = G.el('button', 's3-ring', dark); b.type = 'button'; b.setAttribute('aria-label', '등불'); S.at(b, POS[i][0] - 130, POS[i][1] - 130, 260, 260);
         b.innerHTML = `<img src="${ART('item_lantern')}" alt="" style="position:absolute;left:55px;top:50px;width:150px;height:150px"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="7"/><circle class="arc" cx="50" cy="50" r="45" fill="none" stroke="#FFD66B" stroke-width="7" stroke-dasharray="283" stroke-dashoffset="283" transform="rotate(-90 50 50)"/></svg>`;
