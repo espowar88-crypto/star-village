@@ -4989,7 +4989,7 @@ G.s2 = (() => {
     }
   }
   async function sky() {
-    const g = G.gen, m = G.el('div', 'modal sky-view', G.$('#overlay'));
+    const g = G.gen, m = G.el('div', 'modal sky-view', G.$('#closeup'));   // 10/4: 대사 창(#dialog)보다 아래 층에 둬야 대사를 넘길 수 있음 (#overlay는 대사 창을 덮어 화면이 멈춤)
     m.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
     const POS = [[.5, .42], [.3, .3], [.7, .3], [.2, .55], [.8, .55], [.38, .66], [.62, .66], [.5, .2], [.5, .8]], nx = G.STARS.findIndex(s => s.id === D2().next);
     G.STARS.forEach((s, i) => { const e = G.el('div', 'c11-slot' + (i < 2 ? ' me lit' : '') + (i === nx ? ' s2-next' : ''), m, G.starSvg(s, i >= 2)); Object.assign(e.style, { left: POS[i % POS.length][0] * 100 + '%', top: POS[i % POS.length][1] * 100 + '%' }); });
@@ -6353,7 +6353,7 @@ G.s3 = (() => {
     }
   }
   async function sky() {
-    const g = G.gen, m = G.el('div', 'modal sky-view', G.$('#overlay'));
+    const g = G.gen, m = G.el('div', 'modal sky-view', G.$('#closeup'));   // 10/4: 대사 창(#dialog)보다 아래 층에 둬야 대사를 넘길 수 있음 (#overlay는 대사 창을 덮어 화면이 멈춤)
     m.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
     const POS = [[.5, .42], [.3, .3], [.7, .3], [.2, .55], [.8, .55], [.38, .66], [.62, .66], [.5, .2], [.5, .8]], nx = G.STARS.findIndex(s => s.id === D3().next);
     G.STARS.forEach((s, i) => { const e = G.el('div', 'c11-slot' + (i < 3 ? ' me lit' : '') + (i === nx ? ' s2-next' : ''), m, G.starSvg(s, i >= 3)); Object.assign(e.style, { left: POS[i % POS.length][0] * 100 + '%', top: POS[i % POS.length][1] * 100 + '%' }); });
