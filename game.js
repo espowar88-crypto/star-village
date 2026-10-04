@@ -4900,7 +4900,7 @@ G.s2 = (() => {
   };
   // 짧은 음악회: 부드러운 음악, 박자는 가로등 빛과 무대 빛으로도
   // 10/4 선생님: 효과가 부족함 → 약 10초 동안 하늘색 음표가 무대와 사람들 위로 천천히 떠오르고, 모두 박자에 맞춰 살살 몸을 흔듦
-  const CONCERT_MUSIC = 'music_title';   // 오케스트라 음원을 받으면 'music_concert'로 바꿈
+  const CONCERT_MUSIC = 'music_concert';   // 오케스트라 음원을 받으면 'music_concert'로 바꿈
   function floatNote(box, x, y) {
     const h = 60 + Math.random() * 40, e = note(box, 'calm', h), sw = (Math.random() < .5 ? -1 : 1) * (30 + Math.random() * 40), up = 260 + Math.random() * 200, rot = (Math.random() - .5) * 30;
     e.style.left = x + 'px'; e.style.top = y + 'px';
