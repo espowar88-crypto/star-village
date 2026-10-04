@@ -3062,6 +3062,14 @@ G.cut.add({
     const U = G.cut.util, star = G.STARS.find(s => s.id === 'road'), ped = S.hotspots.find(h => h.id === 'pedestal').rect;
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = S.sprites.find(s => s.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     const u = G.stage.u; c.t0 = G.t;
+    // 10/4 선생님: 별을 올릴 때는 촌장과 이 별 이야기의 인물들이 받침대 둘레로 모여 같이 올림 (소리의 별, 말의 별과 같은 방법). 봄이 아주머니는 시장에서 걸어옴
+    const GA = { chief: [880, 500], haesol: [1360, 440], daon: [1330, 690], post: [680, 600], bom: [930, 700] };
+    if (!V.spr.bom) { const i = G.el('img', 'scene-sprite idle', V.fx); i.src = G.asset('assets/scenes/market_bom.png'); i.alt = '';
+      Object.assign(i.style, { left: '-240px', top: '700px', width: '175px', height: '193px' }); V.spr.bom = { img: i, def: { id: 'bom', rect: [-240, 700, 175, 193] } }; }
+    V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
+    const mv = Object.entries(GA).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1], x1: to[0], y1: to[1] }; }).filter(Boolean);
+    const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
+    if (G.reduced()) place(1); else await c.tween(0, 1, 1.6, place, 'io');
     c.voice('S11_nar_01');
     // (가) 빛을 잃은 별과 별빛 조각이 주인공에게서 받침대로 날아감
     const piece = G.el('div', 'c11-item', root, G.icon('item_piece')), light = G.el('div', 'c11-item', root, G.icon('item_light'));
