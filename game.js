@@ -167,25 +167,56 @@ G.audio = (() => {
   // 시작하기 버튼(첫 누르기) 안에서 불러야 아이폰·안드로이드에서 소리가 남
   A.unlock = () => {
     if (A.ready) { if (A.ctx.state !== 'running' && !G.paused) A.ctx.resume(); return; }
-    const AC = window.AudioContext || window.webkitAudioContext;
     try {
+      makeCtx(); A.ready = true; A.setVolume();
+    } catch (e) { console.warn('소리 준비 실패', e); }
+    // 브라우저 음성(TTS)도 첫 누르기에서 깨워 둠
+    try { if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } } catch (e) { }
+  };
+  function makeCtx() {
+      const AC = window.AudioContext || window.webkitAudioContext;
       A.ctx = new AC(); master = A.ctx.createGain(); master.connect(A.ctx.destination);
       gVoice = A.ctx.createGain(); gSfx = A.ctx.createGain(); gAmb = A.ctx.createGain(); gMusic = A.ctx.createGain();
       for (const g of [gVoice, gSfx, gAmb, gMusic]) g.connect(master);
       gVoice.gain.value = VOL.voice; gSfx.gain.value = VOL.sfx; gAmb.gain.value = VOL.amb; gMusic.gain.value = VOL.music;
       const b = A.ctx.createBuffer(1, 1, 22050); const s = A.ctx.createBufferSource(); s.buffer = b; s.connect(A.ctx.destination); s.start(0);
       A.ctx.resume && A.ctx.resume();
-      A.ready = true; A.setVolume();
-    } catch (e) { console.warn('소리 준비 실패', e); }
-    // 브라우저 음성(TTS)도 첫 누르기에서 깨워 둠
-    try { if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } } catch (e) { }
+  }
+  // 10/4 선생님: 게임 중 다른 화면에 갔다 오면 소리가 안 나던 것. 아이폰은 돌아와도 소리 엔진을 다시 켜 주지 않고, 누르기 전에는 켤 수도 없음
+  //  → 돌아왔을 때 꺼져 있으면 "화면을 눌러 주세요" 판을 띄우고, 누르면 다시 켬. 그래도 안 켜지면 소리 엔진을 새로 만들고 음악·환경음을 다시 틂
+  A.rebuild = () => {
+    const mName = musicName, aNames = Object.keys(ambs);
+    try { A.ctx.close(); } catch (e) { }
+    for (const k of Object.keys(loops)) delete loops[k];
+    if (musicEl) { try { musicEl.pause(); musicEl.src = ''; } catch (e) { } } musicEl = null; musicNode = null; musicName = '';
+    for (const k of Object.keys(ambs)) delete ambs[k];
+    A.buffers.clear(); cur = null;
+    makeCtx(); A.setVolume();
+    if (mName) A.music(mName); if (aNames.length) A.ambient(aNames);
   };
+  let tapLayer = null, stuck = false;
+  const fixSound = () => {   // 누르기 안에서 부름 (아이폰은 누르기 안에서만 소리를 켤 수 있음)
+    if (tapLayer) { tapLayer.remove(); tapLayer = null; }
+    if (!A.ready || G.paused || document.hidden) return;
+    if (A.ctx.state !== 'running' && (stuck || A.ctx.state === 'interrupted')) { stuck = false; A.rebuild(); return; }   // 한 번 깨워도 안 깬 엔진은 새로 만듦
+    if (A.ctx.state !== 'running') try { A.ctx.resume().catch(() => { }); } catch (e) { }
+    if (musicEl && musicName && musicEl.paused) musicEl.play().catch(() => { });
+    try { speechSynthesis.resume(); } catch (e) { }
+    setTimeout(() => { if (A.ready && !G.paused && A.ctx.state !== 'running') { stuck = true; askTap(); } }, 400);
+  };
+  const askTap = () => {
+    if (tapLayer || !A.ready || G.paused || document.hidden || A.ctx.state === 'running') return;
+    tapLayer = G.el('button', 'snd-wake', document.body, '<span>화면을 한 번 눌러 주세요.<br>소리가 다시 나요.</span>'); tapLayer.type = 'button';
+    tapLayer.addEventListener('click', fixSound);
+  };
+  const back = () => { if (document.hidden || G.paused || !A.ready) return; A.resume(); setTimeout(askTap, 700); };
+  document.addEventListener('visibilitychange', back);
+  window.addEventListener('pageshow', back); window.addEventListener('focus', back);
   // 10/4 선생님: 가끔 대사 소리가 안 나던 것. 아이폰은 음악(<audio>)이 바뀌거나 알림이 오면 소리 엔진을 '멈춤(interrupted)'으로 바꾸고
   // 다시 켜 주지 않음 → 소리를 낼 때마다, 화면을 누를 때마다 깨움. 그래도 안 깨면 대사는 <audio>로 따로 틀어 줌
-  A.wake = () => { if (A.ready && A.ctx.state !== 'running' && !G.paused) try { A.ctx.resume().catch(() => { }); } catch (e) { } };
+  A.wake = () => { if (!A.ready || G.paused) return; if (A.ctx.state !== 'running') try { A.ctx.resume().catch(() => { }); } catch (e) { } };
   const awake = async () => { if (A.ctx.state === 'running') return true; A.wake(); await Promise.race([new Promise(r => { const f = () => { if (A.ctx.state === 'running') r(); else setTimeout(f, 30); }; f(); }), G.wait(0.5)]); return A.ctx.state === 'running'; };
-  ['pointerdown', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, () => A.wake(), true));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) A.wake(); });
+  ['pointerdown', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, (e) => { if (tapLayer && e.target === tapLayer) return; if (A.ready && (A.ctx.state !== 'running' || (musicEl && musicName && musicEl.paused))) fixSound(); }, true));
   A.setVolume = () => { if (!A.ready) return; master.gain.value = S().volume ?? 0.9; };
   A.pause = () => { if (A.ready && A.ctx.state === 'running') A.ctx.suspend(); if (musicEl) musicEl.pause(); try { speechSynthesis.pause(); } catch (e) { } };
   A.resume = () => { if (A.ready) A.ctx.resume(); if (musicEl && musicName) musicEl.play().catch(() => { }); try { speechSynthesis.resume(); } catch (e) { } };
