@@ -1248,6 +1248,8 @@ G.cut = (() => {
       // 9/30 선생님: 떨어질 때 빙글빙글 돌고, 지나간 자리에 별 잔상과 반짝이는 별의 길이 잠시 남음 (선 하나만 있던 것을 바꿈)
       const trail = G.el('div', 'layer', V.el); trail.style.zIndex = 1;
       const tw = (col) => G.sparkle('#FFFDF2', col, 5);
+      // 10/4 폰 끊김: 잔상·반짝이는 매 순간 JS로 바꾸지 않고 브라우저 애니메이션으로 사라지게 (없으면 예전처럼)
+      const fade = (el, kf, ms, ease, end) => { const an = el.animate && el.animate(kf, { duration: ms, easing: ease, fill: 'forwards' }); if (an) an.finished.then(() => el.remove(), () => el.remove()); else { end(); setTimeout(() => el.remove(), ms); } };
       const fall = (q, i) => new Promise(async (res) => {
         if (!c.rm && !c.skipped) await c.tween(0, 1, 0.8, k => { q.el.style.transform = `rotate(${Math.sin(k * Math.PI * 6) * 16}deg)`; });
         c.sfx('sfx_starfall', 0.35);
@@ -1258,23 +1260,23 @@ G.cut = (() => {
         await c.tween(0, 1, c.rm ? 0.3 : 1.9, k => {
           const u = 1 - k, x = u * u * q.at[0] + 2 * u * k * p1[0] + k * k * to[0], y = u * u * q.at[1] + 2 * u * k * p1[1] + k * k * to[1];
           const sc = 1 - 0.55 * k, rot = c.rm ? 0 : spin * k, op = k < 0.75 ? 1 : (1 - k) / 0.25;
-          q.el.style.left = x + 'px'; q.el.style.top = y + 'px'; q.el.style.transform = `rotate(${rot}deg) scale(${sc})`; q.el.style.opacity = op;
+          q.el.style.translate = (x - q.at[0]) + 'px ' + (y - q.at[1]) + 'px'; q.el.style.transform = `rotate(${rot}deg) scale(${sc})`; q.el.style.opacity = op;
           if (c.skipped) return;
           // 별 잔상: 지나간 자리에 같은 별이 옅게 남았다가 사라짐
           if (many && k - lastG > 0.045 && k < 0.9) {
             lastG = k;
             const g = G.el('div', 'sghost', trail, q.el.innerHTML);
             Object.assign(g.style, { left: x + 'px', top: y + 'px', width: sz + 'px', height: sz + 'px', margin: (-sz / 2) + 'px 0 0 ' + (-sz / 2) + 'px', transform: `rotate(${rot}deg) scale(${sc})` });
-            c.tween(0.55, 0, 0.55, v => g.style.opacity = v * op).then(() => g.remove());
+            fade(g, [{ opacity: 0.55 * op }, { opacity: 0 }], 550, 'linear', () => g.style.opacity = 0);
           }
           // 반짝이는 별의 길: 작은 반짝이가 뿌려져 잠시 반짝이다 천천히 사라짐
-          if (k - lastS > (many ? 0.018 : 0.08) && k < 0.95) {
+          if (k - lastS > (many ? 0.026 : 0.08) && k < 0.95) {
             lastS = k;
             const s = G.el('div', 'strail', trail, tw(col)), r = (18 + Math.random() * 26) * (q.s.big ? 1.3 : 1);
             const jx = (Math.random() - 0.5) * sz * 0.5, jy = (Math.random() - 0.5) * sz * 0.5;
             Object.assign(s.style, { left: (x + jx) + 'px', top: (y + jy) + 'px', width: r + 'px', height: r + 'px', margin: (-r / 2) + 'px 0 0 ' + (-r / 2) + 'px', animationDelay: (-Math.random()) + 's' }); s.style.setProperty('--c', col);
             const life = many ? 1.4 + Math.random() * 0.9 : 0.8;
-            c.tween(1, 0, life, v => { s.style.opacity = v; s.style.transform = `translateY(${(1 - v) * 40}px) scale(${0.5 + v * 0.5})`; }, 'in').then(() => s.remove());
+            fade(s, [{ opacity: 1, transform: 'translateY(0) scale(1.1)' }, { opacity: .7, transform: 'translateY(3px) scale(.85)', offset: .22 }, { opacity: .95, transform: 'translateY(9px) scale(1)', offset: .44 }, { opacity: .55, transform: 'translateY(18px) scale(.72)', offset: .66 }, { opacity: .35, transform: 'translateY(28px) scale(.7)', offset: .84 }, { opacity: 0, transform: 'translateY(40px) scale(.5)' }], life * 1000, 'linear', () => s.style.opacity = 0);   // 반짝임도 같은 애니메이션 안에서
           }
         }, 'in');
         q.el.style.opacity = 0;
