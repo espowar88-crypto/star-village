@@ -893,7 +893,13 @@ G.dialog = (() => {
     if (P.scale && cls === 'pmain') img.style.setProperty('--ps', P.scale);
     Object.values(P.poses || {}).forEach(src => { const pre = new Image(); pre.src = G.asset(src); });   // 동작이 바뀔 때 깜박이지 않게 미리 읽음
     // 9/29 밤: 그림의 가로:세로를 원본 그대로 고정 (어떤 브라우저에서도 가로로 눌리지 않게)
-    img.addEventListener('load', () => { if (img.naturalWidth) img.style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight; });
+    img.addEventListener('load', () => {
+      if (!img.naturalWidth) return;
+      img.style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight;
+      // 10/4: 길게 자른 그림(높이 720 넘음)은 위 720px만 지금 자리에 두고 나머지는 대화창 뒤로 내려 화면 아래까지 닿게 (휴대폰에서 잘린 끝이 안 보이게)
+      const k = cls === 'pmain' && img.naturalHeight > 720 ? img.naturalHeight / 720 : 1;
+      img.style.setProperty('--ext', k); img.style.setProperty('--exd', 1 - 1 / k);
+    });
     setPose(img, '01'); return img;
   }
   // 동작 그림 바꾸기. 그림이 보는 쪽(face)과 선 자리(side)를 맞춰 뒤집음: 왼쪽 자리는 오른쪽을, 오른쪽 자리는 왼쪽을 보게
