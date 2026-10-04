@@ -795,8 +795,8 @@ G.mapView = (parent, o = {}) => {
     w.el = G.el('div', 'walker' + (cls ? ' ' + cls : ''), V.fx);
     G.el('div', 'shadow', w.el);
     w.spr = G.el('div', 'sprite', w.el); w.spr.style.backgroundImage = `url("${G.asset(sheet)}")`;
-    w.set = (x, y) => { w.x = x; w.y = y; w.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`; w.el.style.zIndex = Math.round(y); };
-    w.draw = () => { w.spr.style.backgroundPosition = `${-w.frame * 100}px ${-ROW[w.dir] * 130}px`; };
+    w.set = (x, y) => { w.x = x; w.y = y; w.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`; const z = Math.round(y); if (z !== w.z) { w.z = z; w.el.style.zIndex = z; } };   // 10/4 폰 끊김: 바뀔 때만 씀
+    w.draw = () => { const bp = `${-w.frame * 100}px ${-ROW[w.dir] * 130}px`; if (bp !== w.bp) { w.bp = bp; w.spr.style.backgroundPosition = bp; } };
     w.face = (dx, dy) => { w.dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW'); };
     w.draw();
     return w;
