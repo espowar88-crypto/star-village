@@ -166,7 +166,7 @@ G.audio = (() => {
 
   // 시작하기 버튼(첫 누르기) 안에서 불러야 아이폰·안드로이드에서 소리가 남
   A.unlock = () => {
-    if (A.ready) { if (A.ctx.state === 'suspended' && !G.paused) A.ctx.resume(); return; }
+    if (A.ready) { if (A.ctx.state !== 'running' && !G.paused) A.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     try {
       A.ctx = new AC(); master = A.ctx.createGain(); master.connect(A.ctx.destination);
@@ -180,6 +180,12 @@ G.audio = (() => {
     // 브라우저 음성(TTS)도 첫 누르기에서 깨워 둠
     try { if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } } catch (e) { }
   };
+  // 10/4 선생님: 가끔 대사 소리가 안 나던 것. 아이폰은 음악(<audio>)이 바뀌거나 알림이 오면 소리 엔진을 '멈춤(interrupted)'으로 바꾸고
+  // 다시 켜 주지 않음 → 소리를 낼 때마다, 화면을 누를 때마다 깨움. 그래도 안 깨면 대사는 <audio>로 따로 틀어 줌
+  A.wake = () => { if (A.ready && A.ctx.state !== 'running' && !G.paused) try { A.ctx.resume().catch(() => { }); } catch (e) { } };
+  const awake = async () => { if (A.ctx.state === 'running') return true; A.wake(); await Promise.race([new Promise(r => { const f = () => { if (A.ctx.state === 'running') r(); else setTimeout(f, 30); }; f(); }), G.wait(0.5)]); return A.ctx.state === 'running'; };
+  ['pointerdown', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, () => A.wake(), true));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) A.wake(); });
   A.setVolume = () => { if (!A.ready) return; master.gain.value = S().volume ?? 0.9; };
   A.pause = () => { if (A.ready && A.ctx.state === 'running') A.ctx.suspend(); if (musicEl) musicEl.pause(); try { speechSynthesis.pause(); } catch (e) { } };
   A.resume = () => { if (A.ready) A.ctx.resume(); if (musicEl && musicName) musicEl.play().catch(() => { }); try { speechSynthesis.resume(); } catch (e) { } };
@@ -201,8 +207,8 @@ G.audio = (() => {
   A.preload = (ids) => { if (!A.ready) return; for (const id of ids) loadBuf(G.voiceUrl(id)).catch(() => { }); };
 
   // ---- 대사 음성: 끝나면 resolve. 파일이 없으면 브라우저 음성 → 그것도 안 되면 3초 ----
-  let cur = null, vseq = 0;
-  A.stopVoice = () => { vseq++; if (cur) { try { cur.stop(); } catch (e) { } cur = null; } try { speechSynthesis.cancel(); } catch (e) { } };
+  let cur = null, curEl = null, vseq = 0;
+  A.stopVoice = () => { vseq++; if (cur) { try { cur.stop(); } catch (e) { } cur = null; } if (curEl) { try { curEl.pause(); } catch (e) { } curEl = null; } try { speechSynthesis.cancel(); } catch (e) { } };
   // 9/30: 음성 파일을 불러오는 사이에 다음 음성이 시작되면, 늦게 도착한 앞 음성은 틀지 않음 (음성 두 개가 겹치던 문제)
   A.voice = (id, textFallback) => new Promise(async (done) => {
     A.stopVoice(); const my = vseq;
@@ -215,6 +221,11 @@ G.audio = (() => {
     try {
       const buf = await loadBuf(G.voiceUrl(id));
       if (my !== vseq) return fin();
+      if (!(await awake())) {   // 소리 엔진이 깨지 않으면 <audio>로 (폴더 판은 mp3 파일이 없어 길이만큼 기다림)
+        if (my !== vseq) return fin();
+        if (!FILE) { const el = new Audio(await mediaUrl('assets/voice/' + id + '.mp3')); el.volume = Math.min(1, S().volume ?? 0.9); curEl = el; el.onended = () => { if (curEl === el) curEl = null; fin(); }; el.play().catch(() => { }); }
+        G.wait(buf.duration + 1.5).then(fin); return;
+      }
       const src = A.ctx.createBufferSource(); src.buffer = buf; src.connect(gVoice); cur = src;
       src.onended = () => { if (cur === src) cur = null; fin(); };
       src.start();
@@ -246,7 +257,7 @@ G.audio = (() => {
 
   // ---- 효과음 ----
   A.sfx = async (name, vol = 1, rate = 1) => {   // 10/1 rate: 음높이 (반딧불 소리 자물쇠)
-    if (!A.ready) return;
+    if (!A.ready) return; A.wake();
     try { const buf = await loadBuf(G.asset('assets/audio/' + name + '.mp3')); const s = A.ctx.createBufferSource(); s.buffer = buf; s.playbackRate.value = rate; const g = A.ctx.createGain(); g.gain.value = vol; s.connect(g); g.connect(gSfx); s.start(); } catch (e) { }
   };
 
@@ -258,7 +269,7 @@ G.audio = (() => {
     return blobUrls[p];
   }
   A.music = async (name) => {
-    if (!A.ready || name === musicName) return;
+    if (!A.ready || name === musicName) return; A.wake();
     const pl = loops[musicName]; if (pl) { try { pl.stop(); } catch (e) { } delete loops[musicName]; }   // 풀어서 반복하던 앞 음악 멈춤
     const old = musicEl, oldNode = musicNode; musicName = name; musicEl = null; musicNode = null;
     if (old) fadeOutEl(old, oldNode);
@@ -1888,6 +1899,10 @@ G.map = (() => {
 
 /* ---- scene.js ---- */
 // scene.js — 장소 장면 (U4): 장소 그림 한 장에서 사람·물건 누르기. 할 일(☆)을 모두 하면 장소 클리어 (C7)
+// 10/4 선생님(미루 다리가 사라짐): 인물 그림이 자리 칸보다 키가 크면(발이 잘리지 않게 위로 늘린 그림) 폭과 발 자리는 그대로 두고 위로 키움
+G.tallDh = (img, r) => Math.max(0, (parseFloat(img.style.height) || r[3]) - r[3]);   // 위로 키운 만큼 (모여 서기 때 발 자리 맞춤)
+G.fitTall = (img, r) => { const f = () => { const nw = img.naturalWidth, nh = img.naturalHeight; if (!nw || !nh || nh / nw <= (r[3] / r[2]) * 1.04) return; const h = r[2] * nh / nw; img.style.height = h + 'px'; img.style.top = (parseFloat(img.style.top) + r[3] - h) + 'px'; };
+  if (img.complete && img.naturalWidth) f(); else img.addEventListener('load', f, { once: true }); };
 // 장면 그림은 2400x1080: 가운데 1920 = 16:9, 가운데 1440 = 4:3 핵심 영역 (누를 곳은 모두 여기)
 // 프로토타입 2: 누를 곳 하나가 할 일 여러 개를 이어서 할 수 있음 (flow: flows.js, more: 이어지는 할 일),
 //   after: 다른 할 일을 끝낸 뒤에 나타나는 누를 곳 (도서관 촉각 지도), randomSfx: 가끔 나는 소리 (도서관 책장 넘기는 소리)
@@ -1905,7 +1920,7 @@ G.sceneView = (parent, id, o = {}) => {
   V.ready = Promise.all([mono, col].map(i => i.decode ? i.decode().catch(() => { }) : Promise.resolve()));
   V.lamps = (S.lamps || []).map((p, i) => { const g = G.el('div', 'lamp-glow', el); g.style.left = p[0] + 'px'; g.style.top = p[1] + 'px'; g.style.transform = 'scale(1.5)'; return { el: g, from: (S.lampFrom || [])[i] ?? 5 }; });
   V.fx = G.el('div', 'layer', el);
-  const addImg = (src, r) => { const i = G.el('img', 'scene-sprite idle', V.fx); i.src = G.asset(src); i.alt = ''; Object.assign(i.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px', animationDelay: (-Math.random() * 3).toFixed(2) + 's' }); return i; };
+  const addImg = (src, r) => { const i = G.el('img', 'scene-sprite idle', V.fx); i.src = G.asset(src); i.alt = ''; Object.assign(i.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px', animationDelay: (-Math.random() * 3).toFixed(2) + 's' }); G.fitTall(i, r); return i; };
   for (const sp of S.sprites) {
     const v = V.spr[sp.id] = { img: addImg(sp.img, sp.rect), def: sp };
     if (sp.flat) v.img.classList.remove('idle');
@@ -1979,7 +1994,7 @@ G.scene = (() => {
     // 누를 곳: 별빛 테두리 + 할 일에는 ☆
     for (const h of def.hotspots) {
       const glow = G.el('img', 'hot-glow', V.fx); glow.src = G.asset(h.img); glow.alt = '';
-      Object.assign(glow.style, { left: h.glow[0] + 'px', top: h.glow[1] + 'px', width: h.glow[2] + 'px', height: h.glow[3] + 'px' });
+      Object.assign(glow.style, { left: h.glow[0] + 'px', top: h.glow[1] + 'px', width: h.glow[2] + 'px', height: h.glow[3] + 'px' }); G.fitTall(glow, h.glow);
       if (G.st.seen.includes(id + ':' + h.id)) glow.classList.add('seen');
       if (h.cls) glow.classList.add(h.cls);   // 10/1: 물건 그림 자체를 보여 주는 누를 곳 (편지)
       let star = null;
@@ -3085,7 +3100,7 @@ G.cut.add({
     if (!V.spr.bom) { const i = G.el('img', 'scene-sprite idle', V.fx); i.src = G.asset('assets/scenes/market_bom.png'); i.alt = '';
       Object.assign(i.style, { left: '-240px', top: '700px', width: '175px', height: '193px' }); V.spr.bom = { img: i, def: { id: 'bom', rect: [-240, 700, 175, 193] } }; }
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
-    const mv = Object.entries(GA).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1], x1: to[0], y1: to[1] }; }).filter(Boolean);
+    const mv = Object.entries(GA).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0], y1: to[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
     const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
     if (G.reduced()) place(1); else await c.tween(0, 1, 1.6, place, 'io');
     c.voice('S11_nar_01');
@@ -4941,7 +4956,7 @@ G.s2 = (() => {
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
     // (가) 인물들이 받침대 둘레로 모임
-    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1], x1: to[0], y1: to[1] }; }).filter(Boolean);
+    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0], y1: to[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
     const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
     if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
@@ -6478,7 +6493,7 @@ G.s3 = (() => {
     const layer = G.el('div', 'layer', ov); layer.style.pointerEvents = 'none';
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');
-    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1], x1: to[0], y1: to[1] }; }).filter(Boolean);
+    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0], y1: to[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
     const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
     if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
