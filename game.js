@@ -5767,11 +5767,10 @@ G.s3 = (() => {
       complete('s3dock_boat'); return;
     }
   };
-  // 배를 타고 건너는 모습 (배 그림이 호수 쪽으로 미끄러졌다 돌아옴)
+  // 배를 타고 건너는 모습 (배는 배경 그림 안에 있어서 화면을 잠깐 어둡게 했다 밝힘)
   async function crossBoat(V) {
-    const b = V.spr.boat && V.spr.boat.img, h = V.spr.hero && V.spr.hero.img, rm = G.reduced(); if (!b) return;
+    const h = V.spr.hero && V.spr.hero.img, rm = G.reduced();
     G.audio.sfx('sfx_wind', 0.15, 0.8);
-    const r = b.getBoundingClientRect(); void r;
     G.$('#fade').classList.add('on'); await G.wait(rm ? 0.2 : 0.6);
     if (h) h.style.opacity = 1;
     G.$('#fade').classList.remove('on'); await G.wait(0.3);
