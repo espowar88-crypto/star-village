@@ -45,6 +45,51 @@ G.svgDot = (done) => G.artImg(done ? 'mark_done' : 'mark_todo') || (done
   ? '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#FFD66B" stroke="#C98F14" stroke-width="9"/><path d="M31 51 L45 64 L70 37" fill="none" stroke="#FFF8EC" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>'
   : '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="rgba(255,248,236,.9)" stroke="#C98F14" stroke-width="9"/></svg>');
 G.sparkle = (fill = '#FFF1B8', stroke = '#FFD66B', sw = 4) => G.artImg('sparkle') || G.svgTwinkle(fill, stroke, sw);
+// 10/6 선생님: 별을 올릴 때 그냥 올라가지 않고, 별가루를 연료처럼 아래로 뿜으며 반짝이는 별 잔상을 남기고 올라감 (인트로·모든 별 받침대 같은 효과)
+// 쓰는 법: const tr = G.riseTrail(부모, 별 요소, 별 색, 가볍게?) → 날아가는 동안 tr(k, x, y, 크기) / 화면이 따라 올라가면 tr.shift(내려간 거리) / 끝나면 tr.end()
+G.riseTrail = (parent, starEl, col = '#FFD66B', light = false) => {
+  // 10/6 선생님 보충: 화려할수록 좋음 → 떠날 때 빛 고리와 반짝이 터짐, 올라가는 동안 빛 번짐·별 잔상·별가루(별 색+금색+흰색), 닿을 때 한 번 더 터짐
+  // 휴대폰 끊김 대책: 움직임은 모두 el.animate의 transform·opacity만 (filter 애니메이션 없음)
+  const L = G.el('div', 'rtrail', parent); let lastG = -1, lastS = -1, lastP = -1, off = 0, fired = false, px = 0, py = 0, ps = 0;
+  const COL = [col, '#FFD66B', '#FFFDF2', col];
+  const fade = (el, kf, ms, ease = 'linear') => { const an = el.animate && el.animate(kf, { duration: ms, easing: ease, fill: 'forwards' }); if (an) an.finished.then(() => el.remove(), () => el.remove()); else setTimeout(() => el.remove(), ms); };
+  const put = (el, x, y, r) => Object.assign(el.style, { left: x + 'px', top: (y - off) + 'px', width: r + 'px', height: r + 'px', margin: (-r / 2) + 'px 0 0 ' + (-r / 2) + 'px' });
+  const spark = (x, y, r, c) => { const e = G.el('div', 'rtrail-s', L, G.sparkle('#FFFDF2', c, 5)); e.style.setProperty('--c', c); put(e, x, y, r); return e; };
+  // 빛 고리 + 사방으로 튀는 반짝이
+  const burst = (x, y, sz, n) => {
+    if (G.reduced()) return;
+    const ring = G.el('div', 'rtrail-ring', L); ring.style.setProperty('--c', col); put(ring, x, y, sz * 1.2);
+    fade(ring, [{ opacity: .95, transform: 'scale(.3)' }, { opacity: 0, transform: 'scale(2.6)' }], 900, 'ease-out');
+    for (let i = 0; i < n; i++) {
+      const c = COL[i % COL.length], r = sz * (0.16 + Math.random() * 0.18), e = spark(x, y, r, c);
+      const an = (i / n) * Math.PI * 2 + Math.random() * 0.3, d = sz * (0.9 + Math.random() * 0.9), dx = Math.cos(an) * d, dy = Math.sin(an) * d * 0.8;
+      fade(e, [{ opacity: 1, transform: 'translate(0,0) scale(.4) rotate(0deg)' }, { opacity: 1, transform: `translate(${dx * .7}px,${dy * .7}px) scale(1.2) rotate(90deg)`, offset: .4 }, { opacity: 0, transform: `translate(${dx}px,${dy + sz * .4}px) scale(.5) rotate(180deg)` }], 900 + Math.random() * 600, 'ease-out');
+    }
+  };
+  const step = (k, x, y, sz, fx = 1) => {   // fx: 별이 작게 보일 때 별가루를 더 크게
+    if (G.reduced() || k >= 0.97) return;
+    px = x; py = y; ps = sz * fx;
+    if (!fired) { fired = true; burst(x, y, sz * fx, light ? 8 : 18); }
+    // 빛 번짐: 별 둘레에 별 색 빛이 퍼졌다 사라짐
+    if (!light && k - lastP > 0.03) { lastP = k; const g = G.el('div', 'rtrail-glow', L); g.style.setProperty('--c', col); put(g, x, y, sz * 1.1 * fx); fade(g, [{ opacity: .55, transform: 'scale(.7)' }, { opacity: 0, transform: 'scale(1.5)' }], 800); }
+    // 별 잔상: 지나간 자리에 같은 별이 옅게 남았다가 사라짐
+    if (!light && k - lastG > 0.035 && k < 0.92) { lastG = k; const g = G.el('div', 'rtrail-g', L, starEl.innerHTML); put(g, x, y, sz); fade(g, [{ opacity: 0.6, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.75)' }], 700); }
+    // 별가루 연료: 별 아래로 반짝이와 빛 알갱이가 뿜어져 나와 반짝이며 천천히 떨어져 사라짐
+    if (k - lastS > (light ? 0.05 : 0.012)) {
+      lastS = k;
+      for (let n = 0; n < (light ? 1 : 4); n++) {
+        const tw = n < 2, c = COL[(Math.random() * COL.length) | 0], r = (tw ? sz * (0.12 + Math.random() * 0.2) : sz * (0.05 + Math.random() * 0.06)) * fx;
+        const e = tw ? spark(0, 0, r, c) : G.el('div', 'rtrail-d', L); if (!tw) e.style.setProperty('--c', c);
+        put(e, x + (Math.random() - 0.5) * sz * 0.6, y + sz * (0.15 + Math.random() * 0.3), r);
+        const dx = (Math.random() - 0.5) * sz * 0.9 * fx, dy = sz * (0.5 + Math.random() * 0.9) * fx, life = (light ? 900 : 1400) + Math.random() * 1000, rot = tw ? (Math.random() < .5 ? -1 : 1) * 120 : 0;
+        fade(e, [{ opacity: 1, transform: 'translate(0,0) scale(1.2) rotate(0deg)' }, { opacity: .55, transform: `translate(${dx * .3}px,${dy * .25}px) scale(.8) rotate(${rot * .3}deg)`, offset: .25 }, { opacity: 1, transform: `translate(${dx * .55}px,${dy * .5}px) scale(1) rotate(${rot * .55}deg)`, offset: .5 }, { opacity: .4, transform: `translate(${dx * .8}px,${dy * .78}px) scale(.6) rotate(${rot * .8}deg)`, offset: .78 }, { opacity: 0, transform: `translate(${dx}px,${dy}px) scale(.35) rotate(${rot}deg)` }], life);
+      }
+    }
+  };
+  step.shift = (d) => { off = d; L.style.translate = `0 ${d}px`; };
+  step.end = () => { if (fired) burst(px, py, ps, light ? 8 : 16); setTimeout(() => L.remove(), 2600); };
+  return step;
+};
 G.arrowHtml = () => G.artImg('hint_arrow') || '<svg viewBox="0 0 90 110"><path d="M45 104 L8 58 H30 V6 H60 V58 H82 Z" fill="#FFD66B" stroke="#8a5a0a" stroke-width="5" stroke-linejoin="round"/></svg>';
 G.svgPin = (fill, stroke, sw = 6) => `<svg viewBox="0 0 100 100"><path d="M50 96 C38 76 16 62 16 40 A34 34 0 1 1 84 40 C84 62 62 76 50 96 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/><circle cx="50" cy="40" r="13" fill="${stroke}" opacity=".55"/></svg>`;
 G.svgTwinkle = (fill, stroke, sw = 4) => `<svg viewBox="0 0 100 100"><path d="M50 4 C54 38 62 46 96 50 C62 54 54 62 50 96 C46 62 38 54 4 50 C38 46 46 38 50 4 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/></svg>`;
@@ -1272,17 +1317,21 @@ G.cut = (() => {
       c.sfx('sfx_sparkle', 0.6);
       // 9/30 선생님: 별 받침대에서 올라가는 별을 카메라가 따라감 (별이 늘 화면 가운데 조금 아래)
       const c0 = { ...V.cam };
+      // 10/6 선생님: 별가루를 연료처럼 뿜으며 반짝이는 잔상을 남기고 올라감 (모든 별 받침대와 같은 효과, core.js G.riseTrail)
+      const rtr = G.riseTrail(starL, road.el, road.s.color, !!(c.light || c.skipped)), rsz = parseFloat(road.el.style.width) || 92;
+      road.el.style.zIndex = 5;
       await Promise.all([
         say('S01_nar_06'),
         c.tween(0, 1, c.rm ? 0.1 : 3.8, k => {
           const x = land[0] + (road.at[0] - land[0]) * k, y = land[1] + (road.at[1] - land[1]) * k;
           road.el.style.left = x + 'px'; road.el.style.top = y + 'px';
           if (c.rm) return;
+          if (!c.skipped) rtr(k, x, y, rsz, 1.8);
           const f = Math.min(1, k / 0.18), b = f * f * (3 - 2 * f);   // 처음 잠깐은 카메라가 별 쪽으로 부드럽게 붙음
           V.setCam(c0.x + (x - c0.x) * b, c0.y + (y - 90 - c0.y) * b, c0.z + (1 - c0.z) * k);
         }, 'io'),
       ]);
-      pop(road.el); c.sfx('sfx_chime', 0.4);
+      rtr.end(); pop(road.el); c.sfx('sfx_chime', 0.4);
       // 별이 자리에 닿은 뒤 밤하늘 전체가 보이게 천천히 물러남
       await cam(1440, -820, 1, 1.6);
       await c.wait(0.3);
@@ -3165,9 +3214,11 @@ G.cut.add({
     const sx0 = bx, sy0 = by - 120 * u, sx1 = POS[0][0] * W, sy1 = POS[0][1] * H;
     Object.assign(big.style, { left: sx0 + 'px', top: sy0 + 'px', opacity: 0 });
     await c.tween(0, 1, 0.5, k => { big.style.opacity = k; big.style.transform = `translate(-50%,-50%) scale(${0.5 + 0.5 * k})`; }, 'out');
-    const pan = (k) => { const d = H * k; wl.style.transform = `translateY(${d}px)`; sky.style.transform = `translateY(${d - H}px)`; sky.style.opacity = Math.min(1, k * 2.5); pillar.style.translate = `0 ${d}px`; };
-    const fly = (k) => { pan(k); big.style.left = (sx0 + (sx1 - sx0) * k) + 'px'; big.style.top = (sy0 + (sy1 - sy0) * k - Math.sin(k * Math.PI) * 60 * u) + 'px'; big.style.transform = `translate(-50%,-50%) scale(${1 - 0.21 * k})`; };
-    if (c.rm) fly(1); else await c.tween(0, 1, 2.4, fly, 'io');
+    // 10/6 선생님: 별가루를 연료처럼 뿜으며 반짝이는 잔상을 남기고 올라감 (core.js G.riseTrail, 인트로와 같은 효과)
+    const tr = G.riseTrail(root, big, star.color), bs = big.offsetWidth || 190 * u;
+    const pan = (k) => { const d = H * k; tr.shift(d); wl.style.transform = `translateY(${d}px)`; sky.style.transform = `translateY(${d - H}px)`; sky.style.opacity = Math.min(1, k * 2.5); pillar.style.translate = `0 ${d}px`; };
+    const fly = (k) => { pan(k); const x = sx0 + (sx1 - sx0) * k, y = sy0 + (sy1 - sy0) * k - Math.sin(k * Math.PI) * 60 * u; big.style.left = x + 'px'; big.style.top = y + 'px'; big.style.transform = `translate(-50%,-50%) scale(${1 - 0.21 * k})`; tr(k, x, y, bs * (1 - 0.21 * k)); };
+    if (c.rm) fly(1); else await c.tween(0, 1, 2.4, fly, 'io'); tr.end();
     const me = slots[G.STARS.findIndex(s => s.id === 'road')];
     big.remove(); me.classList.add('lit'); c.sfx('sfx_chime', 0.7); U.burst(c, root, POS[0][0] * W, POS[0][1] * H, 14);
     await c.wait(1.6);
@@ -5094,9 +5145,11 @@ G.s2 = (() => {
     const sx0 = bx, sy0 = by - 120 * u, sx1 = POS[si][0] * W, sy1 = POS[si][1] * SH;
     Object.assign(big.style, { left: sx0 + 'px', top: sy0 + 'px', opacity: 0 });
     await G.tween(0, 1, 0.5, k => { big.style.opacity = k; big.style.transform = `translate(-50%,-50%) scale(${0.5 + 0.5 * k})`; }, 'out');
-    const pan = (k) => { const d = SH * k; wl.style.transform = `translateY(${d}px)`; sky.style.transform = `translateY(${d - SH}px)`; sky.style.opacity = Math.min(1, k * 2.5); pillar.style.translate = `0 ${d}px`; };
-    const fly = (k) => { pan(k); big.style.left = (sx0 + (sx1 - sx0) * k) + 'px'; big.style.top = (sy0 + (sy1 - sy0) * k - Math.sin(k * Math.PI) * 60 * u) + 'px'; big.style.transform = `translate(-50%,-50%) scale(${1 - 0.21 * k})`; };
-    if (rm) fly(1); else await G.tween(0, 1, 2.4, fly, 'io');
+    // 10/6 선생님: 별가루를 연료처럼 뿜으며 반짝이는 잔상을 남기고 올라감 (core.js G.riseTrail, 인트로와 같은 효과)
+    const tr = G.riseTrail(layer, big, s.color), bs = big.offsetWidth || 190 * u;
+    const pan = (k) => { const d = SH * k; tr.shift(d); wl.style.transform = `translateY(${d}px)`; sky.style.transform = `translateY(${d - SH}px)`; sky.style.opacity = Math.min(1, k * 2.5); pillar.style.translate = `0 ${d}px`; };
+    const fly = (k) => { pan(k); const x = sx0 + (sx1 - sx0) * k, y = sy0 + (sy1 - sy0) * k - Math.sin(k * Math.PI) * 60 * u; big.style.left = x + 'px'; big.style.top = y + 'px'; big.style.transform = `translate(-50%,-50%) scale(${1 - 0.21 * k})`; tr(k, x, y, bs * (1 - 0.21 * k)); };
+    if (rm) fly(1); else await G.tween(0, 1, 2.4, fly, 'io'); tr.end();
     big.remove(); slots[si].classList.add('lit'); G.audio.sfx('sfx_chime', 0.7);
     await G.wait(1.6);
     if (rm) pan(0); else await G.tween(1, 0, 2.0, pan, 'io');
@@ -5418,6 +5471,8 @@ G.s3 = (() => {
   // ================= 작은 도구 =================
   const ART = (n) => G.art(n) || '';
   const cardImg = (k) => ART('card_' + k);
+  const MAPICO = [['s3cafe', 'card_tea'], ['s3dock', 'card_lake'], ['s3harang', 'card_draw'], ['plaza', 'card_plaza'], ['market', 'card_bread'], ['library', 'place_library'],
+    ['forest', 'place_forest'], ['s2school', 'place_s2school'], ['s2hall', 'pic_drum'], ['s2rest', 'mark_rest']];   // 장소 그림 표시 (엔딩 뒤 지도)
   const cardWord = (k) => D3().cards[k] || '';
   const spark = (el, n = 10) => { if (!el || !el.getBoundingClientRect) return; const r = el.getBoundingClientRect(), ov = G.$('#overlay'); if (G.settings && G.settings.light) n = 4;
     for (let i = 0; i < n; i++) { const s = G.el('div', 'spk', ov, G.sparkle()); s.style.left = (r.left + r.width / 2) + 'px'; s.style.top = (r.top + r.height / 2) + 'px';
@@ -5564,9 +5619,10 @@ G.s3 = (() => {
     if (!V.s2) return;
     if (!done('s3_fog')) for (const p of G.D.places.places) if (isS3(p.id)) V.setMarker(p.id, 'hidden', false);
     // 엔딩 뒤: 지도에 그림 표시 (찻집 = 찻잔, 나루터 = 호수, 하랑이네 = 그림)
-    if (done('s3_end') && !V.s3ico) V.s3ico = [['s3cafe', 'tea'], ['s3dock', 'lake'], ['s3harang', 'draw']].map(([id, k]) => {
-      const p = G.D.places.places.find(q => q.id === id); if (!p) return null;
-      const e = G.el('div', 's3-mapico', V.fx, `<img src="${cardImg(k)}" alt="">`); Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); return e;
+    // 10/6 선생님: 말의 별 엔딩 뒤에는 마을 모든 장소에 그림 표시. 선생님 그림 place_<장소>가 오면 그것을 먼저 씀, 없으면 비슷한 그림, 그것도 없으면 그 장소는 비워 둠
+    if (done('s3_end') && !V.s3ico) V.s3ico = MAPICO.map(([id, k]) => {
+      const p = G.D.places.places.find(q => q.id === id), src = G.art('place_' + id) || G.art(k); if (!p || !src) return null;
+      const e = G.el('div', 's3-mapico', V.fx, `<img src="${src}" alt="">`); Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); return e;
     });
   };
   // 지도 주민의 별가루 (호숫가 주민 둘)
@@ -6640,9 +6696,11 @@ G.s3 = (() => {
     const sx0 = bx, sy0 = by - 120 * u, sx1 = POS[si][0] * W, sy1 = POS[si][1] * SH;
     Object.assign(big.style, { left: sx0 + 'px', top: sy0 + 'px', opacity: 0 });
     await G.tween(0, 1, 0.5, k => { big.style.opacity = k; big.style.transform = `translate(-50%,-50%) scale(${0.5 + 0.5 * k})`; }, 'out');
-    const pan = (k) => { const d = SH * k; wl.style.transform = `translateY(${d}px)`; sky.style.transform = `translateY(${d - SH}px)`; sky.style.opacity = Math.min(1, k * 2.5); pillar.style.translate = `0 ${d}px`; };
-    const fly = (k) => { pan(k); big.style.left = (sx0 + (sx1 - sx0) * k) + 'px'; big.style.top = (sy0 + (sy1 - sy0) * k - Math.sin(k * Math.PI) * 60 * u) + 'px'; big.style.transform = `translate(-50%,-50%) scale(${1 - 0.21 * k})`; };
-    if (rm) fly(1); else await G.tween(0, 1, 2.4, fly, 'io');
+    // 10/6 선생님: 별가루를 연료처럼 뿜으며 반짝이는 잔상을 남기고 올라감 (core.js G.riseTrail, 인트로와 같은 효과)
+    const tr = G.riseTrail(layer, big, s.color), bs = big.offsetWidth || 190 * u;
+    const pan = (k) => { const d = SH * k; tr.shift(d); wl.style.transform = `translateY(${d}px)`; sky.style.transform = `translateY(${d - SH}px)`; sky.style.opacity = Math.min(1, k * 2.5); pillar.style.translate = `0 ${d}px`; };
+    const fly = (k) => { pan(k); const x = sx0 + (sx1 - sx0) * k, y = sy0 + (sy1 - sy0) * k - Math.sin(k * Math.PI) * 60 * u; big.style.left = x + 'px'; big.style.top = y + 'px'; big.style.transform = `translate(-50%,-50%) scale(${1 - 0.21 * k})`; tr(k, x, y, bs * (1 - 0.21 * k)); };
+    if (rm) fly(1); else await G.tween(0, 1, 2.4, fly, 'io'); tr.end();
     big.remove(); slots[si].classList.add('lit'); G.audio.sfx('sfx_chime', 0.7);
     await G.wait(1.6);
     if (rm) pan(0); else await G.tween(1, 0, 2.0, pan, 'io');
@@ -7087,7 +7145,7 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-05)';   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-06)';   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
@@ -7249,6 +7307,7 @@ G.flow = (() => {
 // ---- 처음 켜기 ----
 (function boot() {
   G.settings = Object.assign({}, G.defaults, G.store.get('settings', {}));
+  G.settings.fast = false;   // 10/6 선생님: 게임을 켤 때마다 빠르게 모드는 꺼진 채로 시작 (켜면 이번 판에서만)
   G.hud.init();
   G.applySettings();
   G.layout();
