@@ -7037,6 +7037,8 @@ G.titleBook = (ov, onStart) => {
   startB.style.setProperty('--paper', `url("${A('paper.jpg')}")`);   // 10/4 선생님: 시작하기 단추를 연한 버터색 종이로
   if (G.isTouch) G.el('div', 't-note', t, '소리가 안 들리면 옆의 무음 스위치를 확인해 주세요.');
   // 10/4 선생님: 첫 화면 오른쪽 아래 글자(판 날짜, 선생님 설정 안내)는 없앰
+  // 10/6 선생님: 최종본 전까지 표지(책 펴기) 화면에서만 오른쪽 아래에 최종 수정 일시를 작게 (개발자 확인용, 책을 펴면 사라짐)
+  if (G.BUILT && !/__/.test(G.BUILT)) G.el('div', 'tb-ver', t, '최종 수정 ' + G.BUILT);
   const fit = () => { if (!stage.isConnected) return; const { W, H } = G.stage, s = Math.max(W / 1920, H / 1080); stage.style.transform = `translate(-50%, -50%) scale(${s})`;
     const c = Math.max(0, (1080 - H / s) / 2); T1.cv.style.top = (T1.y + c) + 'px'; T2.cv.style.top = (T2.y + c) + 'px'; shade.style.top = c + 'px'; }; // 휴대폰처럼 위아래가 잘리면 제목을 내림
   fit(); if (!G._tbFit) { G._tbFit = 1; G.resizers.add(() => { const f = G.$('.tb-stage'); if (f && f._fit) f._fit(); }); } stage._fit = fit;
@@ -7093,13 +7095,51 @@ G.titleBook = (ov, onStart) => {
       if (el < dur) requestAnimationFrame(step); else { c.clearRect(0, 0, CW, CH); c.drawImage(pic, 0, 0, CW, CH); res(); }
     }; requestAnimationFrame(step); });
   };
-  // 붓글씨 쓰기: dur초 동안 순서 지도를 따라 드러남
-  const writeBrush = async (r, b, dur) => {
-    await prep(b); if (!alive(r)) return; const t0 = performance.now();
+
+  // 10/6 선생님: 제목은 한 글자씩 왼쪽 위에서 오른쪽 아래로 스르륵 + 작은 별빛이 글자 길을 따라 지나감 (붓 순서 방식은 글씨가 잘려 보여서 바꿈)
+  const CUTS = [0, 226, 410, 600, 790, 955, 1121];   // title_brush.png 글자 나눔(가로 위치)
+  const STAR = '<svg viewBox="0 0 100 100"><path d="M50 4 C54 38 62 46 96 50 C62 54 54 62 50 96 C46 62 38 54 4 50 C38 46 46 38 50 4 Z" fill="#FFFDF2" stroke="#FFD66B" stroke-width="5" stroke-linejoin="round"/></svg>';
+  const dust = (x, y) => { const e = G.el('div', 'tb-dust', stage); e.style.left = x + 'px'; e.style.top = y + 'px';
+    const dx = (Math.random() - .5) * 40, dy = 25 + Math.random() * 55;
+    e.animate([{ opacity: 1, transform: 'translate(0,0) scale(1.2)' }, { opacity: 0, transform: `translate(${dx}px,${dy}px) scale(.4)` }], { duration: (900 + Math.random() * 600) * k, easing: 'linear', fill: 'both' }).finished.then(() => e.remove(), () => e.remove()); };
+  const letterIn = async (r, b, gap, each) => {
+    await prep(b); if (!alive(r)) return;
+    const w = b.cv.width, h = b.cv.height, c = b.c, f = b.full && b.full.data;
+    const L = CUTS.slice(0, -1).map((x0, i) => { const x1 = Math.min(w, CUTS[i + 1]); let y0 = 0, y1 = h;
+      if (f) { y0 = h; y1 = 0; for (let y = 0; y < h; y++) for (let x = x0; x < x1; x++) if (f[(y * w + x) * 4 + 3] > 20) { if (y < y0) y0 = y; y1 = y + 1; break; } if (y1 <= y0) { y0 = 0; y1 = h; } }
+      return { x0, x1, y0, y1, last: 0 }; });
+    const tc = document.createElement('canvas'); tc.width = w; tc.height = h; const x = tc.getContext('2d');
+    const ox = parseFloat(b.cv.style.left), oy = () => parseFloat(b.cv.style.top), BAND = .35, total = (gap * (L.length - 1) + each) * k, t0 = performance.now();
     await new Promise(res => { const step = () => {
-      if (!alive(r)) return res();
-      const u = Math.min(1, (performance.now() - t0) / 1000 / (dur * k)); reveal(b, (u < .5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u)) * 1.05);
-      if (u < 1) requestAnimationFrame(step); else res();
+      if (!alive(r)) { L.forEach(l => l.sp && l.sp.remove()); return res(); }
+      const el = (performance.now() - t0) / 1000; c.clearRect(0, 0, w, h);
+      L.forEach((l, i) => { const u = Math.min(1, Math.max(0, (el - i * gap * k) / (each * k))); if (u <= 0) return;
+        const bw = l.x1 - l.x0, e = u < .5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u);
+        if (u >= 1) { c.drawImage(b.ink, l.x0, 0, bw, h, l.x0, 0, bw, h); if (l.sp) { l.sp.remove(); l.sp = null; } return; }
+        const s = e * (1 + BAND), P = (q) => [l.x0 + bw * q, l.y0 + (l.y1 - l.y0) * q], A = P(s - BAND), B = P(s);
+        x.globalCompositeOperation = 'source-over'; x.clearRect(l.x0, 0, bw, h); x.drawImage(b.ink, l.x0, 0, bw, h, l.x0, 0, bw, h);
+        const g = x.createLinearGradient(A[0], A[1], B[0], B[1]); g.addColorStop(0, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        x.globalCompositeOperation = 'destination-in'; x.fillStyle = g; x.fillRect(l.x0, 0, bw, h); x.globalCompositeOperation = 'source-over';
+        c.drawImage(tc, l.x0, 0, bw, h, l.x0, 0, bw, h);
+        // 작은 별빛: 글자 상자의 왼쪽 위에서 오른쪽 아래로
+        if (!l.sp) { l.sp = G.el('div', 'tb-spark', stage); l.sp.innerHTML = STAR; }
+        const [px, py] = P(.05 + .9 * e), sx = ox + px, sy = oy() + py;
+        l.sp.style.left = sx + 'px'; l.sp.style.top = sy + 'px'; l.sp.style.opacity = u < .15 ? u / .15 : u > .85 ? (1 - u) / .15 : 1;
+        l.sp.style.transform = `rotate(${u * 180}deg) scale(${.7 + .5 * Math.sin(u * Math.PI)})`;
+        if (u - l.last > .08) { l.last = u; dust(sx, sy); } });
+      if (el < total) requestAnimationFrame(step); else { L.forEach(l => l.sp && l.sp.remove()); c.drawImage(b.ink, 0, 0, w, h); res(); }
+    }; requestAnimationFrame(step); });
+  };
+
+  // 부제목: 왼쪽에서 오른쪽으로 부드럽게 (10/6 시안 2번과 같이)
+  const wipeIn = async (r, b, dur) => {
+    await prep(b); if (!alive(r)) return; const w = b.cv.width, h = b.cv.height, c = b.c, t0 = performance.now();
+    await new Promise(res => { const step = () => {
+      if (!alive(r)) return res(); const u = Math.min(1, (performance.now() - t0) / 1000 / (dur * k)), e = (u < .5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u)) * 1.25;
+      c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, w, h); c.drawImage(b.ink, 0, 0, w, h);
+      const g = c.createLinearGradient(w * (e - .25), 0, w * e, 0); g.addColorStop(0, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.globalCompositeOperation = 'destination-in'; c.fillStyle = g; c.fillRect(0, 0, w, h); c.globalCompositeOperation = 'source-over';
+      if (u < 1) requestAnimationFrame(step); else { c.clearRect(0, 0, w, h); c.drawImage(b.ink, 0, 0, w, h); res(); }
     }; requestAnimationFrame(step); });
   };
 
@@ -7124,9 +7164,9 @@ G.titleBook = (ov, onStart) => {
     await wait(1.8 * k + 0.05); if (!alive(r)) return;
     full.style.opacity = 1; shade.style.opacity = 1; await wait(0.4); if (!alive(r)) return; cam.style.visibility = 'hidden';
     G.audio.sfx('sfx_chime', 0.3);
-    await writeBrush(r, T1, 3.0); if (!alive(r)) return;
+    await letterIn(r, T1, .32, .95); if (!alive(r)) return;
     G.audio.voice('S92_title');
-    await writeBrush(r, T2, 1.6); if (!alive(r)) return;
+    await wipeIn(r, T2, 1.4); if (!alive(r)) return;
     await wait(0.6); if (!alive(r)) return;
     finish();
   };
@@ -7145,7 +7185,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-06)';   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-06)';
+G.BUILT = '2026-10-06 10:52';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
