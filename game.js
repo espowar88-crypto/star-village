@@ -4734,11 +4734,11 @@ G.s2 = (() => {
       // 쉽게: 소리 나는 곳이 반짝임
       if (!G.lv('normal') && !done('s2school_noise')) for (const k of noiseNeed(def)) { const b = hotBtn(V, labelOf(def, k)); if (b && b.previousElementSibling) b.previousElementSibling.classList.add('strong'); }
       // 10/6 선생님(고칠 목록 5): 들어가면 고장 난 것들 소리가 겹쳐서 계속 남. 고칠 때마다 그 소리만 꺼짐. 소리에 예민한 학생을 생각해 작게, 대사 중에는 더 작게
-      const MIX = { chair: ['sfx_click', 0.12, 0.6, 1.3], window: ['sfx_wind', 0.1, 1.2, 2.6], bell: ['sfx_chime', 0.08, 1.3, 1.7], locker: ['sfx_door', 0.1, 1.4, 2.3] };
+      const MIX = { chair: ['loop_chair', 0.42, 1, 6.4], window: ['loop_wind', 0.38, 1, 7.4], bell: ['loop_bell', 0.32, 1, 2.4], locker: ['loop_locker', 0.42, 1, 5.8] };   // 10/6 선생님: 더 소란스럽게   // 10/6 선생님 효과음(에셋원본/효과음_1006)
       for (const k of noiseNeed(def)) {
         if (done('s2f_' + k) || !MIX[k]) continue;
         const [n, vol, rate, every] = MIX[k]; let t = Math.random() * every;
-        const off = G.every(dt => { if (!V.el.isConnected || done('s2f_' + k)) { off(); return; } if (G.paused) return; t -= dt; if (t > 0) return; t = every * (0.8 + Math.random() * 0.4); G.audio.sfx(n, vol * (G.dialog.active ? 0.45 : 1), rate * (0.95 + Math.random() * 0.1)); });
+        const off = G.every(dt => { if (!V.el.isConnected || done('s2f_' + k)) { off(); return; } if (G.paused) return; t -= dt; if (t > 0) return; t = every * (0.95 + Math.random() * 0.15); G.audio.sfx(n, vol * (G.dialog.active ? 0.7 : 1), rate); });
       }
       // 바람이 들어오는 창문, 쉬지 않는 종: 물결 그림도 함께
       loop(3.2, () => { if (!done('s2f_window')) wave(V.fx, def.wind[0], def.wind[1], 150); if (!done('s2f_bell')) wave(V.fx, def.bellLight[0], def.bellLight[1], 150); });
@@ -4766,7 +4766,7 @@ G.s2 = (() => {
   }
   function dropSpot2(V, x, y, cls = '') { const e = G.el('div', 's2-spot ' + cls, V.fx, '<i></i>'); Object.assign(e.style, { left: x + 'px', top: y + 'px' }); return e; }
   function oilSpray(V, x, y) {
-    G.audio.sfx('sfx_wind', 0.35, 2.4);   // 칙
+    G.audio.sfx('sfx_spray', 0.5);   // 칙 (선생님 효과음)
     for (let i = 0; i < 9; i++) { const d = G.el('div', 's2-oil', V.fx); Object.assign(d.style, { left: x + 'px', top: y + 'px' });
       const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6, R = 40 + Math.random() * 60;
       d.animate && d.animate([{ transform: 'translate(-50%,-50%) scale(.4)', opacity: 1 }, { transform: `translate(calc(-50% + ${Math.cos(a) * R}px), calc(-50% + ${Math.sin(a) * R + 30}px)) scale(1)`, opacity: 0 }], { duration: 700, easing: 'ease-out' }).finished.then(() => d.remove()).catch(() => d.remove()); }
@@ -4869,7 +4869,7 @@ G.s2 = (() => {
     if (!done('s2f_window')) {   // 10/6 선생님(고칠 목록 6): 창문 손잡이를 잡고 옆으로 끌어 닫음
       await play(['SD02_rumi_09']); if (!ok()) return;
       await slideWindow(V, S); if (!ok()) return;
-      G.audio.sfx('sfx_door', 0.3, 1.3); spark(hotBtn(V, labelOf(S, 'window')), 8); quiet(V, 'window'); mark('s2f_window');
+      G.audio.sfx('sfx_window_close', 0.5); spark(hotBtn(V, labelOf(S, 'window')), 8); quiet(V, 'window'); mark('s2f_window');
     }
     if (!done('s2f_bell')) {   // 10/6: 종 옆 소리 상자의 [-] [+]로 초록 칸에 맞춤 → 빛 알림등을 끌어다 붙임
       await play(['SD02_daon_04'], { partner: 'daon' }); if (!ok()) return;
@@ -5148,7 +5148,7 @@ G.s2 = (() => {
     return new Promise(async (res) => {
       const L = D2().picLock, g = G.gen, ok = () => g === G.gen, easy = !G.lv('normal');
       const order = easy ? L.order.slice(0, 2) : G.lv('hard') ? [...L.order, ...L.order.slice(0, -1).reverse()] : L.order.slice();
-      const SFX = { bell: ['sfx_chime', 0.5, 1], drum: ['sfx_kung', 0.6, 1], flute: ['sfx_pipe', 0.5, 1] };
+      const SFX = { bell: ['sfx_ibell', 0.5, 1], drum: ['sfx_kung', 0.6, 1], flute: ['sfx_pipe', 0.5, 1] };   // 선생님 효과음: 종·큰 북·리코더
       const S = screen('s2-box');
       const wrap = G.el('div', 's2-wrap dim', S.root);
       const slots = G.el('div', 's2-slots', wrap), cells = order.map(() => G.el('div', 's2-slot', slots));
@@ -7382,7 +7382,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-06)';
-G.BUILT = '2026-10-06 21:34';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-06 22:36';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
