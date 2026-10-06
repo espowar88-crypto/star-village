@@ -205,7 +205,7 @@ document.addEventListener('dblclick', e => e.preventDefault(), { passive: false 
 'use strict';
 G.audio = (() => {
   const A = { ready: false, ctx: null, buffers: new Map(), speaking: 0 };
-  let master, gVoice, gSfx, gAmb, gMusic, musicEl = null, musicName = '', musicNode = null, ambs = {};
+  let master, gVoice, gSfx, gAmb, gMusic, musicEl = null, musicName = '', musicNode = null, ambs = {}, hold = null, lvl = 1, ducked = false;   // hold·lvl: 10/6 음악회 음악을 말의 별 전까지 이어 틂
   const VOL = { voice: 1.0, sfx: 0.6, amb: 0.3, music: 0.35, duck: 0.2 };
   const S = () => G.settings || { volume: 0.9, voiceOn: true };
 
@@ -325,10 +325,10 @@ G.audio = (() => {
   function duck(on) {
     if (!A.ready) return; const t = A.ctx.currentTime;
     gMusic.gain.cancelScheduledValues(t); gMusic.gain.setValueAtTime(gMusic.gain.value, t);
-    gMusic.gain.linearRampToValueAtTime(on ? VOL.duck : VOL.music, t + 0.4);
+    gMusic.gain.linearRampToValueAtTime((on ? VOL.duck : VOL.music) * lvl, t + 0.4); ducked = on;
     gAmb.gain.cancelScheduledValues(t); gAmb.gain.setValueAtTime(gAmb.gain.value, t);
     gAmb.gain.linearRampToValueAtTime(on ? VOL.amb * 0.3 : VOL.amb, t + 0.3);
-    if (musicEl && !musicNode) musicEl.volume = (on ? VOL.duck : VOL.music) * (S().volume ?? 0.9);
+    if (musicEl && !musicNode) musicEl.volume = Math.min(1, (on ? VOL.duck : VOL.music) * lvl * (S().volume ?? 0.9));
   }
 
   // ---- 효과음 ----
@@ -344,7 +344,15 @@ G.audio = (() => {
     if (!blobUrls[p]) { const r = await fetch(u); blobUrls[p] = URL.createObjectURL(await r.blob()); }
     return blobUrls[p];
   }
+  // 10/6: 음악 붙잡기. 붙잡은 동안 다른 장면 음악으로 바뀌지 않음 (제목 화면만 예외). k = 크기 (1 = 보통 배경 음악)
+  A.musicLevel = (k, sec = 2) => {
+    lvl = k; if (!A.ready) return; const t = A.ctx.currentTime;
+    gMusic.gain.cancelScheduledValues(t); gMusic.gain.setValueAtTime(gMusic.gain.value, t); gMusic.gain.linearRampToValueAtTime((ducked ? VOL.duck : VOL.music) * k, t + sec);
+    if (musicEl && !musicNode) musicEl.volume = Math.min(1, (ducked ? VOL.duck : VOL.music) * k * (S().volume ?? 0.9));
+  };
+  A.holdMusic = (name, k = 1) => { hold = null; if (name) A.music(name); hold = name || null; A.musicLevel(k, name ? 0.6 : 1.5); };
   A.music = async (name) => {
+    if (hold && name !== hold) { if (name !== 'music_title') return; hold = null; A.musicLevel(1, 0.5); }
     if (!A.ready || name === musicName) return; A.wake();
     const pl = loops[musicName]; if (pl) { try { pl.stop(); } catch (e) { } delete loops[musicName]; }   // 풀어서 반복하던 앞 음악 멈춤
     const old = musicEl, oldNode = musicNode; musicName = name; musicEl = null; musicNode = null;
@@ -739,6 +747,26 @@ G.hud = (() => {
     const close = () => { if (!m.isConnected) return; m.remove(); G.busy = Math.max(0, G.busy - 1); };
     G.btn('pill sky-close', '닫기', m, close, '닫기');
   };
+  // 10/6 선생님(고칠 목록 1-a): 별은 모두 땅에 떨어졌으므로 다음 별은 하늘이 아니라 '광장 받침대의 빈 자리'가 그 별 색으로 깜박여 알려 줌
+  // parent 안 아래쪽에 받침대 한 줄(8칸): 올린 별은 빛나고, nextId 자리만 깜박임
+  G.pedestalRow = (parent, raised, nextId) => {
+    const row = G.el('div', 'ped-row', parent);
+    G.el('div', 'ped-name', row, '별 받침대');
+    const box = G.el('div', 'ped-slots', row);
+    G.STARS.slice(0, 8).forEach((s, i) => {
+      const e = G.el('div', 'ped-slot' + (i < raised ? ' lit' : '') + (s.id === nextId ? ' next' : ''), box, i < raised ? G.starSvg(s) : '');
+      e.style.setProperty('--sc', s.color || '#FFE9A8');
+    });
+    return row;
+  };
+  // 지도 땅에서 별 색 빛이 안개 너머로 새어 나옴 (별이 떨어진 곳). layer = 지도 fx 층, [x, y] = 땅 좌표
+  G.groundLeak = (layer, x, y, color, w = 760) => {
+    const e = G.el('div', 'ground-leak', layer);
+    Object.assign(e.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: w * 0.5 + 'px', zIndex: 3005 });
+    e.style.setProperty('--sc', color || '#FFE9A8');
+    for (let i = 0; i < 7; i++) { const m = G.el('i', '', e); m.style.left = (15 + i * 11) + '%'; m.style.animationDelay = (i * 0.37) + 's'; }
+    return e;
+  };
   H.bag = () => {
     const ov = G.$('#overlay');
     const m = G.el('div', 'modal', ov); const sh = G.el('div', 'sheet', m);
@@ -749,7 +777,7 @@ G.hud = (() => {
     const nm = G.el('div', 'bag-name', sh, own.length ? '' : '아직 가방이 비어 있어요');
     for (let i = 0; i < Math.max(6, own.length); i++) {   // 10/1: 점자 쪽지까지 6칸
       const it = G.D.items.find(x => x.id === own[i]);
-      const s = G.el('button', 'bag-slot' + (it ? ' has' : ''), slots, it ? G.icon(it.id === 'piece' && G.st.done.includes('plaza2_look') ? 'item_piece_lit' : it.icon) : '');   // 10/6: 빛을 찾은 별 s.type = 'button';
+      const s = G.el('button', 'bag-slot' + (it ? ' has' : ''), slots, it ? G.icon(G.litIcon(it.id)) : '');   // 10/6: 빛을 찾은 별 s.type = 'button';
       if (it) G.onTap(s, () => { nm.textContent = it.name; G.audio.sfx('sfx_page', 0.4); H.itemPop(it); });
     }
     if (G.p4 && G.p4.dustLine) G.p4.dustLine(sh);   // 10/1: 모은 별가루
@@ -1921,10 +1949,12 @@ G.map = (() => {
     const gift = G.p4 && G.p4.villagerHas && G.p4.villagerHas(d.id) ? G.el('div', 'wgift', w.el, G.artImg('stardust') || G.sparkle()) : null;   // 10/1 별가루를 가진 주민 머리 위 반짝
     G.onTap(hit, async () => {
       if (bub || G.busy > 0) return;
-      const id = stage >= 5 ? d.line.replace(/_a$/, '_b') : d.line; const L = G.D.dialogues[id]; if (!L) return;
+      const id0 = stage >= 5 ? d.line.replace(/_a$/, '_b') : d.line;
+      const ids = (G.p4 && G.p4.villagerLines && G.p4.villagerLines(d.id, id0, !!(gift && G.p4.villagerHas(d.id)))) || [id0];   // 10/6 소리의 별: 주인공이 먼저 묻고 주민이 줌
+      const id = ids[ids.length - 1]; const L = G.D.dialogues[id]; if (!L) return;
       v.pause = Math.max(v.pause, 5); w.frame = 8; w.face(hero.x - w.x, hero.y - w.y); w.draw();
       if (G.D.portraits[d.id] && !G.dialog.active) {   // 10/1 선생님 배경 주민 일러스트: 대화창에 얼굴과 함께
-        bub = true; v.pause = 1e9; await G.dialog.play([id], { partner: d.id });
+        bub = true; v.pause = 1e9; await G.dialog.play(ids, { partner: d.id });
         if (gift && G.p4.villagerHas(d.id)) { await G.p4.villagerDust(d.id, w.el, V.fx, w.x, w.y - 120); gift.remove(); }
         v.pause = 1; bub = null; return;
       }
@@ -2058,6 +2088,7 @@ G.scene = (() => {
     && (!h.until || !G.st.done.includes(h.until)) && (!h.gone || !G.st.done.includes(h.mission)) && (!h.lvMin || G.lv(h.lvMin));   // 10/1 lvMin: 이 난이도부터 나옴
   const finding = (h) => h.find && G.lv('normal') && !G.st.done.includes(h.find.done);   // 9/30 난이도: 찾아야 하는 곳
   Sc.hide = () => {
+    busy = false;   // 10/6 선생님: 대화 도중 ESC 다시 하기 → 끝나지 않은 흐름이 busy를 남겨 장면 누르기·[지도로]가 막혔음
     if (!V) return;
     G.resizers.delete(onResize); G.dialog.onSpeaker = null; if (sfxOff) sfxOff(); sfxOff = null;
     V.el.remove(); V = null; S = null; hots = []; arrowEl = trailEl = null;
@@ -3206,7 +3237,7 @@ G.cut.add({
     if (G.reduced()) place(1); else await c.tween(0, 1, 1.6, place, 'io');
     c.voice('S11_nar_01');
     // (가) 빛을 잃은 별과 별빛 조각이 주인공에게서 받침대로 날아감
-    const piece = G.el('div', 'c11-item', root, G.icon('item_piece')), light = G.el('div', 'c11-item', root, G.icon('item_light'));
+    const piece = G.el('div', 'c11-item', root, G.icon(G.litIcon('piece'))), light = G.el('div', 'c11-item', root, G.icon('item_light'));
     for (const [e, dx] of [[piece, -40], [light, 40]]) { e.style.left = (hx + dx * u) + 'px'; e.style.top = hy + 'px'; }
     await Promise.all([piece, light].map((e, i) => c.tween(0, 1, 1.2, k => { const x0 = hx + (i ? 40 : -40) * u; e.style.left = (x0 + (bx - x0) * k) + 'px'; e.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; e.style.opacity = 1; }, 'io')));
     c.sfx('sfx_star', 0.9);
@@ -3273,12 +3304,14 @@ G.cut.add({
     }
     const sky = G.el('div', 'c11-sky', root); sky.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`; sky.style.opacity = 0;
     const road = G.el('div', 'c11-slot me lit', sky, G.starSvg(G.STARS[0], true)); Object.assign(road.style, { left: '40%', top: '40%' });
-    const nx = G.STARS.find(s => s.id === E.nextStar), nxt = G.el('div', 'c11-slot next', sky, G.starSvg(nx, true)); Object.assign(nxt.style, { left: '64%', top: '30%', opacity: 0 });
+    // 10/6 선생님: 다음 별은 하늘에서 깜박이지 않고, 광장 받침대의 빈 자리가 그 별 색으로 깜박임
+    const nxt = G.pedestalRow(sky, 1, E.nextStar); nxt.style.opacity = 0;
     await G.cut.util.fadeIn(c, sky, 0.8);
     await Promise.all([
-      c.tween(0, 1, 3.2, k => nxt.style.opacity = (0.6 * Math.abs(Math.sin(k * Math.PI * 3))) * (k < 0.9 ? 1 : (1 - k) / 0.1)),
+      c.tween(0, 1, 0.8, k => nxt.style.opacity = k),
       (async () => { await c.wait(1.0); await c.voice(E.next); })(),
     ]);
+    await c.wait(1.2);
     nxt.style.opacity = 0;
     const box = G.el('div', 'c12-saved', root, G.icon('icon_star') + ' 되찾은 별 1/8'); box.style.opacity = 0;
     c.sfx('sfx_star', 0.8);
@@ -3309,6 +3342,9 @@ G.p4 = (() => {
   // 아이템 그림: 선생님 그림(art/item_…)이 있으면 그것을 (점자 쪽지)
   const icon0 = G.icon;
   G.icon = (n, c = '') => { const a = /^item_/.test(n) && G.art(n); return a ? `<img class="ico${c ? ' ' + c : ''}" src="${a}" alt="">` : icon0(n, c); };
+  // 10/6 고칠 목록 9: 그 장에서 배운 것을 별에게 돌려준 뒤에는 가방 속 별도 빛나는 별 (길의 별 → 소리의 별 → 말의 별 모두 같은 규칙)
+  const LITBY = { piece: 'plaza2_look', piece_sound: 's2plaza_concert', piece_word: 's3plaza_relay' };
+  G.litIcon = (id) => { const it = (G.D.items || []).find(x => x.id === id), ic = it ? it.icon : 'item_' + id; return LITBY[id] && G.st && (G.st.done || []).includes(LITBY[id]) ? 'item_' + id + '_lit' : ic; };
 
   // ---- 퍼즐 화면 틀 (puzzle.js와 같은 모양): 위쪽 할 일 + 루미 말풍선, 왼쪽 아래 [루미] ----
   function screen(cls, task) {
@@ -3383,8 +3419,8 @@ G.p4 = (() => {
     const it = G.D.items.find(x => x.id === id), g = G.gen; if (!it) return res(true);
     const tray = G.el('div', 'p4-tray', o.parent || G.$('#overlay'));
     G.el('div', 'p4-tray-head', tray, G.icon('icon_bag') + ' 가방');
-    const lit = id === 'piece' && done('plaza2_look');   // 10/6 선생님: 받침대로 끌 때는 빛을 찾은 별
-    const b = G.btn('p4-item' + (lit ? ' lit' : ''), G.icon(lit ? 'item_piece_lit' : it.icon), tray, () => { G.audio.sfx('sfx_tap', 0.5); b.classList.add('sel'); target.classList.add('p4-target-on'); }, it.name);
+    const ic = G.litIcon(id), lit = ic !== it.icon;   // 10/6 선생님: 받침대로 끌 때는 빛을 찾은 별 (별 1, 2, 3 모두)
+    const b = G.btn('p4-item' + (lit ? ' lit' : ''), G.icon(ic), tray, () => { G.audio.sfx('sfx_tap', 0.5); b.classList.add('sel'); target.classList.add('p4-target-on'); }, it.name);
     target.classList.add('p4-target');
     let fin = false, arrow = null;
     const onT = (e) => { if (fin || G.dialog.active || G.paused) return; e.stopImmediatePropagation(); use(); };
@@ -4077,7 +4113,7 @@ G.starCard = (() => {
   const CSS = `
 .sc-card { display: block; background: rgba(15, 18, 38, .62); }
 .sc-wrap { position: absolute; left: 50%; top: 43%; width: calc(var(--u) * 1100); height: calc(var(--u) * 560); transform: translate(-50%, -50%); }
-.sc-star { position: absolute; left: 50%; top: 50%; width: calc(var(--u) * 300); height: calc(var(--u) * 300); transform: translate(-50%, -50%); opacity: .35; filter: grayscale(.85); transition: opacity .5s, filter .5s; pointer-events: none; }
+.sc-star { position: absolute; left: 50%; top: 50%; width: calc(var(--u) * 255); height: calc(var(--u) * 255); transform: translate(-50%, -50%); opacity: .35; filter: grayscale(.85); transition: opacity .5s, filter .5s; pointer-events: none; }
 .sc-star svg, .sc-star img { width: 100%; height: 100%; display: block; }
 .sc-it { position: absolute; width: calc(var(--u) * 210); transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 8); background: #FFF8E8; border: calc(var(--u) * 6) solid #FFD66B; border-radius: calc(var(--u) * 28); padding: calc(var(--u) * 14); cursor: pointer; font: inherit; color: #4A3B32; opacity: .78; outline: none; }
 .sc-it:focus-visible { box-shadow: 0 0 0 calc(var(--u) * 6) #FFF1B8; }
@@ -4202,6 +4238,10 @@ G.s2 = (() => {
 .s2-beat.on { background: rgba(255, 230, 150, .7); box-shadow: 0 0 calc(var(--u) * 26) rgba(255, 214, 107, 1); }
 .s2-beat.flash { background: rgba(255, 244, 200, 1); box-shadow: 0 0 calc(var(--u) * 40) rgba(255, 236, 170, 1); }
 .s2-beat.next { animation: thint 1.4s ease-in-out infinite; }
+.s2-beat.hide { background: rgba(255, 246, 220, .25); border: calc(var(--u) * 4) dashed rgba(224, 185, 106, .9); }
+.s2-beat.hide img { opacity: 0; }
+.s2-again { margin-top: calc(var(--u) * 18); }
+.s2-again.off { opacity: .45; pointer-events: none; }
 .s2-pads { display: flex; align-items: flex-end; justify-content: center; gap: calc(var(--u) * 70); }
 .s2-pad { border: 0; padding: 0; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 8); font-family: var(--f-title); font-size: calc(var(--u) * 44 * var(--ts)); color: var(--paper); text-shadow: 0 2px 6px rgba(0, 0, 0, .7); }
 .s2-pad .pimg { border-radius: 50%; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #fff6dc 0%, #f1d9a6 70%, #c9a45c 100%); box-shadow: 0 calc(var(--u) * 10) 0 #8a6a4e, 0 calc(var(--u) * 14) calc(var(--u) * 24) rgba(0, 0, 0, .45); transition: transform .12s; }
@@ -4236,6 +4276,12 @@ G.s2 = (() => {
 .s2-pic img { width: calc(var(--bu) * 130); height: calc(var(--bu) * 130); object-fit: contain; }
 .s2-pic:active { transform: translateY(calc(var(--u) * 4)); box-shadow: 0 calc(var(--u) * 3) 0 #c9a45c; }
 .s2-pic.hint { animation: thint 1.4s ease-in-out infinite; }
+.s2-pic.blink { animation: s2blink .5s steps(2, jump-none) infinite; }
+@keyframes s2blink { 0% { border-color: #e0b96a; } 100% { border-color: #ff7a3c; box-shadow: 0 0 calc(var(--u) * 24) #ffb070; } }
+.s2-slots { display: flex; gap: calc(var(--u) * 14); justify-content: center; }
+.s2-slot { width: calc(var(--u) * 96); height: calc(var(--u) * 96); border-radius: calc(var(--u) * 20); border: calc(var(--u) * 4) dashed rgba(224, 185, 106, .9); background: rgba(255, 246, 220, .25); display: flex; align-items: center; justify-content: center; }
+.s2-slot img { width: 84%; height: 84%; object-fit: contain; animation: s2pop .45s ease-out; }
+.s2-slot.lit { border-style: solid; background: rgba(255, 230, 150, .7); box-shadow: 0 0 calc(var(--u) * 24) rgba(255, 214, 107, 1); }
 .s2-note-pics { display: flex; gap: calc(var(--u) * 10); align-items: center; }
 .s2-note-pics img { width: calc(var(--u) * 84); height: calc(var(--u) * 84); object-fit: contain; border-radius: 12px; }
 .s2-note-pics img.on { background: rgba(255, 214, 107, .6); }
@@ -4248,6 +4294,26 @@ G.s2 = (() => {
 .s2-calm .s2-breath img { width: 46%; height: 46%; object-fit: contain; }
 @keyframes s2breath { 0%, 100% { scale: .75; } 50% { scale: 1.15; } }
 .s2-calm .s2-calm-t { font-family: var(--f-title); font-size: calc(var(--u) * 50 * var(--ts)); color: var(--paper); }
+.s2-spot { position: absolute; width: 0; height: 0; z-index: 2990; }
+.s2-spot i { position: absolute; left: -70px; top: -70px; width: 140px; height: 140px; border-radius: 50%; border: 7px dashed #FFD66B; background: rgba(255, 214, 107, .22); box-shadow: 0 0 30px rgba(255, 214, 107, .9); animation: s2drop 1.1s ease-in-out infinite; }
+.s2-spot.small i { left: -48px; top: -48px; width: 96px; height: 96px; }
+.s2-spot.p4-target-on i, .s2-spot.drop-on i { background: rgba(255, 214, 107, .55); }
+.s2-oil { position: absolute; width: 18px; height: 18px; border-radius: 50% 50% 50% 0; background: #E8B23A; box-shadow: 0 0 8px rgba(255, 214, 107, .9); pointer-events: none; z-index: 2992; }
+.s2-pane { position: absolute; z-index: 2991; background: linear-gradient(135deg, rgba(200, 230, 255, .55), rgba(150, 190, 230, .35)); border: 8px solid #8a5a3a; border-radius: 6px; box-shadow: 0 6px 14px rgba(0,0,0,.35); transition: opacity .8s; }
+.s2-pane.shut { opacity: 0; }
+.s2-pane .hd { position: absolute; left: -46px; top: 50%; width: 76px; height: 76px; margin-top: -38px; border-radius: 50%; background: radial-gradient(circle, #FFE9A8 0%, #FFD66B 55%, #c98f14 100%); border: 6px solid #fff; box-shadow: 0 0 22px rgba(255, 214, 107, 1); cursor: grab; animation: s2drop 1.1s ease-in-out infinite; }
+.s2-gap { position: absolute; z-index: 2990; background: repeating-linear-gradient(90deg, rgba(160, 200, 255, .0) 0 14px, rgba(220, 240, 255, .35) 14px 18px); }
+.modal.s2-bellbox .sheet { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 24); padding: calc(var(--u) * 36) calc(var(--u) * 60); }
+.s2-bellbox .bb-title { font-family: var(--f-title); font-size: calc(var(--u) * 48); color: var(--brown); }
+.s2-bellbox .bb-bars { display: flex; align-items: flex-end; gap: calc(var(--u) * 12); height: calc(var(--u) * 220); }
+.s2-bellbox .bb-bars i { width: calc(var(--u) * 46); border-radius: calc(var(--u) * 10); background: #e7dccb; border: calc(var(--u) * 4) solid #b9a88f; }
+.s2-bellbox .bb-bars i.green { border-color: #4f9a5a; background: #d7efd6; }
+.s2-bellbox .bb-bars i.on { background: #F29B6B; }
+.s2-bellbox .bb-bars i.green.on { background: #6cc077; }
+.s2-bellbox .bb-btns { display: flex; gap: calc(var(--u) * 40); }
+.s2-bellbox .bb-sign { font-family: Arial, sans-serif; font-weight: 900; margin-right: .2em; }
+.s2-bellbox .bb-btn { font-family: var(--f-title); font-size: calc(var(--u) * 46); min-width: calc(var(--u) * 220); min-height: calc(var(--u) * 110); border: 0; border-radius: calc(var(--u) * 30); background: #FFD66B; box-shadow: 0 calc(var(--u) * 8) 0 #c98f14; color: var(--brown); cursor: pointer; }
+.s2-bellbox .sheet.ok { box-shadow: 0 0 calc(var(--u) * 60) rgba(108, 192, 119, .9); }
 .s2-drop { position: absolute; width: 0; height: 0; pointer-events: none; z-index: 2990; }
 .s2-drop i { position: absolute; left: -95px; top: -60px; width: 190px; height: 120px; border-radius: 50%; border: 7px dashed #FFD66B; background: rgba(255, 214, 107, .22); box-shadow: 0 0 30px rgba(255, 214, 107, .9); animation: s2drop 1.1s ease-in-out infinite; }
 .s2-drop .arrow { left: 0; top: -125px; }
@@ -4527,7 +4593,16 @@ G.s2 = (() => {
   // 지도 주민의 별가루 (소리 구역 주민 둘)
   const vh0 = G.p4.villagerHas, vd0 = G.p4.villagerDust;
   const s2giver = (vid) => isExp && D2().dustGive.includes(vid);
-  G.p4.villagerHas = (vid) => s2giver(vid) ? !!G.st && !sd().includes('map:' + vid) : vh0(vid);
+  // 10/6 선생님(고칠 목록 4-a): 학교를 한 번 살펴본 뒤에야 별가루를 가짐. 주인공이 먼저 묻고 주민이 줌
+  const schoolSeen = () => !!G.st && ((G.st.visited || []).includes('s2school') || done('s2school_intro') || (G.st.cleared || []).includes('s2school'));
+  G.p4.villagerHas = (vid) => s2giver(vid) ? !!G.st && schoolSeen() && !sd().includes('map:' + vid) : vh0(vid);
+  const vl0 = G.p4.villagerLines;
+  G.p4.villagerLines = (vid, id, has) => {
+    if (!s2giver(vid)) return vl0 ? vl0(vid, id, has) : null;
+    if (has) return ['SD00_hero_ask', vid === 'chaei' ? 'S91_chaei' : 'SD00_v4_dust'];
+    if (vid === 'chaei') return [sd().includes('map:chaei') ? 'SD00_chaei_after' : 'SD00_chaei_wait'];
+    return null;
+  };
   G.p4.villagerDust = async (vid, el, fx, x, y) => { if (s2giver(vid)) return gain('map:' + vid, el, fx, x, y); return vd0(vid, el, fx, x, y); };
   // 가방: 소리의 별을 시작한 뒤에는 소리의 별 별가루
   const dl0 = G.p4.dustLine;
@@ -4611,10 +4686,9 @@ G.s2 = (() => {
       G.map.camFree = true;
       const c0 = { ...V.cam }, east = [4900, 1780], rm = G.reduced();
       await G.tween(0, 1, rm ? 0.3 : 2.4, k => V.setCam(c0.x + (east[0] - c0.x) * k, c0.y + (east[1] - c0.y) * k, c0.z), 'io'); if (!ok()) return;
-      // 동쪽 하늘의 별이 깜박이고, 안개 속에서 지글지글 (실제 소리는 작고 짧게)
+      // 10/6 선생님: 별은 땅에 떨어졌음 → 동쪽 땅에서 보랏빛이 안개 너머로 새어 나오고, 안개 속에서 지글지글 (실제 소리는 작고 짧게)
       const s = G.STARS.find(q => q.id === 'sound');
-      const star = G.el('div', 's2-star', V.fx, G.starSvg(s, true)); Object.assign(star.style, { left: '4980px', top: '1380px', width: '150px', height: '150px', zIndex: 3005 });
-      const blink = star.animate && !rm ? star.animate([{ opacity: .2 }, { opacity: 1 }, { opacity: .2 }], { duration: 1400, iterations: Infinity }) : null;
+      const star = G.groundLeak(V.fx, 4980, 1760, s.color), blink = null;
       const louds = D2().loud.map(at => loudMark(V.fx, at[0], at[1] - 40, 'map'));
       G.audio.sfx('sfx_chime', 0.12, 1.4);
       await G.wait(rm ? 0.4 : 1.6); if (!ok()) return;   // 대화 전에 동쪽 하늘·소리 표시를 먼저 보여 줌
@@ -4659,7 +4733,14 @@ G.s2 = (() => {
       if (done('s2f_bell')) bellLight(V, def);
       // 쉽게: 소리 나는 곳이 반짝임
       if (!G.lv('normal') && !done('s2school_noise')) for (const k of noiseNeed(def)) { const b = hotBtn(V, labelOf(def, k)); if (b && b.previousElementSibling) b.previousElementSibling.classList.add('strong'); }
-      // 바람이 들어오는 창문, 쉬지 않는 종: 소리 없이 물결 그림으로
+      // 10/6 선생님(고칠 목록 5): 들어가면 고장 난 것들 소리가 겹쳐서 계속 남. 고칠 때마다 그 소리만 꺼짐. 소리에 예민한 학생을 생각해 작게, 대사 중에는 더 작게
+      const MIX = { chair: ['sfx_click', 0.12, 0.6, 1.3], window: ['sfx_wind', 0.1, 1.2, 2.6], bell: ['sfx_chime', 0.08, 1.3, 1.7], locker: ['sfx_door', 0.1, 1.4, 2.3] };
+      for (const k of noiseNeed(def)) {
+        if (done('s2f_' + k) || !MIX[k]) continue;
+        const [n, vol, rate, every] = MIX[k]; let t = Math.random() * every;
+        const off = G.every(dt => { if (!V.el.isConnected || done('s2f_' + k)) { off(); return; } if (G.paused) return; t -= dt; if (t > 0) return; t = every * (0.8 + Math.random() * 0.4); G.audio.sfx(n, vol * (G.dialog.active ? 0.45 : 1), rate * (0.95 + Math.random() * 0.1)); });
+      }
+      // 바람이 들어오는 창문, 쉬지 않는 종: 물결 그림도 함께
       loop(3.2, () => { if (!done('s2f_window')) wave(V.fx, def.wind[0], def.wind[1], 150); if (!done('s2f_bell')) wave(V.fx, def.bellLight[0], def.bellLight[1], 150); });
     }
     if (id === 's2rest') {
@@ -4679,7 +4760,56 @@ G.s2 = (() => {
     const r = def.hotspots.find(h => h.id === 'chair').rect, x = r[0] + r[2] / 2, y = r[1] + r[3] * 0.78;
     const e = G.el('div', 's2-drop', V.fx, '<i></i><div class="arrow">' + G.arrowHtml() + '</div>'); Object.assign(e.style, { left: x + 'px', top: y + 'px' }); return e;
   }
-  function bellLight(V, def) { const g = G.el('div', 's2-glow', V.fx); Object.assign(g.style, { left: def.bellLight[0] + 'px', top: def.bellLight[1] + 'px' }); return g; }
+  function bellLight(V, def, anim) {   // 10/6: 종 옆에 붙인 빛 알림등 + 종이 울릴 때 함께 반짝이는 빛
+    const [x, y] = def.bellLight, lamp = obj(V.fx, 'item_flashlamp', x, y, 110, anim ? 'pop' : ''); lamp.style.transform = 'translate(-50%, -50%)';
+    const g = G.el('div', 's2-glow', V.fx); Object.assign(g.style, { left: x + 'px', top: y + 'px' }); return g;
+  }
+  function dropSpot2(V, x, y, cls = '') { const e = G.el('div', 's2-spot ' + cls, V.fx, '<i></i>'); Object.assign(e.style, { left: x + 'px', top: y + 'px' }); return e; }
+  function oilSpray(V, x, y) {
+    G.audio.sfx('sfx_wind', 0.35, 2.4);   // 칙
+    for (let i = 0; i < 9; i++) { const d = G.el('div', 's2-oil', V.fx); Object.assign(d.style, { left: x + 'px', top: y + 'px' });
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6, R = 40 + Math.random() * 60;
+      d.animate && d.animate([{ transform: 'translate(-50%,-50%) scale(.4)', opacity: 1 }, { transform: `translate(calc(-50% + ${Math.cos(a) * R}px), calc(-50% + ${Math.sin(a) * R + 30}px)) scale(1)`, opacity: 0 }], { duration: 700, easing: 'ease-out' }).finished.then(() => d.remove()).catch(() => d.remove()); }
+  }
+  // 창문: 열린 유리를 손잡이로 끌어 닫기 (끝까지 닫으면 끝)
+  function slideWindow(V, def) {
+    return new Promise((res) => {
+      const g = G.gen, [x, y, w, h] = def.pane, open = w * 0.85;
+      const pane = G.el('div', 's2-pane', V.fx, '<b class="hd"></b>'); Object.assign(pane.style, { left: (x + open) + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+      const hd = pane.querySelector('.hd'); hd.style.touchAction = 'none'; hd.setAttribute('role', 'button'); hd.setAttribute('aria-label', '창문 손잡이');
+      const gap = G.el('div', 's2-gap', V.fx); Object.assign(gap.style, { left: x + 'px', top: y + 'px', width: open + 'px', height: h + 'px' });
+      let st = null, cur = open, fin = false;
+      const k = () => { const r = V.fx.getBoundingClientRect(); return r.width / (V.W || def.size[0]) || 1; };
+      const setX = (v) => { cur = Math.max(0, Math.min(open, v)); pane.style.left = (x + cur) + 'px'; gap.style.width = cur + 'px'; };
+      hd.addEventListener('pointerdown', (e) => { if (fin || G.dialog.active) return; st = { id: e.pointerId, x: e.clientX, c: cur }; try { hd.setPointerCapture(e.pointerId); } catch (_) { } G.audio.sfx('sfx_tap', 0.4); });
+      hd.addEventListener('pointermove', (e) => { if (!st || e.pointerId !== st.id) return; setX(st.c + (e.clientX - st.x) / k()); if (cur < 3) done_(); });
+      const up = (e) => { if (!st || e.pointerId !== st.id) return; st = null; if (cur < open * 0.15) done_(); };
+      hd.addEventListener('pointerup', up); hd.addEventListener('pointercancel', up);
+      G.onTap(gap, () => { if (!fin && !st) { G.audio.sfx('sfx_tap', 0.3); hd.classList.add('s3-hint'); setTimeout(() => hd.classList.remove('s3-hint'), 1400); } });
+      function done_() { if (fin) return; fin = true; setX(0); gap.remove(); hd.remove(); pane.classList.add('shut'); setTimeout(() => pane.remove(), 900); res(g === G.gen); }
+    });
+  }
+  // 종 소리 상자: [-] [+]로 소리 눈금을 초록 칸에 맞춤. 너무 줄이면 '안 들리는 친구가 있어'
+  function bellBox(def) {
+    return new Promise((res) => {
+      const g = G.gen, B = def.bellBox, root = G.el('div', 'modal s2-bellbox', G.$('#overlay')), sh = G.el('div', 'sheet', root);
+      G.el('div', 'bb-title', sh, '종 소리 상자');
+      const bars = G.el('div', 'bb-bars', sh), btns = G.el('div', 'bb-btns', sh);
+      const cells = Array.from({ length: B.max }, (_, i) => { const c = G.el('i', (i + 1 >= B.green[0] && i + 1 <= B.green[1]) ? 'green' : '', bars); c.style.height = (30 + i * 14) + '%'; return c; });
+      let lv = B.start, fin = false, t = null, warned = false;
+      const draw = () => cells.forEach((c, i) => c.classList.toggle('on', i < lv));
+      const ring = () => { G.audio.sfx('sfx_chime', 0.04 + 0.05 * lv, 1.3); };
+      const inGreen = () => lv >= B.green[0] && lv <= B.green[1];
+      const press = async (d) => {
+        if (fin || G.dialog.active) return; lv = Math.max(1, Math.min(B.max, lv + d)); draw(); ring(); clearTimeout(t);
+        if (lv < B.green[0]) { if (!warned || lv === 1) { warned = true; await G.dialog.play(['SD02_rumi_32']); } return; }
+        if (inGreen()) t = setTimeout(async () => { if (fin || !inGreen() || g !== G.gen) return; fin = true; G.audio.sfx('sfx_sparkle', 0.6); sh.classList.add('ok'); await G.wait(0.7); root.remove(); res(g === G.gen); }, 1200);
+      };
+      G.btn('bb-btn', '<b class="bb-sign">-</b> 작게', btns, () => press(-1), '작게');
+      G.btn('bb-btn', '<b class="bb-sign">+</b> 크게', btns, () => press(1), '크게');
+      draw(); ring();
+    });
+  }
   function quiet(V, k) { const e = V.s2 && V.s2.loud[k]; if (e) { e.classList.add('gone'); setTimeout(() => e.remove(), 650); delete V.s2.loud[k]; } }
   function bushWaves(V, def) {
     const B = def.bushes, list = B.lv[G.level()] || B.lv.normal, rect = (b) => labelRect(def, b), c = rect(B.star);
@@ -4736,22 +4866,31 @@ G.s2 = (() => {
       tennis(V, S, true); quiet(V, 'chair'); mark('s2f_chair');
       await play(['SD02_rumi_08']); if (!ok()) return;
     }
-    if (!done('s2f_window')) {
+    if (!done('s2f_window')) {   // 10/6 선생님(고칠 목록 6): 창문 손잡이를 잡고 옆으로 끌어 닫음
       await play(['SD02_rumi_09']); if (!ok()) return;
-      await waitTap(hotBtn(V, labelOf(S, 'window')), { hint: 'SD02_rumi_09' }); if (!ok()) return;
-      G.audio.sfx('sfx_door', 0.25, 1.3); spark(hotBtn(V, labelOf(S, 'window')), 8); quiet(V, 'window'); mark('s2f_window');
+      await slideWindow(V, S); if (!ok()) return;
+      G.audio.sfx('sfx_door', 0.3, 1.3); spark(hotBtn(V, labelOf(S, 'window')), 8); quiet(V, 'window'); mark('s2f_window');
     }
-    if (!done('s2f_bell')) {
+    if (!done('s2f_bell')) {   // 10/6: 종 옆 소리 상자의 [-] [+]로 초록 칸에 맞춤 → 빛 알림등을 끌어다 붙임
       await play(['SD02_daon_04'], { partner: 'daon' }); if (!ok()) return;
-      await waitTap(hotBtn(V, labelOf(S, 'bell')), { hint: 'SD02_daon_04' }); if (!ok()) return;
-      G.audio.sfx('sfx_chime', 0.15, 1.2); bellLight(V, S); quiet(V, 'bell'); mark('s2f_bell');
+      await play(['SD02_rumi_31']); if (!ok()) return;
+      await bellBox(S); if (!ok()) return;
+      quiet(V, 'bell');
+      await play(['SD02_rumi_33']); if (!ok()) return;
+      const slot = dropSpot2(V, S.bellLight[0], S.bellLight[1]);
+      const u = await G.p4.useItem('flashlamp', slot, { say, hint: 'SD02_rumi_33' }); if (!ok() || !u) return;
+      slot.remove(); bellLight(V, S, true); G.audio.sfx('sfx_chime', 0.12, 1.2); mark('s2f_bell');
+      await play(['SD02_daon_11'], { partner: 'daon' }); if (!ok()) return;
     }
     if (need.includes('locker') && !done('s2f_locker')) {
-      // 10/4 선생님: 덜컹거린다는 말만 반복하지 않고, 문을 눌러 닫고 '딸깍' 하고 끝나게
+      // 10/6 선생님: 기름 뿌리개를 끌어다 경첩 두 곳에 대면 '칙' 하고 기름이 뿌려지고, 다 뿌리면 삐걱 소리가 멈춤
       await play(['SD02_rumi_13']); if (!ok()) return;
-      const lk = hotBtn(V, labelOf(S, 'locker'));
-      await waitTap(lk, { hint: 'SD02_rumi_13' }); if (!ok()) return;
-      G.audio.sfx('sfx_door', 0.25, 1.1); setTimeout(() => G.audio.sfx('sfx_click', 0.3, 0.8), 260); spark(lk, 8); quiet(V, 'locker'); mark('s2f_locker');
+      for (const [hx, hy] of S.hinges) {
+        const hg = dropSpot2(V, hx, hy, 'small');
+        const u = await G.p4.useItem('oil', hg, { say, hint: 'SD02_rumi_13' }); if (!ok() || !u) return;
+        hg.remove(); oilSpray(V, hx, hy);
+      }
+      setTimeout(() => G.audio.sfx('sfx_click', 0.3, 0.8), 260); spark(hotBtn(V, labelOf(S, 'locker')), 8); quiet(V, 'locker'); mark('s2f_locker');
       await play(['SD02_rumi_14']); if (!ok()) return;
     }
     complete('s2school_fix');
@@ -4801,46 +4940,60 @@ G.s2 = (() => {
     if (first) { G.hud.hide(true); const a = G.cut.play('S2A_s2hall'); G.$('#fade').classList.remove('on'); await a; if (!ok()) return; G.$('#fade').classList.add('on'); await G.wait(0.3); }
     G.scene.enter('s2hall');
   }
-  // 리듬 자물쇠: 카드의 큰 동그라미 = 쿵(큰 북), 작은 동그라미 = 짝(작은 북). 빛나는 순서대로 누름. 틀려도 처음으로 돌아가지 않음
+  // 리듬 자물쇠: 큰 동그라미 = 쿵(큰 북), 작은 동그라미 = 짝(손뼉). 틀려도 처음으로 돌아가지 않음
+  // 10/6 고칠 목록 7: 쉬움 쿵짝쿵짝(동그라미 보임), 보통 쿵짝쿵짝쿵·어려움 6박 무작위는 동그라미를 가리고 듣고 맞춤. 틀리면 다시 들려주며 동그라미가 차례로 빛남
   function rhythmLock(S) {
     return new Promise((res) => {
-      const R = D2().rhythm, pat = R[G.level()] || R.normal, easy = !G.lv('normal'), g = G.gen, ok = () => g === G.gen;
+      const R = D2().rhythm, easy = !G.lv('normal'), g = G.gen, ok = () => g === G.gen;
+      let pat = R[G.level()] || R.normal;
+      if (G.lv('hard')) { do { pat = 'B' + Array.from({ length: 5 }, () => Math.random() < 0.5 ? 'B' : 's').join(''); } while (!pat.includes('s') || pat.includes('BBB') || pat.includes('sss')); }
       const wrap = G.el('div', 's2-wrap dim', S.root);
       const card = G.el('div', 's2-card', wrap);
       G.el('div', 's2-card-head', card, G.icon('item_rhythm_card') + ' 리듬 카드');
-      const beats = [...pat].map(ch => { const b = G.el('div', 's2-beat ' + (ch === 'B' ? 'big' : 'small'), card, G.artImg(ch === 'B' ? 'beat_big' : 'beat_small') || ''); b.dataset.k = ch; return b; });
+      const beats = [...pat].map(ch => { const b = G.el('div', 's2-beat ' + (ch === 'B' ? 'big' : 'small') + (easy ? '' : ' hide'), card, G.artImg(ch === 'B' ? 'beat_big' : 'beat_small') || ''); b.dataset.k = ch; return b; });
       const pads = G.el('div', 's2-pads', wrap);
       const pad = (k, label) => { const b = G.btn('s2-pad ' + (k === 'B' ? 'big' : 'small'), `<div class="pimg">${G.artImg(k === 'B' ? 'beat_big' : 'beat_small') || ''}</div><span>${label}</span>`, pads, () => hit(k, b), label); return b; };
       const pB = pad('B', '쿵'), pS = pad('s', '짝');
+      const again = G.btn('pill s2-again', G.icon('icon_sound') + ' 다시 듣기', wrap, () => { if (!demo && !fin) listen(false); }, '다시 듣기');
       let i = 0, fin = false, demo = true, arrow = null;
-      const sound = (k) => G.audio.sfx(k === 'B' ? 'sfx_tap' : 'sfx_click', 0.35, k === 'B' ? 0.6 : 1.3);
+      const sound = (k) => k === 'B' ? G.audio.sfx('sfx_kung', 0.6) : G.audio.sfx('sfx_jjak', 0.5);
       const flash = (el, cls) => { el.classList.add(cls); setTimeout(() => el.classList.remove(cls), 280); };
       const nextGlow = () => beats.forEach((b, j) => b.classList.toggle('next', easy && j === i && !fin));
-      S.layout = () => { const [x, y, w, h] = area(S); Object.assign(wrap.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); const k = Math.min(1, h / (G.stage.u * 560), w / (G.stage.u * 900)); wrap.style.transform = k < 1 ? `scale(${k.toFixed(3)})` : ''; };
+      S.layout = () => { const [x, y, w, h] = area(S); Object.assign(wrap.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); const k = Math.min(1, h / (G.stage.u * 640), w / (G.stage.u * 1000)); wrap.style.transform = k < 1 ? `scale(${k.toFixed(3)})` : ''; };
       S.layout(); requestAnimationFrame(S.layout);
       wrap.animate && wrap.animate([{ opacity: 0, transform: 'scale(.92)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: 'ease-out' });
-      // 처음: 카드의 동그라미가 차례로 빛남 (소리는 작게, 빛으로도 박자)
+      // 들려주기: 쉬움은 동그라미가 빛나며, 보통·어려움은 소리만 (light = 틀렸을 때 빛 힌트)
+      async function listen(light) {
+        demo = true; again.classList.add('off');
+        for (let r = 0; r < pat.length; r++) {
+          if (!ok() || fin) return;
+          if (easy || light) { const b = beats[r]; b.classList.remove('hide'); flash(b, 'flash'); if (!easy && r >= i) setTimeout(() => b.classList.add('hide'), 420); flash(pat[r] === 'B' ? pB : pS, 'hit'); }
+          sound(pat[r]); await G.wait(G.reduced() ? 0.4 : 0.62);
+        }
+        demo = false; again.classList.remove('off'); nextGlow();
+      }
       (async () => {
-        await play(['SD03_rumi_03', 'SD03_rumi_04']); if (!ok()) return;
-        for (let r = 0; r < pat.length; r++) { if (!ok() || fin) return; flash(beats[r], 'flash'); flash(pat[r] === 'B' ? pB : pS, 'hit'); sound(pat[r]); await G.wait(G.reduced() ? 0.35 : 0.6); }
-        demo = false; nextGlow();
+        await play(easy ? ['SD03_rumi_03', 'SD03_rumi_04'] : ['SD03_rumi_03', 'SD03_rumi_11']); if (!ok()) return;
+        await listen(false);
       })();
-      function hit(k, b) {
+      async function hit(k, b) {
         if (fin || demo || G.dialog.active) return;
         clear(); sound(k); flash(b, 'hit');
-        if (k === pat[i]) { beats[i].classList.add('on'); i++; nextGlow(); if (i >= pat.length) win(); return; }
-        wob(b); card.classList.remove('look'); void card.offsetWidth; card.classList.add('look'); S.say('SD03_rumi_03');
+        if (k === pat[i]) { beats[i].classList.remove('hide'); beats[i].classList.add('on'); i++; nextGlow(); if (i >= pat.length) win(); return; }
+        wob(b); demo = true; beats[i].classList.remove('hide'); beats[i].classList.add('flash');   // 다음 동그라미를 먼저 보여 줌 await G.wait(0.5); if (!ok() || fin) return;
+        await play([easy ? 'SD03_rumi_04' : 'SD03_rumi_12']); if (!ok() || fin) return;
+        await listen(true);
       }
       async function win() {
-        if (fin) return; fin = true; cur = null; G.help.off(); clear(); S.hush(); nextGlow();
-        beats.forEach(b => b.classList.add('on'));
+        if (fin) return; fin = true; cur = null; G.help.off(); clear(); S.hush(); nextGlow(); again.remove();
+        beats.forEach(b => { b.classList.remove('hide'); b.classList.add('on'); });
         for (let r = 0; r < beats.length; r++) { G.audio.sfx('sfx_chime', 0.3, 0.9 + r * 0.1); await G.wait(G.reduced() ? 0.05 : 0.22); }
         spark(card, 14); await G.wait(0.8); wrap.remove(); S.layout = null; res(ok());
       }
       function clear() { if (arrow) arrow.remove(); arrow = null; pB.classList.remove('hint'); pS.classList.remove('hint'); }
       const want = () => pat[i] === 'B' ? pB : pS;
       cur = { solve: () => { demo = false; i = pat.length; win(); } };
-      G.help.set({ l1: () => S.say('SD03_rumi_04'), l2: () => { if (!arrow && !demo) arrow = arrowAt(S.root, want()); }, l3: () => { if (!demo) want().classList.add('hint'); }, clear });
+      G.help.set({ l1: () => { if (!demo) listen(true); }, l2: () => { if (!arrow && !demo) arrow = arrowAt(S.root, want()); }, l3: () => { if (!demo) want().classList.add('hint'); }, clear });
     });
   }
   G.flows.s2_hall = async (ctx) => {
@@ -4872,7 +5025,7 @@ G.s2 = (() => {
       complete('s2hall_score'); return;
     }
     if (id === 'drum') {   // 큰 북: 부드러운 쿵 + 물결
-      G.audio.sfx('sfx_tap', 0.35, 0.55); wave(V.fx, S.drumAt[0], S.drumAt[1], 260, 2);
+      G.audio.sfx('sfx_kung', 0.45); wave(V.fx, S.drumAt[0], S.drumAt[1], 260, 2);
       const sp = H.glow; if (sp && sp.animate) sp.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }], { duration: 400 });
     }
   };
@@ -4989,50 +5142,67 @@ G.s2 = (() => {
       complete('s2rest_star');
     }
   };
-  // 그림 자물쇠: 악보 뒤 그림 순서대로 (쉽게 2칸, 보통 3칸, 어렵게 3칸 갔다가 돌아오기)
+  // 소리 자물쇠 (10/6 고칠 목록 8): 소리 악보를 상자에 대면 종·북·피리 소리가 차례로 남. 들은 순서대로 그림을 누름
+  // 칸 수 = 누를 수 (쉽게 2, 보통 3, 어렵게 5). 틀리면 다시 들려주며 다음에 누를 그림 테두리가 깜박임
   function picLock() {
-    return new Promise((res) => {
+    return new Promise(async (res) => {
       const L = D2().picLock, g = G.gen, ok = () => g === G.gen, easy = !G.lv('normal');
       const order = easy ? L.order.slice(0, 2) : G.lv('hard') ? [...L.order, ...L.order.slice(0, -1).reverse()] : L.order.slice();
+      const SFX = { bell: ['sfx_chime', 0.5, 1], drum: ['sfx_kung', 0.6, 1], flute: ['sfx_pipe', 0.5, 1] };
       const S = screen('s2-box');
       const wrap = G.el('div', 's2-wrap dim', S.root);
-      const note = G.el('div', 's2-card', wrap);
-      G.el('div', 's2-card-head', note, G.icon('item_score') + ' 악보 뒤 그림');
-      const np = G.el('div', 's2-note-pics', note), noteImgs = order.map(k => { const i = G.el('img', '', np); i.src = ART(L.art[k]); i.alt = ''; return i; });
+      const slots = G.el('div', 's2-slots', wrap), cells = order.map(() => G.el('div', 's2-slot', slots));
       const B = board(wrap, L.size[0], L.size[1]); B.el.style.backgroundImage = `url("${ART('rest_box')}")`; B.el.style.position = 'relative';
       const holder = G.el('div', '', wrap); holder.style.position = 'relative'; holder.appendChild(B.el);
-      const nWin = Math.min(order.length, L.win.length);
-      const wins = L.win.slice(0, nWin).map(([x, y]) => { const w = G.el('div', 's2-win', B.el); Object.assign(w.style, { left: (x - L.ww / 2) + 'px', top: (y - L.ww / 2) + 'px', width: L.ww + 'px', height: L.ww + 'px' }); return w; });
       const pics = G.el('div', 's2-pics', wrap);
       const btns = {}; for (const k of shuffle(L.order)) btns[k] = G.btn('s2-pic', `<img src="${ART(L.art[k])}" alt=""><span>${L.name[k]}</span>`, pics, () => press(k), L.name[k]);
-      let i = 0, fin = false, arrow = null;
+      const again = G.btn('pill s2-again off', G.icon('icon_sound') + ' 다시 듣기', wrap, () => { if (!demo && !fin) listen(false); }, '다시 듣기');
+      let i = 0, fin = false, arrow = null, demo = true;
       S.layout = () => {
         const [x, y, w, h] = area(S), u = G.stage.u; Object.assign(wrap.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
-        const rest = note.getBoundingClientRect().height + pics.getBoundingClientRect().height + u * 60, bh = Math.max(80, Math.min(h - rest, w * 0.6 * L.size[1] / L.size[0]));
+        const rest = slots.getBoundingClientRect().height + pics.getBoundingClientRect().height + again.getBoundingClientRect().height + u * 90, bh = Math.max(80, Math.min(h - rest, w * 0.5 * L.size[1] / L.size[0]));
         const k = bh / L.size[1]; holder.style.width = (L.size[0] * k) + 'px'; holder.style.height = bh + 'px'; B.el.style.position = 'absolute'; B.fit([0, 0, L.size[0] * k, bh]);
         if (arrow) { arrow.remove(); arrow = null; }
       };
       S.layout(); requestAnimationFrame(S.layout);
-      const glowNext = () => { for (const k in btns) btns[k].classList.toggle('hint', easy && !fin && order[i] === k); noteImgs.forEach((im, j) => im.classList.toggle('on', j < i)); };
-      glowNext();
-      function press(k) {
-        if (fin || G.dialog.active) return; clear();
-        G.audio.sfx('sfx_tap', 0.5);
-        if (k !== order[i]) { wob(btns[k]); note.classList.remove('look'); void note.offsetWidth; note.classList.add('look'); S.say('SD04_rumi_02'); return; }
-        const w = wins[i < nWin ? i : 2 * (nWin - 1) - i];
-        if (i < nWin) { w.innerHTML = `<img src="${ART(L.art[k])}" alt="">`; } else { w.classList.remove('lit'); void w.offsetWidth; }
-        w.classList.add('lit'); G.audio.sfx('sfx_chime', 0.35, 0.9 + i * 0.1);
+      const glowNext = () => { for (const k in btns) btns[k].classList.toggle('hint', easy && !fin && !demo && order[i] === k); };
+      const blinkNext = (on) => { for (const k in btns) btns[k].classList.toggle('blink', on && order[i] === k); };
+      async function listen(hint) {
+        demo = true; again.classList.add('off'); glowNext(); blinkNext(hint);
+        for (let r = 0; r < order.length; r++) {
+          if (!ok() || fin) return;
+          const [n, v, rt] = SFX[order[r]]; G.audio.sfx(n, v, rt);
+          if (B.el.animate) B.el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.03)' }, { transform: 'scale(1)' }], { duration: 300 });
+          await G.wait(G.reduced() ? 0.8 : 1.4);
+        }
+        demo = false; again.classList.remove('off'); glowNext();
+        if (hint) setTimeout(() => blinkNext(false), 2600);
+      }
+      // 먼저 소리 악보를 상자에 댐
+      const used = await G.p4.useItem('score', B.el, { parent: S.root, say: S.say, hint: 'SD04_rumi_02' }); if (!ok() || !used) return;
+      await play(['SD04_rumi_11']); if (!ok()) return;
+      await listen(false);
+      async function press(k) {
+        if (fin || demo || G.dialog.active) return; clear();
+        const [n, v, rt] = SFX[k]; G.audio.sfx(n, v * 0.7, rt);
+        if (k !== order[i]) {
+          wob(btns[k]); demo = true; blinkNext(true); await G.wait(0.4); if (!ok() || fin) return;
+          await play(['SD04_rumi_12']); if (!ok() || fin) return;
+          await listen(true); return;
+        }
+        blinkNext(false);
+        const c = cells[i]; c.innerHTML = `<img src="${ART(L.art[k])}" alt="">`; c.classList.add('lit');
         i++; glowNext(); if (i >= order.length) win();
       }
       async function win() {
-        if (fin) return; fin = true; cur = null; G.help.off(); clear(); S.hush(); glowNext();
+        if (fin) return; fin = true; cur = null; G.help.off(); clear(); S.hush(); glowNext(); blinkNext(false); again.remove();
         G.audio.sfx('sfx_door', 0.5); spark(B.el, 14);
         if (B.el.animate) await B.el.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(1.5)' }, { filter: 'brightness(1)' }], { duration: 800 }).finished.catch(() => { });
         await G.wait(0.4); S.end(); res(ok());
       }
       function clear() { if (arrow) arrow.remove(); arrow = null; for (const k in btns) btns[k].classList.remove('hint'); glowNext(); }
-      cur = { solve: () => { while (!fin && i < order.length) press(order[i]); } };
-      G.help.set({ l1: () => S.say('SD04_rumi_02'), l2: () => { if (!arrow && !fin) arrow = arrowAt(S.root, btns[order[i]]); }, l3: () => { if (!fin) btns[order[i]].classList.add('hint'); }, clear });
+      cur = { solve: () => { demo = false; while (!fin && i < order.length) press(order[i]); } };
+      G.help.set({ l1: () => { if (!demo) listen(true); }, l2: () => { if (!arrow && !fin && !demo) arrow = arrowAt(S.root, btns[order[i]]); }, l3: () => { if (!fin && !demo) btns[order[i]].classList.add('hint'); }, clear });
     });
   }
   // 쉼터 꾸미기: 쿠션, 커튼, 헤드폰, 쉬고 싶어요 카드를 쉼터로 끌어다 놓기 (누르기도 됨)
@@ -5083,7 +5253,7 @@ G.s2 = (() => {
       // C1 (10/5): 찾은 방법을 하나씩 별에게 돌려줌
       if (!await G.starCard('sound', [{ art: 'hall_seats', label: '편한 자리' }, { art: 'item_headphones', label: '헤드폰' }, { art: 'item_cushion', label: '쉼터' }, { art: 'item_tennis', label: '테니스공' }])) return;
       const s = G.STARS.find(q => q.id === 'sound'), st = G.el('div', 's2-star', G.$('#closeup'), G.starSvg(s));
-      Object.assign(st.style, { left: '50%', top: '22%', width: G.stage.u * 170 + 'px', height: G.stage.u * 170 + 'px', position: 'absolute', marginLeft: (-G.stage.u * 85) + 'px', filter: 'drop-shadow(0 0 30px rgba(220,190,255,1))' });
+      Object.assign(st.style, { left: '50%', top: '22%', width: G.stage.u * 145 + 'px', height: G.stage.u * 145 + 'px', position: 'absolute', marginLeft: (-G.stage.u * 72) + 'px', filter: 'drop-shadow(0 0 30px rgba(220,190,255,1))' });
       await play(['SD05_rumi_02']); st.remove(); if (!ok()) return;
       await play(['SD05_chief_01'], { partner: 'chief' }); if (!ok()) return;
       (S.concertDust || []).forEach(([x, y], i) => { const b = dustBtn(V, 's2plaza:c' + i, x, y); if (b) G.audio.sfx('sfx_sparkle', 0.5); });
@@ -5104,7 +5274,7 @@ G.s2 = (() => {
   };
   // 짧은 음악회: 부드러운 음악, 박자는 가로등 빛과 무대 빛으로도
   // 10/4 선생님: 효과가 부족함 → 약 10초 동안 하늘색 음표가 무대와 사람들 위로 천천히 떠오르고, 모두 박자에 맞춰 살살 몸을 흔듦
-  const CONCERT_MUSIC = 'music_concert';   // 오케스트라 음원을 받으면 'music_concert'로 바꿈
+  const CONCERT_MUSIC = 'music_orchestra';   // 10/6 선생님 오케스트라 음악: 음악회 10초는 크게, 그 뒤 작게 말의 별 시작 전까지
   function floatNote(box, x, y) {
     const h = 60 + Math.random() * 40, e = note(box, 'calm', h), sw = (Math.random() < .5 ? -1 : 1) * (30 + Math.random() * 40), up = 260 + Math.random() * 200, rot = (Math.random() - .5) * 30;
     e.style.left = x + 'px'; e.style.top = y + 'px';
@@ -5115,7 +5285,7 @@ G.s2 = (() => {
   }
   async function concert(V, S) {
     const g = G.gen, rm = G.reduced(), light = G.settings && G.settings.light;
-    G.audio.music(CONCERT_MUSIC);
+    G.audio.holdMusic(CONCERT_MUSIC, 2.2);
     const glow = G.el('div', 's2-concert', V.fx); Object.assign(glow.style, { left: '1200px', top: '560px' });
     const box = G.el('div', 's2-cnotes', V.fx);
     const sps = ['chief', 'daon', 'duri', 'miru', 'hero'].map(k => V.spr[k]).filter(q => q && q.img.style.display !== 'none'), people = sps.map(q => q.img);
@@ -5133,7 +5303,7 @@ G.s2 = (() => {
     }
     glow.remove(); V.lamps.forEach(l => l.el.classList.add('on'));
     setTimeout(() => box.remove(), 5000);   // 떠 있던 음표는 끝까지 올라가 사라짐
-    G.audio.music(S.music);
+    G.audio.musicLevel(0.8, 3);   // 음악은 끊지 않고 작게 이어짐 (말의 별 시작에서 놓음)
   }
   // 별이 받침대에서 하늘로 + 불꽃놀이
   // 10/3 선생님: 길의 별(C11)과 똑같이. 이 별 이야기의 인물들이 받침대 둘레로 모여 함께 올림 → 빛을 잃은 별이 받침대로 → 빛 기둥 → 기둥 꼭대기에서 별 → 카메라가 밤하늘로 → 광장으로 돌아와 가로등·색·불꽃놀이·「소리의 별」
@@ -5150,7 +5320,7 @@ G.s2 = (() => {
     if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     // (나) 빛을 잃은 별이 주인공에게서 받침대로
-    const piece = G.el('div', 'c11-item', layer, G.icon('item_piece_sound')); Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
+    const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_sound')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
     G.audio.sfx('sfx_star', 0.9);
     const pillar = G.el('div', 'c11-pillar', layer); Object.assign(pillar.style, { left: bx + 'px', top: by + 'px' });
@@ -5241,8 +5411,9 @@ G.s2 = (() => {
     const g = G.gen, m = G.el('div', 'modal sky-view', G.$('#closeup'));   // 10/4: 대사 창(#dialog)보다 아래 층에 둬야 대사를 넘길 수 있음 (#overlay는 대사 창을 덮어 화면이 멈춤)
     m.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
     const POS = [[.5, .42], [.3, .3], [.7, .3], [.2, .55], [.8, .55], [.38, .66], [.62, .66], [.5, .2], [.5, .8]], nx = G.STARS.findIndex(s => s.id === D2().next);
-    G.STARS.forEach((s, i) => { const e = G.el('div', 'c11-slot' + (i < 2 ? ' me lit' : '') + (i === nx ? ' s2-next' : ''), m, G.starSvg(s, i >= 2)); Object.assign(e.style, { left: POS[i % POS.length][0] * 100 + '%', top: POS[i % POS.length][1] * 100 + '%' }); });
+    G.STARS.forEach((s, i) => { const e = G.el('div', 'c11-slot' + (i < 2 ? ' me lit' : ''), m, G.starSvg(s, i >= 2)); Object.assign(e.style, { left: POS[i % POS.length][0] * 100 + '%', top: POS[i % POS.length][1] * 100 + '%' }); });
     G.el('div', 'star-count sky-count', m, G.icon('icon_star') + ' 되찾은 별 2/8');
+    G.pedestalRow(m, 2, D2().next);   // 10/6: 다음 별은 하늘이 아니라 받침대 빈 자리가 깜박여 알려 줌
     G.audio.sfx('sfx_chime', 0.5);
     await G.dialog.play(['SD06_nar_03']);
     if (g === G.gen) { await G.wait(0.4); if (m.animate) await m.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }).finished.catch(() => { }); }
@@ -5351,6 +5522,8 @@ G.s3 = (() => {
 .s3-face .pf { width: 150px; height: 150px; border-radius: 50%; object-fit: cover; object-position: 50% 14%; background: #FFF4E0; border: 6px solid #FFD66B; }
 .s3-face.on .pf { box-shadow: 0 0 26px rgba(255, 214, 107, 1); }
 .s3-bub { position: absolute; width: 170px; height: 150px; background: #fff; border: 5px solid #8a6a4e; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: left .9s, top .9s; }
+.s3-bub.s3-live { animation: s3live 1.8s ease-in-out infinite; }
+@keyframes s3live { 50% { border-color: #FFD66B; box-shadow: 0 0 28px 6px rgba(255, 214, 107, .9); } }
 .s3-bub img { width: 100px; height: 100px; object-fit: contain; }
 .s3-knot { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 0; padding: 0; pointer-events: none; background: radial-gradient(circle, #fff3c9 0%, #f4a259 60%, #b0663a 100%); box-shadow: 0 0 0 5px #fff, 0 6px 10px rgba(0,0,0,.4); }
 .s3-knot.under { filter: grayscale(.7) brightness(.8); }
@@ -5723,6 +5896,7 @@ G.s3 = (() => {
     const g = G.gen, ok = () => g === G.gen;
     try {
       G.help.off(); G.busy++;
+      G.audio.holdMusic(null); G.audio.music('music_night');   // 10/6: 소리의 별 음악회 음악을 여기서 놓음
       const first = !done('s3_begin');
       const ch = G.cut.play('CH:s3_1', { key: 's3_1', cover: true });
       if (!G.st.place || !/^(plaza|s2)/.test(G.st.place)) G.st.place = 'plaza';
@@ -5737,10 +5911,9 @@ G.s3 = (() => {
       const rm = G.reduced(), sky = D3().sky;
       if (!done('s3_fog')) {
         await camTo(V, D3().north[0], D3().north[1], 2.4); if (!ok()) return;
-        // 북쪽 하늘에서 분홍 별이 깜박임
+        // 10/6 선생님: 북쪽 호숫가 땅에서 분홍빛이 안개 너머로 새어 나옴 (별은 땅에 떨어졌음)
         const s = G.STARS.find(q => q.id === 'word');
-        const star = G.el('div', 's2-star', V.fx, G.starSvg(s, true)); Object.assign(star.style, { left: sky[0] + 'px', top: sky[1] + 'px', width: '150px', height: '150px', zIndex: 3005 });
-        const blink = star.animate && !rm ? star.animate([{ opacity: .2 }, { opacity: 1 }, { opacity: .2 }], { duration: 1400, iterations: Infinity }) : null;
+        const star = G.groundLeak(V.fx, sky[0], sky[1] + 520, s.color), blink = null;
         G.audio.sfx('sfx_chime', 0.15, 1.2);
         await G.wait(rm ? 0.4 : 1.4); if (!ok()) return;
         await play(['WD01_rumi_01'], { noPortraits: true }); if (!ok()) return;
@@ -5797,8 +5970,8 @@ G.s3 = (() => {
       const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg'); svg.setAttribute('width', 1600); svg.setAttribute('height', 900); svg.style.position = 'absolute'; svg.style.left = svg.style.top = 0; S.B.appendChild(svg);
       const COL = ['#E88D7A', '#7DBBE3', '#7FB77E', '#B58BC4'];
       const faces = P.map((p, i) => {
-        const f = S.at(G.el('div', 's3-face', S.B, (G.D.portraits[p.id] ? `<img class="pf" src="${G.asset(G.D.portraits[p.id].img)}" alt="">` : `<img class="pf" src="${G.art('face_dog') || cardImg('dog')}" alt="" style="object-fit:contain">`) + `<span>${p.name}</span>`), 110, ys[i] - 75); return f; });
-      const bubs = P.map((p, i) => S.at(G.el('div', 's3-bub', S.B, `<img src="${ART(p.pic)}" alt="">`), 1300, ys[perm[i]] - 75));
+        const f = S.at(G.el('div', 's3-face', S.B, (G.D.portraits[p.id] ? `<img class="pf" src="${G.asset(G.D.portraits[p.id].img)}" alt="">` : `<img class="pf" src="${G.art('face_dog') || cardImg('dog')}" alt="" style="object-fit:contain;object-position:50% 50%">`) + `<span>${p.name}</span>`), 110, ys[i] - 75); return f; });
+      const bubs = P.map((p, i) => S.at(G.el('div', 's3-bub s3-live', S.B, `<img src="${ART(p.pic)}" alt="">`), 1300, ys[perm[i]] - 75));   // 10/6 선생님: 움직일 수 있는 말풍선은 테두리가 천천히 빛남(s3-live), 맞추면 꺼짐
       // 실: 사람 i → 말풍선 i (그 말풍선은 perm[i] 줄에). 위·아래 순서 = 그린 순서 (마지막이 맨 위)
       const order = shuffle(P.map((_, i) => i));
       const th = order.map((i, z) => {
@@ -5844,7 +6017,7 @@ G.s3 = (() => {
         if (fin || busy || G.dialog.active) return; clear();
         const t = th[z]; if (t.done) return;
         if (t !== top()) { wob(t.kn); G.audio.sfx('sfx_tap', 0.4); S.say('WD01_rumi_20'); return; }
-        busy = true; t.done = true; G.audio.sfx('sfx_chime', 0.5, 1 + z * 0.1); bubs[t.i].classList.remove('s3-hint');
+        busy = true; t.done = true; G.audio.sfx('sfx_chime', 0.5, 1 + z * 0.1); bubs[t.i].classList.remove('s3-hint', 's3-live');
         t.kn.remove(); t.path.style.opacity = 0;
         const b = bubs[t.i]; S.at(b, 300, ys[t.i] - 75); faces[t.i].classList.add('on'); spark(b, 8);
         const p = P[t.i]; await G.wait(0.9); if (!ok()) return;
@@ -5957,7 +6130,7 @@ G.s3 = (() => {
         S.at(e, x, 50, 260, 490); e.dataset.id = q.id; return { q, e, done: false, heard: false };
       });
       const items = {};
-      menu.forEach((k, i) => { items[k] = card(S, k, 800 - menu.length * 90 + i * 180, 640, (b) => pick(k, b)); G.p4.dragTo(items[k], () => gs.filter(x => !x.done).map(x => x.e), (t) => give(k, t.dataset.id)); });
+      shuffle(menu).forEach((k, i) => { items[k] = card(S, k, 800 - menu.length * 90 + i * 180, 640, (b) => pick(k, b)); G.p4.dragTo(items[k], () => gs.filter(x => !x.done).map(x => x.e), (t) => give(k, t.dataset.id)); });
       let fin = false, sel = null, arrow = null;
       S.say('WD02_rumi_02');
       async function listen(q, e) {
@@ -6620,7 +6793,7 @@ G.s3 = (() => {
       // 10/5 기획 리뷰 C1: 우리가 찾은 방법을 학생이 별에게 돌려주면 별이 빛남 (틀린 답 없음)
       if (!await G.starCard('word', [{ art: 'card_draw', label: '그림' }, { art: 'hand_wave', label: '손짓' }, { text: '가', label: '글' }, { art: 'card_wait', label: '기다리기' }])) return;
       const s = G.STARS.find(q => q.id === 'word'), st = G.el('div', 's2-star', G.$('#closeup'), G.starSvg(s));
-      Object.assign(st.style, { left: '50%', top: '22%', width: G.stage.u * 170 + 'px', height: G.stage.u * 170 + 'px', position: 'absolute', marginLeft: (-G.stage.u * 85) + 'px', filter: 'drop-shadow(0 0 30px rgba(242,155,176,1))' });
+      Object.assign(st.style, { left: '50%', top: '22%', width: G.stage.u * 145 + 'px', height: G.stage.u * 145 + 'px', position: 'absolute', marginLeft: (-G.stage.u * 72) + 'px', filter: 'drop-shadow(0 0 30px rgba(242,155,176,1))' });
       await play(['WD05_rumi_03']); st.remove(); if (!ok()) return;
       await play(['WD05_chief_04'], { partner: 'chief' }); if (!ok()) return;
       complete('s3plaza_relay'); return;
@@ -6702,7 +6875,7 @@ G.s3 = (() => {
     const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
     if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
-    const piece = G.el('div', 'c11-item', layer, G.icon('item_piece_word')); Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
+    const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_word')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
     G.audio.sfx('sfx_star', 0.9);
     const pillar = G.el('div', 'c11-pillar', layer); Object.assign(pillar.style, { left: bx + 'px', top: by + 'px' });
@@ -6790,8 +6963,9 @@ G.s3 = (() => {
     const g = G.gen, m = G.el('div', 'modal sky-view', G.$('#closeup'));   // 10/4: 대사 창(#dialog)보다 아래 층에 둬야 대사를 넘길 수 있음 (#overlay는 대사 창을 덮어 화면이 멈춤)
     m.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
     const POS = [[.5, .42], [.3, .3], [.7, .3], [.2, .55], [.8, .55], [.38, .66], [.62, .66], [.5, .2], [.5, .8]], nx = G.STARS.findIndex(s => s.id === D3().next);
-    G.STARS.forEach((s, i) => { const e = G.el('div', 'c11-slot' + (i < 3 ? ' me lit' : '') + (i === nx ? ' s2-next' : ''), m, G.starSvg(s, i >= 3)); Object.assign(e.style, { left: POS[i % POS.length][0] * 100 + '%', top: POS[i % POS.length][1] * 100 + '%' }); });
+    G.STARS.forEach((s, i) => { const e = G.el('div', 'c11-slot' + (i < 3 ? ' me lit' : ''), m, G.starSvg(s, i >= 3)); Object.assign(e.style, { left: POS[i % POS.length][0] * 100 + '%', top: POS[i % POS.length][1] * 100 + '%' }); });
     G.el('div', 'star-count sky-count', m, G.icon('icon_star') + ' 되찾은 별 3/8');
+    G.pedestalRow(m, 3, D3().next || (G.STARS[3] && G.STARS[3].id));   // 10/6: 받침대 빈 자리가 깜박임
     G.audio.sfx('sfx_chime', 0.5);
     await G.dialog.play(['WD06_nar_03']);
     if (g === G.gen) { await G.wait(0.4); if (m.animate) await m.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }).finished.catch(() => { }); }
@@ -7208,7 +7382,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-06)';
-G.BUILT = '2026-10-06 11:58';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-06 21:34';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
