@@ -658,10 +658,11 @@ G.hud = (() => {
   };
   H.clear = () => { if (!root) H.init(); tl.innerHTML = tr.innerHTML = bl.innerHTML = br.innerHTML = ''; H.hideBubble(); taskEl = null; root.querySelectorAll('.hud-go').forEach(e => e.remove()); };
   // 10/1 선생님: 장소 할 일을 다 끝내면 가운데에 큰 '지도로' 버튼 (모서리 버튼을 찾지 않아도 됨)
-  H.goMap = (fn) => {
+  // 10/6 선생님: label을 주면 그 이름으로 (점자 쪽지를 받은 뒤 '도서관으로')
+  H.goMap = (fn, label) => {
     if (!root) H.init(); root.querySelectorAll('.hud-go').forEach(e => e.remove());
-    const w = G.el('div', 'hud-go', root);
-    G.btn('pill gold', G.icon('icon_map') + ' 지도로', w, () => { w.remove(); G.audio.voice('S92_btn_map'); fn(); }, '지도로');
+    const w = G.el('div', 'hud-go', root), nm = label || '지도로';
+    G.btn('pill gold', G.icon('icon_map') + ' ' + nm, w, () => { w.remove(); if (!label) G.audio.voice('S92_btn_map'); fn(); }, nm);
   };
   H.hide = (on) => { if (!root) H.init(); root.style.visibility = on ? 'hidden' : ''; };
 
@@ -744,9 +745,10 @@ G.hud = (() => {
     G.busy++;
     G.el('h3', '', sh, G.icon('icon_bag') + ' 가방');
     const slots = G.el('div', 'bag-slots', sh);
-    const nm = G.el('div', 'bag-name', sh, G.st.items.length ? '' : '아직 가방이 비어 있어요');
-    for (let i = 0; i < Math.max(6, G.st.items.length); i++) {   // 10/1: 점자 쪽지까지 6칸
-      const it = G.D.items.find(x => x.id === G.st.items[i]);
+    const own = G.st.items.filter(id => id !== 'leaf');   // 10/6 선생님: 쓸 데 없는 나뭇잎은 없앰 (예전 저장에 있어도 안 보임)
+    const nm = G.el('div', 'bag-name', sh, own.length ? '' : '아직 가방이 비어 있어요');
+    for (let i = 0; i < Math.max(6, own.length); i++) {   // 10/1: 점자 쪽지까지 6칸
+      const it = G.D.items.find(x => x.id === own[i]);
       const s = G.el('button', 'bag-slot' + (it ? ' has' : ''), slots, it ? G.icon(it.icon) : ''); s.type = 'button';
       if (it) G.onTap(s, () => { nm.textContent = it.name; G.audio.sfx('sfx_page', 0.4); H.itemPop(it); });
     }
@@ -1117,6 +1119,15 @@ G.braille = (() => {
     const dot = o.dot || ST.dot, light = o.dotLight || ST.dotLight;
     let g = `<svg class="braille" viewBox="0 0 ${w.toFixed(1)} ${h.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}">` +
       `<defs><radialGradient id="${id}" cx="35%" cy="30%" r="70%"><stop offset="0" stop-color="${light}"/><stop offset="1" stop-color="${dot}"/></radialGradient></defs>`;
+    // 10/6 선생님: 점자책 장면은 종이에 볼록 솟은 점만 (칸 테두리·빈 자리 없음, 종이색 + 빛·그림자)
+    if (o.emboss) {
+      g = g.replace('</defs>', `<radialGradient id="${id}e" cx="38%" cy="34%" r="66%"><stop offset="0" stop-color="#FFFFFA"/><stop offset=".6" stop-color="#F3E7D0"/><stop offset="1" stop-color="#D8C6A6"/></radialGradient></defs>`);
+      cells.forEach((dots, i) => { const x = m.pad + i * m.pitch, y = m.pad;
+        for (const d of dots) { const px = x + POS[d][0] * s, py = y + POS[d][1] * s, r = m.r * 0.95;
+          g += `<circle cx="${(px + 0.07 * s).toFixed(1)}" cy="${(py + 0.09 * s).toFixed(1)}" r="${(r * 1.08).toFixed(1)}" fill="rgba(110,80,50,0.26)"/>` +
+            `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r.toFixed(1)}" fill="url(#${id}e)" stroke="rgba(140,110,78,0.28)" stroke-width="${(0.025 * s).toFixed(1)}"/>`; } });
+      return g + '</svg>';
+    }
     cells.forEach((dots, i) => {
       const x = m.pad + i * m.pitch, y = m.pad, on = new Set(dots);
       g += `<rect x="${(x - m.pad).toFixed(1)}" y="${(y - m.pad).toFixed(1)}" width="${(m.cellW + 2 * m.pad).toFixed(1)}" height="${(m.cellH + 2 * m.pad).toFixed(1)}" rx="${(0.35 * s).toFixed(1)}" fill="${ST.cellFill}" stroke="${ST.cell}" stroke-width="${Math.max(1, 0.05 * s).toFixed(1)}"/>`;
@@ -2222,7 +2233,7 @@ G.scene = (() => {
     if (kind === 'braille_book') {   // 해솔의 점자책 한 쪽: 확정된 점자 낱말 (별 / 축제)
       const bk = G.el('div', 'book-big' + (G.art('book_open') ? ' art' : ''), closeup), pg = G.el('div', 'book-page', bk);
       if (G.art('book_open')) bk.style.backgroundImage = `url("${G.art('book_open')}")`;
-      for (const c of G.D.puzzles.braille1.book) G.el('div', 'book-line', pg, G.braille.svg(c, 30));
+      for (const c of G.D.puzzles.braille1.book) G.el('div', 'book-line', pg, G.braille.svg(c, 30, { emboss: !!G.art('book_open') }));
       closeup.animate && closeup.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
       return;
     }
@@ -2955,7 +2966,7 @@ Object.assign(G.flows, {
   async forest_star({ complete, g }) {
     const ok = () => g === G.gen;
     await G.dialog.play(['S07_rumi_04']); if (!ok()) return;
-    await G.present.item('leaf'); if (!ok()) return;
+    // 10/6 선생님: 나뭇잎 아이템은 쓸 데가 없어 주지 않음
     await G.dialog.play(['S07_rumi_05']); if (!ok()) return;
     await G.present.item('piece'); if (!ok()) return;
     await G.dialog.play(['S07_rumi_07']); if (!ok()) return;
@@ -3920,6 +3931,7 @@ G.p4 = (() => {
       await G.dialog.play(G.lv('normal') ? ['E05_chief_01', 'E03_chief_02', 'E03_chief_03'] : ['E03_chief_01'], { partner: 'chief' }); if (!ok()) return;
       await G.present.item('note'); if (!ok()) return;
       mark('note_got'); G.map.refresh(); document.querySelectorAll('.p4-askq').forEach(e => e.remove());
+      if (ok() && (G.hud.nextPlace() || {}).id === 'library') G.hud.goMap(() => G.scene.leave(), '도서관으로');   // 10/6 선생님: 쪽지를 받으면 가운데 [도서관으로] → 지도
     },
     // 우편배달부: 편지가 날아감 → 편지 찾기 → 다 찾으면 원래 이야기
     async plaza_post({ complete, g }) {
@@ -5242,7 +5254,7 @@ G.s2 = (() => {
   const CH1 = {
     done: ['meet_lumi', 'plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'market_intro', 'market_bom', 'market_ask', 'market_map', 'library_intro', 'library_haesol', 'library_tactile', 'library_puzzle', 'plaza_post_ask', 'letter_1', 'letter_2', 'letter_3', 'market_jig', 'libdoor_seen', 'libdoor_open', 'note_got',
       'forest_intro', 'forest_wind', 'forest_star', 'forest_daon', 'plaza2_intro', 'plaza2_board', 'plaza2_road', 'plaza2_look', 'plaza2_star', 'road_tiles'],
-    cleared: ['plaza', 'market', 'library', 'forest', 'plaza2'], items: ['note', 'map', 'tactile', 'leaf', 'piece', 'light'],
+    cleared: ['plaza', 'market', 'library', 'forest', 'plaza2'], items: ['note', 'map', 'tactile', 'piece', 'light'],
     seen: ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C10', 'C11', 'C12', 'CH:intro', 'CH:plaza', 'CH:market', 'CH:library', 'CH:forest', 'CH:plaza2', 'CH:ending'],
     visited: ['plaza', 'market', 'library', 'forest', 'plaza2'],
   };
@@ -6798,7 +6810,7 @@ G.s3 = (() => {
       'forest_intro', 'forest_wind', 'forest_star', 'forest_daon', 'plaza2_intro', 'plaza2_board', 'plaza2_road', 'plaza2_look', 'plaza2_star', 'road_tiles',
       's2_begin', 's2_fog', 's2school_intro', 's2s_talk', 's2n_chair', 's2n_window', 's2n_bell', 's2n_locker', 's2school_noise', 's2f_chair', 's2f_window', 's2f_bell', 's2f_locker', 's2school_fix', 's2school_ask', 's2school_card',
       's2door_open', 's2hall_intro', 's2hall_duri', 's2hall_seats', 's2hall_score', 's2rest_intro', 's2rest_miru', 's2rest_box', 's2rest_deco', 's2rest_star', 's2plaza_intro', 's2plaza_concert', 's2plaza_star', 's2_end'],
-    cleared: ['plaza', 'market', 'library', 'forest', 'plaza2', 's2school', 's2hall', 's2rest', 's2plaza'], items: ['note', 'map', 'tactile', 'leaf', 'piece', 'light', 'rhythm', 'score', 'piece_sound'],
+    cleared: ['plaza', 'market', 'library', 'forest', 'plaza2', 's2school', 's2hall', 's2rest', 's2plaza'], items: ['note', 'map', 'tactile', 'piece', 'light', 'rhythm', 'score', 'piece_sound'],
     seen: ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C10', 'C11', 'C12', 'CH:intro', 'CH:plaza', 'CH:market', 'CH:library', 'CH:forest', 'CH:plaza2', 'CH:ending',
       'CH:s2_1', 'CH:s2school', 'S2A_s2school', 'CH:s2hall', 'S2A_s2hall', 'CH:s2rest', 'S2A_s2rest', 'CH:s2plaza', 'S2A_s2plaza', 'CH:s2_6'],
     visited: ['plaza', 'market', 'library', 'forest', 'plaza2', 's2school', 's2hall', 's2rest', 's2plaza'],
@@ -7186,7 +7198,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-06)';
-G.BUILT = '2026-10-06 10:52';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-06 11:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
@@ -7331,7 +7343,7 @@ G.flow = (() => {
       st.seen.push('plaza:chief', 'plaza:board', 'plaza:post', 'market:bom', 'library:haesol', 'library:tactile');
     };
     const forest = () => {
-      lib(); st.done.push('forest_intro', 'forest_wind', 'forest_star', 'forest_daon'); st.cleared.push('forest'); st.items.push('leaf', 'piece');
+      lib(); st.done.push('forest_intro', 'forest_wind', 'forest_star', 'forest_daon'); st.cleared.push('forest'); st.items.push('piece');
       st.seenCutscenes.push('C5'); if ((st.dust || []).length < 5) st.dust = ['plaza:0', 'market:0', 'library:0', 'map:v2', 'map:v3']; st.visited.push('forest'); st.mood = 4; st.quest = 4; st.place = 'forest'; st.seen.push('forest:bushB', 'forest:shine', 'forest:daon');
     };
     if (id === 'forest') { lib(); G.save.write(); return F.resume(); }
