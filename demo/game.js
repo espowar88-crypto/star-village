@@ -7373,6 +7373,7 @@ G.flow = (() => {
 // make_demo.py가 본 게임 game.js의 '처음 켜기' 앞에 끼워 넣고, 처음 켜기를 G.demo.start()로 바꿈
 'use strict';
 G.DEMO = true;
+G.DEMO_QR = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAXIAAAFyAQAAAADAX2ykAAACu0lEQVR4nO2cUWrjQAyGP60NfZxAD9CjODdbeqTeID5KDlCwHwtj/n3QTGy3S7tl05ABzUPwxN+D4EcaSaPExHfW+OtbOAQffPA/ys9W1hHw7XE2YzQzxgPU9/1t7An+ijzS1EmSxCCJYeoEKSNNsL5w7nRv9gf/L3xxzrm/fF9ENjtA8ekb2hP8D/KLMUyLMR46MZz7r/iftif4/+D36rmqGeZHGWnpNT7lm9oT/HV517cWSV02ACNlGF56GM59hiRgvoU9wV+fXzw99i+GCWpU7mRHgNHMykl8j/YH/8nSZk2gE53w/AooqfNlRf7cGO/1kT8OKlWR10eudNJW6dC3PT69eWjWsz14QJbODwKWErNJmVI93aH9wX+2ShtjgrWNUfobu9YGpPDf9vhNm0qnlAE66URXt0nynCv0bZHfS3vZ1iegU3Xx6E+2x7MNvuD10Zpz6ZQkT7zcp+/N/uC/5FOGYVrMfqvEZ8anXEQezrZLsu7Q/uA/W5uAfErZk6z11JV0OYSjPmqQr+eqS5s36XQJyNSnOH9b5C/5Velf+f2vJ8xA6W94CA992+N39/sTVGm7D9uoj1rkd7E45ZIwu5butVAT6/Df9vjqvxO4qqXdkevFw1T0jfqoSX5b/3pBtMrNu8Qr9G2Pr2WuMts25Ga+LrMG7tC3Nf5SH62qbp14FTnO3yb5i6BACchSEbQ2PpyL87dF/u/zGz4EXSc5Nj4d+jbG14EN2LYmy4sqsvc8oj/ZKF/7G8xmDOfepbVjnd/QicVifqNJ3udjDbpM+XgzSG+m8UnY8HIoIkPcH7XOL8bammTu0XO9KYzflzXJvz9mN/OT2o9Txnxsu3y95q13vcwPsuPcU6Q999jxhvYEfy2+ZzMGOz9mI732kF5NIBiPnYyUe42H6Qb2BH9d3uL/GYIPvln+DyFfkNqZAN+UAAAAAElFTkSuQmCC';
 G.demo = (() => {
   const M = {};
   const CSS = `
@@ -7381,11 +7382,18 @@ G.demo = (() => {
 .demo-row div.on { filter: drop-shadow(0 0 calc(var(--u) * 24) #9fd8ff); opacity: 1; }
 .demo-row svg, .demo-row img { width: 100%; height: 100%; display: block; }
 .demo-cap { position: absolute; left: 50%; top: calc(var(--sat) + var(--u) * 180); transform: translateX(-50%); z-index: 8; font-size: calc(var(--u) * 54); color: #FFF6D6; text-shadow: 0 2px 8px rgba(0,0,0,.7); white-space: nowrap; opacity: 0; }
-.demo-end { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 40%, #2c3570 0%, #1b2146 70%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--u) * 26); color: #FFF6D6; text-align: center; }
+.demo-end { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 40%, #2c3570 0%, #1b2146 70%); display: flex; align-items: center; justify-content: center; gap: calc(var(--u) * 90); color: #FFF6D6; text-align: center; }
+.demo-l { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 26); }
+.demo-qr { display: none; flex-direction: column; align-items: center; gap: calc(var(--u) * 18); background: #FFF8E8; border: calc(var(--u) * 8) solid #FFD66B; border-radius: calc(var(--u) * 36); padding: calc(var(--u) * 30); color: #4A3B32; }
+.demo-qr.on { display: flex; animation: demoPop .7s ease-out; }
+@keyframes demoPop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: scale(1); } }
+.demo-qr img { width: calc(var(--u) * 420); height: calc(var(--u) * 420); image-rendering: pixelated; display: block; }
+.demo-qr b { font-weight: normal; font-size: calc(var(--u) * 50); }
+.demo-qr span { font-size: calc(var(--u) * 36); }
 .demo-end .star { width: calc(var(--u) * 260); height: calc(var(--u) * 260); filter: drop-shadow(0 0 calc(var(--u) * 40) #7DBBE3); }
 .demo-end .star svg, .demo-end .star img { width: 100%; height: 100%; display: block; }
 .demo-end .big { font-size: calc(var(--u) * 80); }
-.demo-end .small { font-size: calc(var(--u) * 44); opacity: .9; }
+.demo-end .small { font-size: calc(var(--u) * 40); opacity: .9; max-width: calc(var(--u) * 760); }
 `;
   let styled = false;
   const style = () => { if (!styled) { G.el('style', '', document.head, CSS); styled = true; } };
@@ -7491,11 +7499,15 @@ G.demo = (() => {
     style();
     const g = G.gen; G.hud.hide(true); G.screen = 'title';
     G.audio.music('music_title'); G.audio.sfx('sfx_clear', 0.7);
-    const m = G.el('div', 'demo-end', G.$('#overlay'));
-    const star = G.el('div', 'star', m, G.starSvg(G.STARS[0]));
-    G.el('div', 'big', m, '길의 별을 되찾았어요!');
-    G.el('div', 'small', m, '마을에는 별이 아홉 개 있어요. 친구들을 만나 모든 별을 찾아요.');
-    const btn = G.btn('pill gold', G.icon('icon_star') + ' 처음부터 다시', m, () => M.start(), '처음부터 다시');
+    const m = G.el('div', 'demo-end', G.$('#overlay')), L = G.el('div', 'demo-l', m);
+    const star = G.el('div', 'star', L, G.starSvg(G.STARS[0]));
+    G.el('div', 'big', L, '길의 별을 되찾았어요!');
+    G.el('div', 'small', L, '마을에는 별이 아홉 개 있어요. 친구들을 만나 모든 별을 찾아요.');
+    const btn = G.btn('pill gold', G.icon('icon_star') + ' 처음부터 다시', L, () => M.start(), '처음부터 다시');
+    // 10/6 선생님: 엔딩 뒤 선물 뽑기 큐알 (휴대폰으로 찍으면 demo/gift.html, 한 휴대폰에 한 번)
+    const qr = G.el('div', 'demo-qr', m);
+    if (G.DEMO_QR) { G.el('b', '', qr, '선물 뽑기'); const im = G.el('img', '', qr); im.src = G.DEMO_QR; im.alt = '선물 뽑기 큐알 코드'; G.el('span', '', qr, '휴대폰 카메라로 찍어 보세요'); }
+    G.wait(2.8).then(() => { if (g !== G.gen || !G.DEMO_QR) return; qr.classList.add('on'); G.audio.sfx('sfx_sparkle', 0.6); });
     btn.style.marginTop = 'calc(var(--u) * 16)';
     if (star.animate && !G.reduced()) star.animate([{ transform: 'scale(.4)', opacity: 0 }, { transform: 'scale(1.12)', opacity: 1, offset: .6 }, { transform: 'scale(1)', opacity: 1 }], { duration: 900, easing: 'ease-out' });
     G.wait(0.4).then(() => { if (g === G.gen) G.audio.voice('S11_sys_01'); });
