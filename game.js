@@ -2805,7 +2805,7 @@ G.present.star = async () => {
 // o.view: 바뀐 게시판 보기 (카드·주민 없이 [닫기]). o.look: 함께 보기 (차례로 빛나며 안내 음성, 끝나면 [닫기])
 G.puzzle2 = (() => {
   const Z = {};
-  const NAME = { daon: '다온', haesol: '해솔', post: '우편배달부', chief: '촌장' };
+  const NAME = { daon: '다온', haesol: '해솔', post: '이음 아저씨', chief: '촌장' };   // 10/6 선생님이 정한 이름
   const tempPic = () => `<div class="pz2-tmp">${G.icon('place_plaza')}<span>${G.starSvg(G.STARS[0])}</span></div>`;   // 다온의 그림이 오기 전 임시 (광장 그림 + 길의 별)
   Z.play = (o = {}) => new Promise(async (finish) => {
     const D = G.D.puzzles.board2, g = G.gen, ok = () => g === G.gen, view = !!(o.view || o.look);
