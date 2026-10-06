@@ -4326,6 +4326,42 @@ G.s2 = (() => {
 .s2-cnotes .s2-note { left: auto; top: auto; filter: drop-shadow(0 0 10px rgba(125, 187, 227, .9)); }
 .s2-concert { position: absolute; width: 900px; height: 900px; margin: -450px 0 0 -450px; border-radius: 50%; pointer-events: none; z-index: 17; mix-blend-mode: screen; opacity: 0;
   background: radial-gradient(circle, rgba(255, 236, 170, .6) 0%, rgba(200, 160, 240, .35) 40%, rgba(200, 160, 240, 0) 70%); }
+
+/* 10/6 학교 고치기 네 장면 */
+.s2-fixbg { background-size: cover; }
+.s2-fobj { position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 5; }
+.s2-fobj.pop { animation: s2pop .5s ease-out; }
+.s2-fobj.glow { filter: drop-shadow(0 0 30px rgba(255, 220, 120, 1)) drop-shadow(0 0 60px rgba(255, 220, 120, .8)); }
+.s2-fspot { border: 0; background: none; padding: 0; cursor: pointer; z-index: 8; }
+.s2-fspot i { pointer-events: auto; }
+.s2-fbasket { position: absolute; left: 0; top: 520px; width: 320px; height: 248px; border: 0; background: none; cursor: grab; z-index: 7; }
+.s2-fbasket .s2-ball { position: absolute; left: 150px; top: 40px; width: 70px; height: 70px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f3ff9a, #c9e83a 60%, #95b51c); box-shadow: 0 0 22px rgba(255, 214, 107, 1); animation: s2drop 1.1s ease-in-out infinite; }
+.s2-fbasket.hint .s2-ball { box-shadow: 0 0 40px 10px rgba(255, 214, 107, 1); }
+.s2-fclip { position: absolute; overflow: hidden; z-index: 4; }
+.s2-fclip .s2-fobj { transform: none; left: 0; }
+.s2-fhd { position: absolute; top: 50%; width: 84px; height: 84px; margin: -42px 0 0 -14px; border-radius: 50%; border: 6px solid #fff; background: radial-gradient(circle, rgba(255, 233, 168, .5) 0%, rgba(255, 214, 107, .35) 60%, rgba(201, 143, 20, .2) 100%); box-shadow: 0 0 24px rgba(255, 214, 107, 1); cursor: grab; animation: s2drop 1.1s ease-in-out infinite; }
+.s2-fobj.flut { animation: s2flut 2.4s ease-in-out infinite; z-index: 6; }
+.s2-fobj.flut2 { animation: s2flut 1.7s ease-in-out infinite reverse; z-index: 6; }
+@keyframes s2flut { 0%, 100% { transform: translate(-50%, -50%) rotate(-10deg) translate(0, 0); } 50% { transform: translate(-50%, -50%) rotate(14deg) translate(-90px, 40px); } }
+.s2-flatch { pointer-events: auto; cursor: pointer; z-index: 7; }
+.s2-fbars { position: absolute; display: flex; align-items: flex-end; gap: 8px; z-index: 5; padding: 6px 10px; box-sizing: border-box; }
+.s2-fbars i { flex: 1; border-radius: 6px; background: #e7dccb; border: 3px solid #b9a88f; }
+.s2-fbars i.green { border-color: #4f9a5a; background: #d7efd6; }
+.s2-fbars i.on { background: #F29B6B; }
+.s2-fbars i.green.on { background: #6cc077; }
+.s2-fbars.ok { filter: drop-shadow(0 0 18px rgba(108, 192, 119, 1)); }
+.s2-fknob { position: absolute; width: 130px; height: 130px; margin: -65px 0 0 -65px; border: 0; background: none; padding: 0; cursor: pointer; z-index: 7; }
+.s2-fknob img { width: 100%; height: 100%; }
+.s2-fknob b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: Arial, sans-serif; font-weight: 900; font-size: 70px; color: #5a3a24; }
+.s2-fknob.hint { filter: drop-shadow(0 0 22px rgba(255, 214, 107, 1)); animation: s2drop 1.1s ease-in-out infinite; }
+.s2-fknob.off { opacity: .4; pointer-events: none; }
+.s2-fdoor { position: absolute; z-index: 3; transform-origin: 0 50%; background-size: 1376px 768px; cursor: pointer; }
+.s2-meter { position: absolute; left: 50%; top: calc(var(--u) * 20); transform: translateX(-50%); display: flex; align-items: center; gap: calc(var(--u) * 10); padding: calc(var(--u) * 10) calc(var(--u) * 22); border-radius: calc(var(--u) * 30); background: rgba(255, 250, 240, .92); box-shadow: 0 calc(var(--u) * 4) calc(var(--u) * 14) rgba(0, 0, 0, .25); z-index: 50; pointer-events: none; }
+.s2-meter .mt { font-family: var(--f-title); font-size: calc(var(--u) * 30); color: var(--brown); display: flex; align-items: center; gap: .3em; }
+.s2-meter .mt .ico, .s2-meter .mt img { width: 1.1em; height: 1.1em; }
+.s2-meter i { width: calc(var(--u) * 46); height: calc(var(--u) * 30); border-radius: calc(var(--u) * 8); background: #F29B6B; border: calc(var(--u) * 3) solid #c9653a; transition: background .6s, border-color .6s; }
+.s2-meter i.ok { background: #6cc077; border-color: #4f9a5a; }
+.s2-meter.all { animation: s2out 1.6s ease-in forwards; }
 `;
   { const st = document.createElement('style'); st.id = 's2-style'; st.textContent = CSS; document.head.appendChild(st); }
 
@@ -4731,6 +4767,7 @@ G.s2 = (() => {
       if (!done('s2school_noise') || !done('s2school_fix')) for (const k of noiseNeed(def)) if (!done('s2f_' + k)) V.s2.loud[k] = loudMark(V.fx, N.mark[k][0], N.mark[k][1]);
       if (done('s2f_chair')) tennis(V, def, false);
       if (done('s2f_bell')) bellLight(V, def);
+      meter(V, def);
       // 쉽게: 소리 나는 곳이 반짝임
       if (!G.lv('normal') && !done('s2school_noise')) for (const k of noiseNeed(def)) { const b = hotBtn(V, labelOf(def, k)); if (b && b.previousElementSibling) b.previousElementSibling.classList.add('strong'); }
       // 10/6 선생님(고칠 목록 5): 들어가면 고장 난 것들 소리가 겹쳐서 계속 남. 고칠 때마다 그 소리만 꺼짐. 소리에 예민한 학생을 생각해 작게, 대사 중에는 더 작게
@@ -4738,7 +4775,7 @@ G.s2 = (() => {
       for (const k of noiseNeed(def)) {
         if (done('s2f_' + k) || !MIX[k]) continue;
         const [n, vol, rate, every] = MIX[k]; let t = Math.random() * every;
-        const off = G.every(dt => { if (!V.el.isConnected || done('s2f_' + k)) { off(); return; } if (G.paused) return; t -= dt; if (t > 0) return; t = every * (0.95 + Math.random() * 0.15); G.audio.sfx(n, vol * (G.dialog.active ? 0.7 : 1), rate); });
+        const off = G.every(dt => { if (!V.el.isConnected || done('s2f_' + k)) { off(); return; } if (G.paused || V.s2['hush' + k[0].toUpperCase() + k.slice(1)]) return; t -= dt; if (t > 0) return; t = every * (0.95 + Math.random() * 0.15); G.audio.sfx(n, vol * (G.dialog.active ? 0.7 : 1), rate); });
       }
       // 바람이 들어오는 창문, 쉬지 않는 종: 물결 그림도 함께
       loop(3.2, () => { if (!done('s2f_window')) wave(V.fx, def.wind[0], def.wind[1], 150); if (!done('s2f_bell')) wave(V.fx, def.bellLight[0], def.bellLight[1], 150); });
@@ -4830,7 +4867,7 @@ G.s2 = (() => {
       mark('s2s_talk'); G.scene.reveal(); return;
     }
     if (id === 'daon2') {
-      if (!done('s2school_fix')) { await play(['SD02_daon_02'], { partner: 'daon' }); return; }
+      if (!done('s2school_fix')) { await play(done('s2school_noise') ? ['SD02_rumi_40'] : ['SD02_daon_02'], done('s2school_noise') ? {} : { partner: 'daon' }); return; }
       if (!done('s2school_ask')) return askKids(ctx);
       await play([done('s2school_card') ? 'SD02_daon_08' : 'SD02_daon_10'], { partner: 'daon' }); return;
     }
@@ -4852,50 +4889,161 @@ G.s2 = (() => {
       await play([N.line[id]]); if (!ok()) return;
       mark('s2n_' + id);
       if (!need.every(k => done('s2n_' + k))) return;
-      complete('s2school_noise');
+      complete('s2school_noise'); meter(V, S);
+      await play(['SD02_rumi_40']); return;
     }
-    if (!done('s2school_fix')) await fix(ctx);
+    if (!done('s2school_fix') && need.includes(id) && !done('s2f_' + id)) await fixOne(id, ctx);
   };
-  async function fix({ S, V, g, complete }) {
-    const ok = () => g === G.gen, need = noiseNeed(S);
-    if (!done('s2f_chair')) {
-      await play(['SD02_daon_03'], { partner: 'daon' }); if (!ok()) return;
-      await play(['SD02_rumi_07']); if (!ok()) return;
-      const spot = dropSpot(V, S);   // 10/4 선생님: 테니스공을 어디에 놓을지 잘 안 보임 → 의자 다리에 반짝 원과 화살표
-      const u = await G.p4.useItem('tennis', hotBtn(V, labelOf(S, 'chair')), { say, hint: 'SD02_rumi_07' }); spot.remove(); if (!ok() || !u) return;
-      tennis(V, S, true); quiet(V, 'chair'); mark('s2f_chair');
-      await play(['SD02_rumi_08']); if (!ok()) return;
-    }
-    if (!done('s2f_window')) {   // 10/6 선생님(고칠 목록 6): 창문 손잡이를 잡고 옆으로 끌어 닫음
-      await play(['SD02_rumi_09']); if (!ok()) return;
-      await slideWindow(V, S); if (!ok()) return;
-      G.audio.sfx('sfx_window_close', 0.5); spark(hotBtn(V, labelOf(S, 'window')), 8); quiet(V, 'window'); mark('s2f_window');
-    }
-    if (!done('s2f_bell')) {   // 10/6: 종 옆 소리 상자의 [-] [+]로 초록 칸에 맞춤 → 빛 알림등을 끌어다 붙임
-      await play(['SD02_daon_04'], { partner: 'daon' }); if (!ok()) return;
-      await play(['SD02_rumi_31']); if (!ok()) return;
-      await bellBox(S); if (!ok()) return;
-      quiet(V, 'bell');
-      await play(['SD02_rumi_33']); if (!ok()) return;
-      const slot = dropSpot2(V, S.bellLight[0], S.bellLight[1]);
-      const u = await G.p4.useItem('flashlamp', slot, { say, hint: 'SD02_rumi_33' }); if (!ok() || !u) return;
-      slot.remove(); bellLight(V, S, true); G.audio.sfx('sfx_chime', 0.12, 1.2); mark('s2f_bell');
-      await play(['SD02_daon_11'], { partner: 'daon' }); if (!ok()) return;
-    }
-    if (need.includes('locker') && !done('s2f_locker')) {
-      // 10/6 선생님: 기름 뿌리개를 끌어다 경첩 두 곳에 대면 '칙' 하고 기름이 뿌려지고, 다 뿌리면 삐걱 소리가 멈춤
-      await play(['SD02_rumi_13']); if (!ok()) return;
-      for (const [hx, hy] of S.hinges) {
-        const hg = dropSpot2(V, hx, hy, 'small');
-        const u = await G.p4.useItem('oil', hg, { say, hint: 'SD02_rumi_13' }); if (!ok() || !u) return;
-        hg.remove(); oilSpray(V, hx, hy);
-      }
-      setTimeout(() => G.audio.sfx('sfx_click', 0.3, 0.8), 260); spark(hotBtn(V, labelOf(S, 'locker')), 8); quiet(V, 'locker'); mark('s2f_locker');
-      await play(['SD02_rumi_14']); if (!ok()) return;
-    }
-    complete('s2school_fix');
+  // 10/6 선생님: 학교 고치기 네 장면. 소리를 다 찾은 뒤 교실에서 소리 나는 곳을 누르면 그 물건을 크게 보는 장면으로 넘어가 하나씩 고침(순서는 아이가 고름, 모든 난이도)
+  async function fixOne(k, { S: def, V, g, complete }) {
+    const ok = () => g === G.gen;
+    G.busy++; G.$('#fade').classList.add('on'); await G.wait(0.45); G.busy = Math.max(0, G.busy - 1); if (!ok()) return;
+    const P = screen('s2-fix'), B = board(P.root, 1376, 768, 's2-fixbg'); B.el.style.backgroundImage = `url("${ART('fix_' + k + '_bg')}")`;
+    P.layout = () => B.fit([0, 0, G.stage.W, G.stage.H], true); P.layout();
+    G.$('#fade').classList.remove('on'); await G.wait(0.35);
+    let won = false; try { won = await FIX[k](P, B, ok, V); } catch (e) { console.error('학교 고치기 오류', k, e); }
+    if (!ok()) return P.end();
+    if (won) { mark('s2f_' + k); G.save.write(); }
+    G.$('#fade').classList.add('on'); await G.wait(0.45); P.end(); if (!ok()) return;
+    if (won) { quiet(V, k); if (k === 'chair') tennis(V, def, true); if (k === 'bell') bellLight(V, def, true); meter(V, def); }
+    G.$('#fade').classList.remove('on'); await G.wait(0.4); if (!ok() || !won) return;
+    spark(hotBtn(V, labelOf(def, k)), 8);
+    if (!noiseNeed(def).every(q => done('s2f_' + q))) return;
+    complete('s2school_fix'); meter(V, def);
     await play(['SD02_rumi_10']);
   }
+  // 교실 위 소리 막대 4칸: 고칠 때마다 한 칸씩 초록
+  function meter(V, def) {
+    let m = V.el.parentNode && V.el.parentNode.querySelector('.s2-meter');
+    if (done('s2school_fix') || !done('s2school_noise')) { if (m) { m.classList.add('all'); setTimeout(() => m.remove(), 1800); } return; }
+    if (!m) { m = G.el('div', 's2-meter', V.el.parentNode); G.el('span', 'mt', m, G.icon('icon_sound') + ' 교실 소리'); for (const k of noiseNeed(def)) G.el('i', '', m).dataset.k = k; }
+    m.querySelectorAll('i').forEach(c => c.classList.toggle('ok', done('s2f_' + c.dataset.k)));
+  }
+  const bel = (parent, cls, x, y, w, h, html = '') => { const e = G.el('div', cls, parent, html); Object.assign(e.style, { left: x + 'px', top: y + 'px' }); if (w) e.style.width = w + 'px'; if (h) e.style.height = h + 'px'; return e; };
+  const bimg = (parent, name, x, y, w, cls = '') => { const e = G.el('img', 's2-fobj ' + cls, parent); e.src = ART(name); e.alt = ''; Object.assign(e.style, { left: x + 'px', top: y + 'px', width: w + 'px' }); return e; };
+  const tapSpot = (parent, x, y, small, label) => { const e = G.el('button', 's2-spot s2-fspot' + (small ? ' small' : ''), parent, '<i></i>'); e.type = 'button'; e.setAttribute('aria-label', label || '여기'); Object.assign(e.style, { left: x + 'px', top: y + 'px' }); return e; };
+  const shake = (el, px = 6) => el.animate && el.animate([{ transform: 'translateX(0)' }, { transform: `translateX(-${px}px)` }, { transform: `translateX(${px}px)` }, { transform: 'translateX(0)' }], { duration: 320 });
+  const FIX = {
+    // 의자: 바구니의 테니스공을 끌어 다리 끝에 끼움 (쉽게: 앞 두 다리)
+    chair: (P, B, ok, V0) => new Promise(async (res) => {
+      const ALL = [[592, 600], [928, 690], [826, 505], [1128, 560]], legs = G.lv('normal') ? ALL : ALL.slice(0, 2);
+      const marks = legs.map(([x, y]) => loudMark(B.el, x, y - 30));
+      await play(['SD02_daon_03'], { partner: 'daon' }); if (!ok()) return res(false);
+      await play(['SD02_rumi_07']); if (!ok()) return res(false);
+      const basket = G.el('button', 's2-fbasket', B.el, '<b class="s2-ball"></b>'); basket.type = 'button'; basket.setAttribute('aria-label', '테니스공 바구니');
+      let left = legs.length, fin = false;
+      const spots = legs.map(([x, y], i) => { const s = tapSpot(B.el, x, y, !G.lv('normal') ? false : G.lv('hard'), '의자 다리'); s.dataset.i = i; G.onTap(s, () => put(s)); return s; });
+      const put = (s) => {
+        if (fin || G.dialog.active || !s.isConnected) return; G.help.poke();
+        const [x, y] = legs[+s.dataset.i]; s.remove(); marks[+s.dataset.i].classList.add('gone');
+        const ball = bimg(B.el, 'fix_tennis_ball', x, y + 8, 78, 'pop'); ball.style.transform = 'translate(-50%,-62%)';
+        G.audio.sfx('sfx_tap', 0.6); G.audio.sfx('sfx_chime', 0.25, 1.3);
+        if (--left === 0) end();
+      };
+      G.p4.dragTo(basket, () => spots.filter(s => s.isConnected), (t) => put(t));
+      G.onTap(basket, () => { G.audio.sfx('sfx_tap', 0.4); spots.forEach(s => s.classList.add('p4-target-on')); setTimeout(() => spots.forEach(s => s.classList.remove('p4-target-on')), 1200); });
+      const finish = async () => { if (fin) return; fin = true; G.help.off(); cur = null; spots.forEach(s => s.remove()); res(ok()); };
+      async function end() { if (fin) return; if (V0 && V0.s2) V0.s2.hushChair = true; await G.wait(0.4); shake(B.el, 10); await G.wait(0.5); if (!ok()) return res(false); await play(['SD02_rumi_08']); finish(); }
+      cur = { solve: () => { spots.filter(s => s.isConnected).forEach(put); } };
+      G.help.set({ l1: () => P.say('SD02_rumi_07'), l2: () => basket.classList.add('hint'), l3: () => spots.forEach(s => s.classList.add('p4-target-on')), clear: () => basket.classList.remove('hint') });
+    }),
+    // 창문: 손잡이를 잡고 옆으로 끌어 닫고 → 걸쇠를 눌러 잠금. 날리던 종이가 창틀에 내려앉음
+    window: (P, B, ok, V) => new Promise(async (res) => {
+      const O = [735, 92, 380, 532], open = O[2] * 0.82;
+      const clip = bel(B.el, 's2-fclip', O[0], O[1], O[2], O[3]);
+      const pane = bimg(clip, 'fix_pane', 0, -6, O[2] + 14); pane.style.height = (O[3] + 14) + 'px';
+      const hd = G.el('button', 's2-fhd', clip); hd.type = 'button'; hd.setAttribute('aria-label', '창문 손잡이'); hd.style.touchAction = 'none';
+      const paper = bimg(B.el, 'fix_paper', 860, 300, 120, 'flut'); const leaf = ART('wind_leaf') ? bimg(B.el, 'wind_leaf', 950, 220, 60, 'flut2') : null;
+      const wm = loudMark(B.el, 930, 360);
+      let cur0 = open, st = null, fin = false;
+      const setX = (v) => { cur0 = Math.max(0, Math.min(open, v)); pane.style.transform = `translateX(${cur0}px)`; hd.style.left = (cur0 + 6) + 'px'; };
+      setX(open);
+      await play(['SD02_rumi_09']); if (!ok()) return res(false);
+      hd.addEventListener('pointerdown', (e) => { if (fin || G.dialog.active) return; st = { id: e.pointerId, x: e.clientX, c: cur0 }; try { hd.setPointerCapture(e.pointerId); } catch (_) { } G.audio.sfx('sfx_tap', 0.4); G.help.poke(); });
+      hd.addEventListener('pointermove', (e) => { if (!st || e.pointerId !== st.id) return; setX(st.c + (e.clientX - st.x) / (B.k || 1)); if (cur0 < 4) shut(); });
+      const up = (e) => { if (!st || e.pointerId !== st.id) return; st = null; if (cur0 < open * 0.15) shut(); };
+      hd.addEventListener('pointerup', up); hd.addEventListener('pointercancel', up);
+      async function shut() {
+        if (fin) return; fin = true; st = null; setX(0); hd.remove(); G.help.off(); cur = null;
+        G.audio.sfx('sfx_window_close', 0.5); wm.classList.add('gone'); if (V && V.s2) V.s2.hushWindow = true;
+        paper.classList.remove('flut'); paper.animate && paper.animate([{ left: '860px', top: '300px', transform: 'translate(-50%,-50%) rotate(0deg)' }, { left: '560px', top: '690px', transform: 'translate(-50%,-50%) rotate(-12deg)' }], { duration: 1400, easing: 'ease-in-out', fill: 'forwards' });
+        if (leaf) leaf.remove();
+        await G.wait(1.0); if (!ok()) return res(false);
+        await play(['SD02_rumi_41']); if (!ok()) return res(false);
+        const la = bimg(B.el, 'fix_latch_open', 690, 352, 96, 's2-flatch'); la.style.transform = 'translate(-50%,-50%)';
+        const spot = tapSpot(B.el, 690, 352, true, '걸쇠');
+        cur = { solve: () => lock() };
+        G.help.set({ l1: () => P.say('SD02_rumi_41'), l2: () => { }, l3: () => spot.classList.add('p4-target-on'), clear: () => { } });
+        let locked = false;
+        async function lock() { if (locked) return; locked = true; G.help.off(); cur = null; spot.remove(); la.src = ART('fix_latch_shut'); la.style.width = '112px'; G.audio.sfx('sfx_click', 0.6); spark(la, 6);
+          await G.wait(0.6); if (!ok()) return res(false); await play(['SD02_rumi_42']); res(ok()); }
+        G.onTap(spot, () => { if (!G.dialog.active) lock(); }); G.onTap(la, () => { if (!G.dialog.active) lock(); });
+      }
+      cur = { solve: () => shut() };
+      G.help.set({ l1: () => P.say('SD02_rumi_09'), l2: () => hd.classList.add('s3-hint'), l3: () => hd.classList.add('s3-hint'), clear: () => hd.classList.remove('s3-hint') });
+    }),
+    // 종: 소리 상자의 [-][+]로 초록 칸에 맞추고 → 빛 알림등을 종 옆에 붙이고 → 울려 보기
+    bell: (P, B, ok, V) => new Promise(async (res) => {
+      const D = G.D.scenes && G.D.scenes.s2school, BB = (D && D.bellBox) || { max: 7, start: 7, green: [3, 4] };
+      const bm = loudMark(B.el, 705, 240);
+      await play(['SD02_daon_04'], { partner: 'daon' }); if (!ok()) return res(false);
+      await play(['SD02_rumi_31']); if (!ok()) return res(false);
+      const bars = bel(B.el, 's2-fbars', 570, 470, 224, 112);
+      const cells = Array.from({ length: BB.max }, (_, i) => { const c = G.el('i', (i + 1 >= BB.green[0] && i + 1 <= BB.green[1]) ? 'green' : '', bars); c.style.height = (24 + i * 12) + '%'; return c; });
+      let lv = BB.start, t = null, warned = false, boxDone = false;
+      const draw = () => cells.forEach((c, i) => c.classList.toggle('on', i < lv));
+      const inGreen = () => lv >= BB.green[0] && lv <= BB.green[1];
+      const mk = (x, sign, d, label) => { const b = G.el('button', 's2-fknob', B.el, `<img src="${ART('fix_knob')}" alt=""><b>${sign}</b>`); b.type = 'button'; b.setAttribute('aria-label', label); Object.assign(b.style, { left: x + 'px', top: '528px' }); G.onTap(b, () => press(d)); return b; };
+      const press = async (d) => {
+        if (boxDone || G.dialog.active) return; G.help.poke(); lv = Math.max(1, Math.min(BB.max, lv + d)); draw(); G.audio.sfx('sfx_chime', 0.04 + 0.05 * lv, 1.3); clearTimeout(t);
+        if (lv < BB.green[0]) { if (!warned || lv === 1) { warned = true; await play(['SD02_rumi_32']); } return; }
+        if (inGreen()) t = setTimeout(() => { if (!boxDone && inGreen() && ok()) boxOk(); }, 1200);
+      };
+      const kL = mk(470, '-', -1, '작게'), kR = mk(895, '+', 1, '크게'); draw();
+      cur = { solve: () => { lv = BB.green[0]; draw(); boxOk(); } };
+      G.help.set({ l1: () => P.say('SD02_rumi_31'), l2: () => kL.classList.add('hint'), l3: () => kL.classList.add('hint'), clear: () => kL.classList.remove('hint') });
+      async function boxOk() {
+        if (boxDone) return; boxDone = true; clearTimeout(t); G.help.off(); cur = null; G.audio.sfx('sfx_sparkle', 0.6); bars.classList.add('ok'); kL.classList.add('off'); kR.classList.add('off');
+        bm.classList.add('gone'); if (V && V.s2) V.s2.hushBell = true;
+        await G.wait(0.8); if (!ok()) return res(false);
+        await play(['SD02_rumi_33']); if (!ok()) return res(false);
+        const spot = tapSpot(B.el, 1008, 232, false, '종 옆 빈 자리');
+        const u = await G.p4.useItem('flashlamp', spot, { parent: P.root, say: P.say, hint: 'SD02_rumi_33' }); if (!ok() || !u) return res(false);
+        spot.remove();
+        const lamp = bimg(B.el, 'fix_lamp_off', 1008, 232, 112, 'pop'); lamp.style.transform = 'translate(-50%,-50%)';
+        await G.wait(0.8); if (!ok()) return res(false);
+        for (let i = 0; i < 3; i++) {   // 울려 보기: 종이 알맞게 울리면 알림등이 반짝
+          G.audio.sfx('sfx_chime', 0.2, 1.2); lamp.src = ART('fix_lamp_on'); lamp.classList.add('glow'); wave(B.el, 705, 240, 160);
+          await G.wait(0.5); lamp.src = ART('fix_lamp_off'); lamp.classList.remove('glow'); await G.wait(0.35); if (!ok()) return res(false);
+        }
+        lamp.src = ART('fix_lamp_on'); lamp.classList.add('glow');
+        await play(['SD02_daon_11'], { partner: 'daon' }); res(ok());
+      }
+    }),
+    // 사물함: 기름 뿌리개를 경첩 두 곳에 대고 → 문을 살짝 움직여 봄 (삐걱 소리 없음)
+    locker: (P, B, ok, V) => new Promise(async (res) => {
+      const H = [[475, 215], [475, 615]];
+      const door = bel(B.el, 's2-fdoor', 466, 40, 380, 728); door.style.backgroundImage = `url("${ART('fix_locker_bg')}")`; door.style.backgroundPosition = '-466px -40px';
+      const marks = H.map(([x, y]) => loudMark(B.el, x, y));
+      const rock = (loud) => { if (door.animate) door.animate([{ transform: 'perspective(1400px) rotateY(0deg)' }, { transform: 'perspective(1400px) rotateY(-14deg)' }, { transform: 'perspective(1400px) rotateY(0deg)' }], { duration: 900, easing: 'ease-in-out' }); if (loud) G.audio.sfx('loop_locker', 0.5); };
+      rock(true);
+      await play(['SD02_rumi_13']); if (!ok()) return res(false);
+      for (let i = 0; i < H.length; i++) {
+        const [hx, hy] = H[i], sp = tapSpot(B.el, hx, hy, true, '경첩');
+        const u = await G.p4.useItem('oil', sp, { parent: P.root, say: P.say, hint: 'SD02_rumi_13' }); if (!ok() || !u) return res(false);
+        sp.remove(); oilSpray({ fx: B.el }, hx, hy); marks[i].classList.add('gone');
+      }
+      if (V && V.s2) V.s2.hushLocker = true;
+      await G.wait(0.6); if (!ok()) return res(false);
+      await play(['SD02_rumi_43']); if (!ok()) return res(false);
+      const sp = tapSpot(B.el, 660, 400, false, '사물함 문');
+      let fin = false;
+      const go = async () => { if (fin || G.dialog.active) return; fin = true; G.help.off(); cur = null; sp.remove(); rock(false); setTimeout(() => G.audio.sfx('sfx_click', 0.3, 0.8), 820); await G.wait(1.1); if (!ok()) return res(false); spark(door, 8); await play(['SD02_rumi_14']); res(ok()); };
+      G.onTap(sp, go); G.onTap(door, go);
+      cur = { solve: go };
+      G.help.set({ l1: () => P.say('SD02_rumi_43'), l2: () => { }, l3: () => sp.classList.add('p4-target-on'), clear: () => { } });
+    }),
+  };
   // 친구들에게 묻기: 안경 쓴 학생 → 다온 (한 번에 둘 다)
   async function askKids({ g, complete }) {
     const ok = () => g === G.gen;
@@ -7382,7 +7530,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-06)';
-G.BUILT = '2026-10-06 22:36';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-06 23:23';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
