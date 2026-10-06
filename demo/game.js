@@ -7368,7 +7368,7 @@ G.flow = (() => {
 })();
 
 // demo.js — 10/6 선생님: 1분 체험판 (아이패드 시연용)
-// 책 펴기 → 제목(약 3초) → 짧은 인트로(약 10초: 별이 떨어짐 → 루미 → 별 9개 중 길의 별) → 길의 별 점자 문제(해솔, 30~40초) → 끝 화면
+// 책 펴기 → 제목(약 3초) → 짧은 인트로(약 10초: 별이 떨어짐 → 루미 → 별 9개 중 길의 별) → 길의 별 점자 문제(해솔, 30~40초) → 점자블록 깔기 → 끝 화면 + 선물 큐알
 // 난이도는 본 게임과 같음 (톱니/ESC 교사 설정의 쉽게·보통·어렵게). 저장 칸은 쓰지 않음 (본 게임 저장을 건드리지 않게)
 // make_demo.py가 본 게임 game.js의 '처음 켜기' 앞에 끼워 넣고, 처음 켜기를 G.demo.start()로 바꿈
 'use strict';
@@ -7428,8 +7428,20 @@ G.demo = (() => {
     G.$('#fade').classList.remove('on');
     const won = await G.puzzle.play('braille1');
     Object.assign(P, keep);
-    if (!ok()) return;
-    if (won) M.end();
+    if (!ok() || !won) return;
+    // 10/6 선생님: 두 번째 문제 「점자블록 깔기」(길의 별 p4 tiles). 블록 뜻(해솔 3줄)은 퍼즐 화면이 뜬 뒤 첫 대사 앞에 붙임
+    G.$('#fade').classList.add('on'); await G.wait(0.35); if (!ok()) return;
+    const orig = G.dialog.play;
+    G.dialog.play = (ids, o) => {
+      if (ids && ids.length === 1 && ids[0] === 'E10_rumi_01') { G.dialog.play = orig; return orig(['S10_haesol_03', 'S10_haesol_04', 'S10_haesol_05', 'E10_rumi_01'], Object.assign({}, o, { partner: 'haesol' })); }
+      return orig(ids, o);
+    };
+    G.audio.music('music_puzzle');
+    const tp = G.p4.tiles(); G.$('#fade').classList.remove('on');
+    const won2 = await tp; G.dialog.play = orig;
+    if (!ok() || !won2) return;
+    await G.dialog.play(['E10_haesol_03'], { partner: 'haesol' }); if (!ok()) return;
+    M.end();
   };
 
   // ---- 인트로 (약 10초) ----
