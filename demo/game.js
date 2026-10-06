@@ -6900,7 +6900,7 @@ G.teacher = (() => {
     const p = G.el('div', 't-panel', bg);
     const h = G.el('h2', '', p, '<span>교사용 설정</span>');
     tb('닫기 (ESC)', h, () => T.close(), 'on t-close');
-    G.el('div', 't-help', p, '게임은 잠시 멈춰 있어요. ' + (G.st ? `지금 칸: ${G.st.slot}번${G.st.name ? ' (' + G.save.esc(G.st.name) + ')' : ''}` : '아직 칸을 고르지 않았어요.') + ' (프로토타입 2)');
+    G.el('div', 't-help', p, G.DEMO ? '체험판이에요. 게임은 잠시 멈춰 있어요.' : '게임은 잠시 멈춰 있어요. ' + (G.st ? `지금 칸: ${G.st.slot}번${G.st.name ? ' (' + G.save.esc(G.st.name) + ')' : ''}` : '아직 칸을 고르지 않았어요.') + ' (프로토타입 2)');
 
     // 빠르게 모드 (9/30 선생님 요청, 청선별GO처럼): 대화·연출·걷기를 바로 넘길 수 있게
     let s = sec(p, '빠르게 모드 (선생님 확인·시연용)');
@@ -6910,7 +6910,7 @@ G.teacher = (() => {
     // 난이도 (9/30 선생님 요청): 반마다 고름
     s = sec(p, '난이도');
     choice(s, 'level', [['easy', '쉽게'], ['normal', '보통'], ['hard', '어렵게']]);
-    G.el('div', 't-note', s, '쉽게: 이름표 4개, 누르면 이름을 읽어 줌, 봄이 아주머니가 바로 보임. 보통: 이름표 5개, 카드와 모양을 비교해야 함, 시장에서 봄이 아주머니 가게를 찾음, 도서관에서 촉각 지도를 찾음. 어렵게: 이름표 6개, 도움 화살표 없음.');
+    G.el('div', 't-note', s, G.DEMO ? '쉽게: 자물쇠는 쪽지와 같은 점자 판 고르기, 점자블록은 막대 블록이 미리 놓여 있음. 보통: 자물쇠 빈칸 한 칸의 점을 눌러 채우기. 어렵게: 자물쇠 네 칸을 모두 채우기, 막대 블록은 눌러서 방향을 맞추기.' : '쉽게: 이름표 4개, 누르면 이름을 읽어 줌, 봄이 아주머니가 바로 보임. 보통: 이름표 5개, 카드와 모양을 비교해야 함, 시장에서 봄이 아주머니 가게를 찾음, 도서관에서 촉각 지도를 찾음. 어렵게: 이름표 6개, 도움 화살표 없음.');
 
     s = sec(p, '1. 음성과 음량');
     let r = row(s);
@@ -6926,6 +6926,7 @@ G.teacher = (() => {
     choice(s, 'help', [['short', '짧게 20, 40, 60초'], ['normal', '보통 30, 60, 90초'], ['long', '길게 45, 90, 135초'], ['off', '끄기']]);
     G.el('div', 't-note', s, '1단계 질문, 2단계 화살표, 3단계 반짝이는 길. [루미] 버튼을 누르면 바로 3단계.');
 
+    if (G.DEMO) { s = sec(p, '4. 체험판'); r = row(s); tb('처음부터 다시', r, () => T.close(() => G.demo.start())); { const b = tb('이 퍼즐 바로 풀기', r, () => T.close(() => G.p4.skip())); if (!G.p4.can()) b.disabled = true; } } else {
     s = sec(p, '4. 선택지 누르기');
     choice(s, 'choiceOne', [[false, '두 번 누르면 선택 (읽어 주고 확인)'], [true, '한 번 누르면 선택']]);
 
@@ -6959,10 +6960,11 @@ G.teacher = (() => {
     if (!any) G.el('span', 't-note', r, '지울 칸이 없어요.');
     else if (G.st) G.el('div', 't-note', s, '지금 쓰는 칸은 지울 수 없어요.');
 
-    s = sec(p, '8. 가벼운 모드');
+    }
+    s = sec(p, (G.DEMO ? '5' : '8') + '. 가벼운 모드');
     choice(s, 'light', [[false, '끄기'], [true, '켜기 (느린 태블릿용: 빛과 반짝이 효과 줄임)']]);
 
-    s = sec(p, '9. 화면');
+    s = sec(p, (G.DEMO ? '6' : '9') + '. 화면');
     r = row(s);
     const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
     tb(fsOn ? '전체 화면 끄기' : '전체 화면', r, () => { wantFs = false; fsOff = fsOn; fullscreen(!fsOn).then(render); });
@@ -7368,7 +7370,7 @@ G.flow = (() => {
 })();
 
 // demo.js — 10/6 선생님: 1분 체험판 (아이패드 시연용)
-// 책 펴기 → 제목(약 3초) → 짧은 인트로(약 10초: 별이 떨어짐 → 루미 → 별 9개 중 길의 별) → 길의 별 점자 문제(해솔, 30~40초) → 점자블록 깔기 → 끝 화면 + 선물 큐알
+// 책 펴기 → 제목(약 3초) → 짧은 인트로(약 10초: 별이 떨어짐 → 루미 → 별 9개 중 길의 별) → 도서관 문 열기(점자 자물쇠) → 점자블록 깔기 → 끝 화면 + 선물 큐알
 // 난이도는 본 게임과 같음 (톱니/ESC 교사 설정의 쉽게·보통·어렵게). 저장 칸은 쓰지 않음 (본 게임 저장을 건드리지 않게)
 // make_demo.py가 본 게임 game.js의 '처음 켜기' 앞에 끼워 넣고, 처음 켜기를 G.demo.start()로 바꿈
 'use strict';
@@ -7392,6 +7394,8 @@ G.demo = (() => {
 .demo-qr span { font-size: calc(var(--u) * 36); }
 .demo-end .star { width: calc(var(--u) * 260); height: calc(var(--u) * 260); filter: drop-shadow(0 0 calc(var(--u) * 40) #7DBBE3); }
 .demo-end .star svg, .demo-end .star img { width: 100%; height: 100%; display: block; }
+.demo-door { position: absolute; inset: 0; background: #2a2440 center / cover no-repeat; }
+.p4-door .pz-tr { display: none; }
 .demo-end .big { font-size: calc(var(--u) * 80); }
 .demo-end .small { font-size: calc(var(--u) * 40); opacity: .9; max-width: calc(var(--u) * 760); }
 `;
@@ -7399,8 +7403,12 @@ G.demo = (() => {
   const style = () => { if (!styled) { G.el('style', '', document.head, CSS); styled = true; } };
 
   // ---- 시작: 책 펴기 + 제목 (title.js가 G.DEMO면 빠르게, 넘김 1장) → 제목이 다 나오면 잠깐 두었다가 저절로 인트로 ----
+  // 본 게임 함수 원본 (체험판에서 잠깐 바꿨다가 되돌림)
+  const ENTER = G.scene.enter, PLAY = G.dialog.play;
+  let onEnter = null;
+  G.scene.enter = (...a) => { if (onEnter) { const f = onEnter; onEnter = null; return f(a[0]); } return ENTER(...a); };
   M.start = () => {
-    style();
+    style(); onEnter = null; G.dialog.play = PLAY;
     G.save.write = () => { };   // 체험판은 저장하지 않음
     G.flow.reset(); G.screen = 'title'; G.st = null;
     let gone = false;
@@ -7419,26 +7427,26 @@ G.demo = (() => {
     const g = G.gen, ok = () => g === G.gen;
     G.audio.unlock();
     const st = G.st = G.save.fresh(0);
-    st.done.push('meet_lumi'); st.started = true; st.place = 'library';
+    st.done.push('meet_lumi'); st.started = true; st.place = 'library'; st.items.push('note');
     G.$('#overlay').innerHTML = '';
     await M.intro(); if (!ok()) return;
-    // 점자 문제: 숲 소리 이야기(본 게임 앞 장면)는 빼고 점자 알려 주기부터. 끝 대사도 한 줄만
-    const P = G.D.puzzles.braille1, keep = { start: P.start, after: P.after };
-    P.start = []; P.after = ['S06_haesol_13'];
-    G.$('#fade').classList.remove('on');
-    const won = await G.puzzle.play('braille1');
-    Object.assign(P, keep);
-    if (!ok() || !won) return;
-    // 10/6 선생님: 두 번째 문제 「점자블록 깔기」(길의 별 p4 tiles). 블록 뜻(해솔 3줄)은 퍼즐 화면이 뜬 뒤 첫 대사 앞에 붙임
-    G.$('#fade').classList.add('on'); await G.wait(0.35); if (!ok()) return;
-    const orig = G.dialog.play;
-    G.dialog.play = (ids, o) => {
-      if (ids && ids.length === 1 && ids[0] === 'E10_rumi_01') { G.dialog.play = orig; return orig(['S10_haesol_03', 'S10_haesol_04', 'S10_haesol_05', 'E10_rumi_01'], Object.assign({}, o, { partner: 'haesol' })); }
-      return orig(ids, o);
-    };
+    // 10/6 선생님: 문제는 두 개 「도서관 문 열기」(점자 자물쇠) → 「점자블록 깔기」
+    // 문제 1: 본 게임 도서관 문(p4 door) 그대로. 촌장님 쪽지는 가방에 이미 있음. 문이 열리면 도서관 장면 대신 여기로 돌아옴
     G.audio.music('music_puzzle');
+    const opened = new Promise(res => { onEnter = res; });
+    G.p4.gate({ gate: 'libdoor_open' });
+    await opened; if (!ok()) return;
+    const bg = G.el('div', 'demo-door', G.$('#world')); bg.style.backgroundImage = `url("${G.art('library_door') || G.art('door_library_locked')}")`;
+    G.$('#fade').classList.remove('on');
+    await G.dialog.play(['E05_haesol_02', 'E05_haesol_03'], { partner: 'haesol' }); if (!ok()) return;
+    G.$('#fade').classList.add('on'); await G.wait(0.35); bg.remove(); if (!ok()) return;
+    // 문제 2: 점자블록 깔기(p4 tiles). 블록 뜻(해솔 3줄)은 퍼즐 화면이 뜬 뒤 첫 대사 앞에 붙임
+    G.dialog.play = (ids, o) => {
+      if (ids && ids.length === 1 && ids[0] === 'E10_rumi_01') { G.dialog.play = PLAY; return PLAY(['S10_haesol_03', 'S10_haesol_04', 'S10_haesol_05', 'E10_rumi_01'], Object.assign({}, o, { partner: 'haesol' })); }
+      return PLAY(ids, o);
+    };
     const tp = G.p4.tiles(); G.$('#fade').classList.remove('on');
-    const won2 = await tp; G.dialog.play = orig;
+    const won2 = await tp; G.dialog.play = PLAY;
     if (!ok() || !won2) return;
     await G.dialog.play(['E10_haesol_03'], { partner: 'haesol' }); if (!ok()) return;
     M.end();
@@ -7519,7 +7527,7 @@ G.demo = (() => {
     // 10/6 선생님: 엔딩 뒤 선물 뽑기 큐알 (휴대폰으로 찍으면 demo/gift.html, 한 휴대폰에 한 번)
     const qr = G.el('div', 'demo-qr', m);
     if (G.DEMO_QR) { G.el('b', '', qr, '선물 뽑기'); const im = G.el('img', '', qr); im.src = G.DEMO_QR; im.alt = '선물 뽑기 큐알 코드'; G.el('span', '', qr, '휴대폰 카메라로 찍어 보세요'); }
-    G.wait(2.8).then(() => { if (g !== G.gen || !G.DEMO_QR) return; qr.classList.add('on'); G.audio.sfx('sfx_sparkle', 0.6); });
+    setTimeout(() => { if (!m.isConnected || !G.DEMO_QR) return; qr.classList.add('on'); G.audio.sfx('sfx_sparkle', 0.6); }, 1500);
     btn.style.marginTop = 'calc(var(--u) * 16)';
     if (star.animate && !G.reduced()) star.animate([{ transform: 'scale(.4)', opacity: 0 }, { transform: 'scale(1.12)', opacity: 1, offset: .6 }, { transform: 'scale(1)', opacity: 1 }], { duration: 900, easing: 'ease-out' });
     G.wait(0.4).then(() => { if (g === G.gen) G.audio.voice('S11_sys_01'); });
