@@ -749,7 +749,7 @@ G.hud = (() => {
     const nm = G.el('div', 'bag-name', sh, own.length ? '' : '아직 가방이 비어 있어요');
     for (let i = 0; i < Math.max(6, own.length); i++) {   // 10/1: 점자 쪽지까지 6칸
       const it = G.D.items.find(x => x.id === own[i]);
-      const s = G.el('button', 'bag-slot' + (it ? ' has' : ''), slots, it ? G.icon(it.icon) : ''); s.type = 'button';
+      const s = G.el('button', 'bag-slot' + (it ? ' has' : ''), slots, it ? G.icon(it.id === 'piece' && G.st.done.includes('plaza2_look') ? 'item_piece_lit' : it.icon) : '');   // 10/6: 빛을 찾은 별 s.type = 'button';
       if (it) G.onTap(s, () => { nm.textContent = it.name; G.audio.sfx('sfx_page', 0.4); H.itemPop(it); });
     }
     if (G.p4 && G.p4.dustLine) G.p4.dustLine(sh);   // 10/1: 모은 별가루
@@ -3023,18 +3023,26 @@ Object.assign(G.flows, {
     complete('plaza2_road');
   },
   // 할 일 3 (1): 게시판 함께 보기 → 주민이 모두 모임 → 가방 속 빛을 잃은 별이 반짝 → 별 받침대가 열림
-  async plaza2_look({ V, complete, g }) {
+  // 10/6 선생님: auto면 게시판 다시 보기 없이, 길 깔기가 끝나면 화면이 잠깐 어두워졌다가 모두 모인 모습으로
+  async plaza2_look({ V, complete, g, auto }) {
     const ok = () => g === G.gen;
-    await G.dialog.play(['S11_rumi_04']); if (!ok()) return;
-    await G.puzzle2.play({ look: true }); if (!ok()) return;
+    let dark = null;
+    if (auto) {
+      dark = G.el('div', '', document.body); Object.assign(dark.style, { position: 'fixed', inset: '0', background: '#0d1024', opacity: '0', zIndex: '9000', pointerEvents: 'auto', transition: 'opacity .7s ease' });
+      requestAnimationFrame(() => { dark.style.opacity = '1'; }); await G.wait(1.0); if (!ok()) { dark.remove(); return; }
+    } else {
+      await G.dialog.play(['S11_rumi_04']); if (!ok()) return;
+      await G.puzzle2.play({ look: true }); if (!ok()) return;
+    }
     const post = V && V.spr.post;   // 도서관에 다녀온 우편배달부도 돌아옴
-    if (post) { post.img.style.display = ''; post.img.animate && post.img.animate([{ opacity: 0, transform: 'translateY(-30px)' }, { opacity: 1, transform: 'none' }], { duration: 600 }); }
+    if (post) { post.img.style.display = ''; if (!dark && post.img.animate) post.img.animate([{ opacity: 0, transform: 'translateY(-30px)' }, { opacity: 1, transform: 'none' }], { duration: 600 }); }
+    if (dark) { await G.wait(0.5); dark.style.opacity = '0'; await G.wait(0.75); dark.remove(); if (!ok()) return; }
     if (V) for (const k of ['chief', 'post', 'daon', 'haesol']) { const s = V.spr[k]; if (s && s.img.animate) s.img.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-14px)' }, { transform: 'translateY(0)' }], { duration: 500, delay: 150 * ['chief', 'post', 'daon', 'haesol'].indexOf(k) }); }
     await G.dialog.play(['S09_rumi_04', 'S09_chief_02'], { partner: 'chief', keep: true }); if (!ok()) return;
     G.dialog.close();
     // C1 (10/5): 찾은 방법을 하나씩 별에게 돌려줌
     if (!await G.starCard('road', [{ text: '가', label: '큰 글씨' }, { art: 'board_picture', label: '그림' }, { art: 'opt_bell', label: '소리 기둥' }, { art: 'braille_plate', label: '점자' }])) return;
-    await p3GlowPiece(); if (!ok()) return;
+    G.audio.sfx('sfx_sparkle', 0.8);   // 10/6 선생님: 잠깐 나왔다 사라지는 은색 별 그림(p3GlowPiece)은 뺌
     await G.dialog.play(['S11_rumi_05']); if (!ok()) return;
     complete('plaza2_look');
     await G.dialog.play(['S11_rumi_01']);
@@ -3375,7 +3383,8 @@ G.p4 = (() => {
     const it = G.D.items.find(x => x.id === id), g = G.gen; if (!it) return res(true);
     const tray = G.el('div', 'p4-tray', o.parent || G.$('#overlay'));
     G.el('div', 'p4-tray-head', tray, G.icon('icon_bag') + ' 가방');
-    const b = G.btn('p4-item', G.icon(it.icon), tray, () => { G.audio.sfx('sfx_tap', 0.5); b.classList.add('sel'); target.classList.add('p4-target-on'); }, it.name);
+    const lit = id === 'piece' && done('plaza2_look');   // 10/6 선생님: 받침대로 끌 때는 빛을 찾은 별
+    const b = G.btn('p4-item' + (lit ? ' lit' : ''), G.icon(lit ? 'item_piece_lit' : it.icon), tray, () => { G.audio.sfx('sfx_tap', 0.5); b.classList.add('sel'); target.classList.add('p4-target-on'); }, it.name);
     target.classList.add('p4-target');
     let fin = false, arrow = null;
     const onT = (e) => { if (fin || G.dialog.active || G.paused) return; e.stopImmediatePropagation(); use(); };
@@ -3832,8 +3841,8 @@ G.p4 = (() => {
     return new Promise(async (res) => {
       const D = PZ().tiles, g = G.gen, ok = () => g === G.gen, easy = !G.lv('normal'), hard = G.lv('hard');
       const S = screen('p4-tiles', 'E10_rumi_01'), CS = 180, OX = 220, OY = 150, B = board(S.root, 1400, 900, 'p4-tboard');
-      const bgArt = G.art('tiles_bg'), K = 1.116, TX = -115, TY = 5;   // 10/1 선생님 그림(1264x848): 그림 속 길이 빈칸 자리에 오게
-      if (bgArt) { B.el.classList.add('art'); Object.assign(B.el.style, { backgroundImage: `url("${bgArt}")`, backgroundSize: `${1264 * K}px ${848 * K}px`, backgroundPosition: `${TX}px ${TY}px` }); }
+      const bgArt = G.art('tiles_bg'), K = 1.116, TX = -115, TY = 5;   // 10/1 선생님 그림(1264x848): 그림 속 길이 빈칸 자리에 오게. 10/6 오른쪽 빈 곳 없게 그림을 1384로 늘림(make_tilesbg.py)
+      if (bgArt) { B.el.classList.add('art'); Object.assign(B.el.style, { backgroundImage: `url("${bgArt}")`, backgroundSize: `${1384 * K}px ${848 * K}px`, backgroundPosition: `${TX}px ${TY}px` }); }
       const start = G.el('div', 'p4-tmark pole', B.el, G.icon('place_plaza') + '<span>광장</span>'); Object.assign(start.style, { left: (OX - 130) + 'px', top: (OY + 10) + 'px' });   // 10/1: 출발은 광장, 안내 기둥은 도서관 문 옆
       const last = D.cells[D.cells.length - 1].at, doorM = G.el('div', 'p4-tmark door', B.el, G.icon('place_library') + '<span>도서관 문</span>');
       Object.assign(doorM.style, { left: (OX + last[0] * CS + 10) + 'px', top: (OY + (last[1] + 1) * CS + 6) + 'px' });
@@ -4038,6 +4047,7 @@ G.p4 = (() => {
       await G.dialog.play(['S10_haesol_06'], { partner: 'haesol' }); if (!ok()) return;
       G.st.env.guide = true;
       complete('plaza2_road');
+      if (!done('plaza2_look')) await G.flows.plaza2_look({ V, complete, g, auto: true });   // 10/6 선생님: 게시판 다시 보기 없이 바로 모두 모임
     },
     // 별 받침대: 가방 속 별을 끌어 올린 뒤 C11
     async plaza2_star(ctx) {
@@ -7198,7 +7208,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-06)';
-G.BUILT = '2026-10-06 11:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-06 11:23';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
