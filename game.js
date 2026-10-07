@@ -7753,10 +7753,19 @@ G.s4 = (() => {
     const { V, H, g, complete } = ctx, ok = () => g === G.gen, id = H.def.id, no = { partner: 'nuri' };
     if (id === 'path') {
       if (done('s4view_path')) { await play(['TD04_nuri_02'], no); return; }
-      await play(['TD04_nuri_01'], no); if (!ok()) return;
+      await play(['TD04_nuri_01', 'TD04_nuri_10'], no); if (!ok()) return;
+      // 10/7 수석 디렉터 규칙: 마음이 닫히는 순간 (누리가 돌아섬) → 고르기로 엶. 어떤 답도 받아 주고 원래 답으로
+      const nb = V.spr.nuri && V.spr.nuri.img; if (nb) { nb.style.scale = '-1 1'; nb.style.opacity = 0.6; }
+      const i = await G.dialog.choose(['TD04_ply_04', 'TD04_ply_05', 'TD04_ply_06'].map(v => ({ label: G.txt(v), icon: 'icon_good', voice: v })), true); if (!ok()) return;
+      if (i !== 0) { await play(['TD04_rumi_08']); if (!ok()) return; }
+      if (nb) { nb.style.scale = ''; nb.style.opacity = ''; }
+      await play(['TD04_nuri_11'], no); if (!ok()) return;
+      // 지난 별 인물: 길의 별 해솔. 노란 길(점자블록)이 이 퍼즐의 둘째 열쇠
+      await play(['TD04_haesol_01', 'TD04_haesol_02'], { partner: 'haesol' }); if (!ok()) return;
       await play(['TD04_rumi_01']); if (!ok()) return;
       const w = await tiles(); if (!ok() || !w) return;
       await play(['TD04_nuri_02'], no); if (!ok()) return;
+      await play(['TD04_haesol_03'], { partner: 'haesol' }); if (!ok()) return;
       complete('s4view_path'); say('TD04_rumi_03'); return;
     }
     if (id === 'door') {
@@ -7791,9 +7800,10 @@ G.s4 = (() => {
 
   // ---- 퍼즐: 길 조각 돌리기. 누리 지도 위 조각을 눌러 돌려 집 → 전망대 길을 이음. 계단 칸에는 가방의 경사판을 놓음 ----
   // 방향 0 위, 1 오른쪽, 2 아래, 3 왼쪽. 곧은 조각 = 왼-오(돌림 0), 꺾인 조각 = 위-오(돌림 0)
-  function tileSvg(kind, stair, plank) {
+  function tileSvg(kind, stair, plank, yel) {
     const p = kind === 'I' ? 'M0 50 H100' : 'M50 0 V50 H100';
     let s = `<svg viewBox="0 0 100 100"><path d="${p}" stroke="#A0764F" stroke-width="30" fill="none" stroke-linecap="butt"/><path d="${p}" stroke="#d9b98a" stroke-width="18" fill="none"/>`;
+    if (yel) s += `<path d="${p}" stroke="#FFD66B" stroke-width="7" stroke-dasharray="6 3" fill="none"/>`;   // 노란 길 (점자블록)
     if (stair) s += [30, 42, 54, 66].map(x => `<rect x="${x}" y="35" width="8" height="30" fill="#9A97A8"/>`).join('');
     if (plank) s += '<rect x="20" y="38" width="60" height="24" rx="4" fill="#C9A27A" stroke="#8B5E3C" stroke-width="4"/>';
     return s + '</svg>';
@@ -7808,33 +7818,39 @@ G.s4 = (() => {
         const a = i === 0 ? 3 : dirTo(p, route[i - 1]), b = i === route.length - 1 ? 1 : dirTo(p, route[i + 1]);
         const need = [a, b].sort().join(), kind = (a + 2) % 4 === b ? 'I' : 'L';
         const rots = [0, 1, 2, 3].filter(r => (kind === 'I' ? [(3 + r) % 4, (1 + r) % 4] : [r % 4, (1 + r) % 4]).sort().join() === need);
-        return { p, kind, rots, stair: i === T4.stair, rot: 0, plank: false };
+        return { p, kind, rots, stair: i === T4.stair, rot: 0, plank: false, yel: true };
       });
+      // 노란 길이 끊긴 칸 (계단 칸·첫 칸은 빼고 고르게)
+      const cand = cells.filter((c, i) => i > 0 && !c.stair), ng = Math.min(T4.gaps || 0, cand.length);
+      for (let k = 0; k < ng; k++) cand[Math.floor((k + 0.5) * cand.length / ng)].yel = false;
+      const fixed = (q) => q.rots.includes(q.rot) && (!q.stair || q.plank) && q.yel;
       cells.forEach(c => { if (c.stair) c.rot = c.rots[0]; else { const bad = [0, 1, 2, 3].filter(r => !c.rots.includes(r)); c.rot = bad[Math.floor(Math.random() * bad.length)]; } });
       const inRoute = (x, y) => cells.some(c => c.p[0] === x && c.p[1] === y);
       for (let y = 0; y < NR; y++) for (let x = 0; x < NC; x++) if (!inRoute(x, y)) S.at(G.el('div', 's4-tile grass', S.B), X0 + x * CS + 5, Y0 + y * CS + 5);
       const st = route[0], en = route[route.length - 1];
       S.at(G.el('div', 's4-mark', S.B, '누리 집'), X0 - 170, Y0 + st[1] * CS + 60); S.at(G.el('div', 's4-mark', S.B, '전망대'), X0 + NC * CS + 14, Y0 + en[1] * CS + 60);
-      let fin = false, sayStair = false;
-      const draw = (c) => { c.e.innerHTML = tileSvg(c.kind, c.stair, c.plank); c.e.firstChild.style.transform = `rotate(${c.rot * 90}deg)`; c.e.classList.toggle('ok', c.rots.includes(c.rot) && (!c.stair || c.plank)); };
+      let fin = false, sayStair = false, sayYel = false;
+      const draw = (c) => { c.e.innerHTML = tileSvg(c.kind, c.stair, c.plank, c.yel); c.e.firstChild.style.transform = `rotate(${c.rot * 90}deg)`; c.e.classList.toggle('ok', fixed(c)); };
       cells.forEach(c => { c.e = G.btn('s4-tile', '', S.B, () => tap(c), c.stair ? '계단 조각' : '길 조각'); S.at(c.e, X0 + c.p[0] * CS + 5, Y0 + c.p[1] * CS + 5); draw(c); });
-      const okAll = () => cells.every(c => c.rots.includes(c.rot) && (!c.stair || c.plank));
+      const okAll = () => cells.every(fixed);
+      const yelNext = () => { if (!sayYel && cells.every(c => c.rots.includes(c.rot) && (!c.stair || c.plank)) && !okAll()) { sayYel = true; S.say('TD04_rumi_09'); const c = cells.find(q => !q.yel); if (c) wob(c.e); } };
       async function tap(c) {
         if (fin || G.dialog.active) return; G.help.poke();
         if (c.stair) {
           if (c.plank) return;
           if (!sayStair) { sayStair = true; S.say('TD04_rumi_02'); }
           const u = await G.p4.useItem('plank', c.e, { parent: S.root, say: S.say, hint: 'TD04_rumi_02' }); if (!u || !ok()) return;
-          c.plank = true; draw(c); if (okAll()) win(); return;
+          c.plank = true; draw(c); if (okAll()) win(); else yelNext(); return;
         }
+        if (!c.yel && c.rots.includes(c.rot)) { c.yel = true; draw(c); G.audio.sfx('sfx_chime', 0.4); spark(c.e, 3); if (okAll()) win(); return; }   // 노란 길 잇기
         c.rot = (c.rot + 1) % 4; draw(c); G.audio.sfx('sfx_tap', 0.35, 1.2);
-        if (okAll()) win();
+        if (okAll()) win(); else yelNext();
       }
       async function win() { if (fin) return; fin = true; cur = null; G.help.off(); S.hush(); G.audio.sfx('sfx_sparkle', 0.8); for (const c of cells) { spark(c.e, 3); await G.wait(G.reduced() ? 0.02 : 0.12); } await G.wait(1.0); S.end(); res(ok()); }
-      cur = { solve: () => { cells.forEach(c => { c.rot = c.rots[0]; c.plank = true; draw(c); }); win(); } };
+      cur = { solve: () => { cells.forEach(c => { c.rot = c.rots[0]; c.plank = true; c.yel = true; draw(c); }); win(); } };
       S.say('TD04_rumi_01');
-      G.help.set({ l1: () => S.say('TD04_rumi_01'), l2: () => { const c = cells.find(q => !q.rots.includes(q.rot) || (q.stair && !q.plank)); if (c) wob(c.e); },
-        l3: () => { const c = cells.find(q => !q.rots.includes(q.rot) || (q.stair && !q.plank)); if (c) { c.e.classList.add('s3-hint'); setTimeout(() => c.e.classList.remove('s3-hint'), 3000); } }, clear: () => { } });
+      G.help.set({ l1: () => S.say(sayYel ? 'TD04_rumi_09' : 'TD04_rumi_01'), l2: () => { const c = cells.find(q => !fixed(q)); if (c) wob(c.e); },
+        l3: () => { const c = cells.find(q => !fixed(q)); if (c) { c.e.classList.add('s3-hint'); setTimeout(() => c.e.classList.remove('s3-hint'), 3000); } }, clear: () => { } });
     });
   }
 
@@ -7873,11 +7889,12 @@ G.s4 = (() => {
       if (done('s4plaza_card')) { await play(['TD05_nuri_01'], { partner: 'nuri' }); return; }
       await play(['TD05_chief_01'], { partner: 'chief' }); if (!ok()) return;
       await play(['TD05_maru_01'], { partner: 'maru' }); if (!ok()) return;
+      await play(['TD05_chief_03'], { partner: 'chief' }); if (!ok()) return;   // 10/7 촌장님은 선배
       { const at = S.feastDust.maru; dustBtn(V, 's4plaza:maru', at[0], at[1]); G.audio.sfx('sfx_sparkle', 0.5); }
       await play(['TD05_yunseul_01'], { partner: 'yunseul' }); if (!ok()) return;
       { const at = S.feastDust.yunseul; dustBtn(V, 's4plaza:yunseul', at[0], at[1]); G.audio.sfx('sfx_sparkle', 0.5); }
       await play(['TD05_nuri_01'], { partner: 'nuri' }); if (!ok()) return;
-      await play(['TD05_rumi_01', 'TD05_rumi_02']); if (!ok()) return;
+      await play(['TD05_rumi_01']); if (!ok()) return;   // 10/7 교훈은 말로 두 번까지: 별이 하던 일은 플레이어가 별 카드로 찾음 (TD05_rumi_02 뺌)
       // 별 카드: 우리가 바꾼 방법을 별에게 돌려주면 별이 빛남 (틀린 답 없음)
       if (!await G.starCard('door', [{ art: 'item_plank', label: '비탈길' }, { art: 'item_lever', label: '막대 손잡이' }, { art: 'item_button', label: '누름 단추' }, { art: 'item_s4map', label: '모두의 지도' }])) return;
       await play(['TD05_chief_02'], { partner: 'chief' }); if (!ok()) return;
@@ -7972,8 +7989,7 @@ G.s4 = (() => {
       // 그림 표시 (목공방 = 판자, 꽃집 = 단추, 전망대 = 지도). 선생님 그림 place_<장소>가 있으면 그것
       const icons = MAPICO4.map(([id, k]) => { const p = G.D.places.places.find(q => q.id === id), src = G.art('place_' + id) || G.art(k); if (!p || !src) return null; const e = G.el('div', 's3-mapico', MV.fx, `<img src="${src}" alt="">`);
         Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); e.animate && e.animate([{ scale: .2, opacity: 0 }, { scale: 1.2, opacity: 1 }, { scale: 1 }], { duration: 700, easing: 'ease-out' }); return e; }).filter(Boolean);
-      await play(['TD06_nar_01']); if (!ok()) return;
-      await G.wait(rm ? 0.3 : 1.2); if (!ok()) return;
+      await G.wait(rm ? 0.5 : 3.0); if (!ok()) return;   // 10/7 교훈 세 번째는 말 대신 마을 변화로 (TD06_nar_01 뺌)
       icons.forEach(e => e.remove());
       await sky(); if (!ok()) return;
       G.st.stars = Math.max(G.st.stars || 0, 4); G.st.mood = 5;
@@ -8418,7 +8434,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-07)';
-G.BUILT = '2026-10-07 10:23';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-07 10:59';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
