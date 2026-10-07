@@ -4369,7 +4369,7 @@ G.s2 = (() => {
 .s2-fbasket .s2-ball { position: absolute; left: 150px; top: 40px; width: 70px; height: 70px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f3ff9a, #c9e83a 60%, #95b51c); box-shadow: 0 0 22px rgba(255, 214, 107, 1); animation: s2drop 1.1s ease-in-out infinite; }
 .s2-fbasket.hint .s2-ball { box-shadow: 0 0 40px 10px rgba(255, 214, 107, 1); }
 /* 10/7 선생님: 테니스공 한 개를 끌어다 끼움 */
-.s2-fball1 { width: 200px; height: 200px; top: 560px; left: 40px; display: flex; align-items: center; justify-content: center; }
+.s2-fball1 { width: 150px; height: 150px; top: 600px; left: 70px; display: flex; align-items: center; justify-content: center; }
 .s2-fball1 img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 26px rgba(255, 214, 107, .95)); animation: s2drop 1.1s ease-in-out infinite; }
 .s2-fball1.hint img { filter: drop-shadow(0 0 40px rgba(255, 214, 107, 1)); }
 .s2-pull i { border-style: solid; }
@@ -8504,7 +8504,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-08)';
-G.BUILT = '2026-10-08 00:20';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-08 05:26';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
