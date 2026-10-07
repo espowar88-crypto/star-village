@@ -1328,7 +1328,7 @@ G.cut = (() => {
         return { s, el, at, bm };
       });
       const road = S[0]; road.el.style.opacity = 0;   // 길의 별: 광장에서 올라가는 모습으로 등장
-      const P = G.D.places.nodes, land = [P.PLAZA[0], P.PLAZA[1] - 70];
+      const P = G.D.places.nodes, pd = G.D.places.pedestal, land = pd ? [pd[0], pd[1] - 5] : [P.PLAZA[0], P.PLAZA[1] - 70];   // 10/8 넓힌 광장: 받침대가 광장 가운데로 옮겨감
       const flare = G.el('div', 'flare', V.fx); Object.assign(flare.style, { position: 'absolute', left: (land[0] - 450) + 'px', top: (land[1] - 300) + 'px', opacity: 0, zIndex: 3990 });
       const lumi = G.el('img', '', V.fx); lumi.src = G.asset('assets/chars/lumi_big.png'); lumi.alt = '';
       Object.assign(lumi.style, { position: 'absolute', left: (land[0] - 70) + 'px', top: (land[1] - 150) + 'px', width: '140px', height: '140px', opacity: 0, zIndex: 4001 });
@@ -1444,12 +1444,12 @@ G.cut = (() => {
       const V = G.sceneView(root, 'plaza', { chiefBack: true }); V.setMood(opts.replay ? 0 : (G.st ? G.st.mood : 0));
       await V.ready;
       const onR = () => V.setCam(V.cam.x, V.cam.y, V.cam.z); G.resizers.add(onR);
-      if (c.rm) V.setCam(1200, 540, 1); else V.setCam(1000, 560, 1.3);
+      if (c.rm) V.setCam(V.home()[0], V.home()[1], 1); else V.setCam(V.home()[0] - 200, V.home()[1] + 20, 1.3);
       c.t0 = G.t;
       const title = G.el('div', 'cut-title', root, '광장'); title.style.opacity = 0;
       await Promise.all([
         fadeIn(c, root, 0.5),
-        (async () => { if (!c.rm) await c.tween(0, 1, 3.4, k => V.setCam(1000 + 200 * k, 560 - 20 * k, 1.3 - 0.3 * k), 'io'); })(),
+        (async () => { if (!c.rm) await c.tween(0, 1, 3.4, k => V.setCam(V.home()[0] - 200 + 200 * k, V.home()[1] + 20 - 20 * k, 1.3 - 0.3 * k), 'io'); })(),
         (async () => {
           await c.until(2.3); V.showBack(false);
           const ch = V.spr.chief.img;
@@ -1464,7 +1464,7 @@ G.cut = (() => {
           await c.until(5.9);
         })(),
       ]);
-      V.setCam(1200, 540, 1); V.showBack(false);
+      V.setCam(V.home()[0], V.home()[1], 1); V.showBack(false);
       G.resizers.delete(onR);
     },
 
@@ -1580,7 +1580,7 @@ G.cut = (() => {
     // ---- C3 시장 도착 (6초): 천막이 바람에 펄럭(소리) → 과일 가게 쪽으로 다가감 → 봄이 아주머니가 폴짝 인사 → 「시장」 ----
     async C3(c, root, opts) {
       const { V, off } = await arrive(c, root, opts, 'market');
-      if (c.rm) V.setCam(1200, 540, 1); else V.setCam(1500, 520, 1.3);
+      if (c.rm) V.setCam(V.home()[0], V.home()[1], 1); else V.setCam(V.home()[0] + 300, V.home()[1] - 20, 1.3);
       c.t0 = G.t;
       // 바람: 나뭇잎 같은 작은 조각이 화면을 가로질러 날아감
       const wind = () => {
@@ -1593,20 +1593,20 @@ G.cut = (() => {
       await Promise.all([
         fadeIn(c, root, 0.5),
         (async () => { await c.until(0.3); c.sfx('sfx_flap', 0.8); wind(); })(),
-        (async () => { if (!c.rm) await c.tween(0, 1, 3.4, k => V.setCam(1500 - 300 * k, 520 + 20 * k, 1.3 - 0.3 * k), 'io'); })(),
+        (async () => { if (!c.rm) await c.tween(0, 1, 3.4, k => V.setCam(V.home()[0] + 300 - 300 * k, V.home()[1] - 20 + 20 * k, 1.3 - 0.3 * k), 'io'); })(),
         (async () => {
           await c.until(2.4); const b = V.spr.bom && V.spr.bom.img; if (!b || c.rm) return;
           await c.tween(0, 1, 0.9, k => b.style.marginTop = (-Math.abs(Math.sin(k * Math.PI * 2)) * 14) + 'px');
         })(),
         title(c, root, '시장', 'S92_place_market', 3.3, 5.9),
       ]);
-      V.setCam(1200, 540, 1); off();
+      V.setCam(V.home()[0], V.home()[1], 1); off();
     },
 
     // ---- C4 도서관 도착 (7초): 나무 문이 천천히 열림 → 따뜻한 빛이 쏟아짐 → 먼지가 반짝 → 해솔 사서가 인사 → 「도서관」 ----
     async C4(c, root, opts) {
       const { V, off } = await arrive(c, root, opts, 'library');
-      V.setCam(1200, 540, 1);
+      V.setCam(V.home()[0], V.home()[1], 1);
       const light = G.el('div', 'door-light', root); light.style.opacity = 0;
       const door = G.el('div', 'door', root); const dl = G.el('div', 'door-l', door), dr = G.el('div', 'door-r', door);
       const dimg = G.art('library_door'); if (dimg) { door.classList.add('art'); for (const d of [dl, dr]) G.el('img', 'door-img', d).src = dimg; }   // 9/30: 선생님 문 그림 한 장을 반씩 (비율 그대로 화면을 채움)
@@ -2029,11 +2029,16 @@ G.fitTall = (img, r) => { const f = () => { const nw = img.naturalWidth, nh = im
 // 프로토타입 3: until: 그 할 일을 끝내면 사라지는 누를 곳, gone: 자기 할 일을 끝내면 인물과 함께 사라짐 (다온이 광장으로 뛰어감),
 //   noStar: 할 일 동그라미를 누를 곳 옆에 그리지 않음 (답을 알려 주지 않게), linesAfter: 할 일에 따라 바뀌는 대사,
 //   장면 zone: 색 번짐 구역 (두 번째 광장은 광장 구역), 인물 그림 showAfter / awayBetween: 할 일에 따라 보이고 사라짐
+// 10/8 넓힌 광장 (그림이 화면보다 큼): cam = 평소 카메라 자리, fest = {until, cam} 잔치 할 일을 마치기 전에는 잔치 마당 쪽,
+//   인물·누를 곳의 at2 = {after, rect, glow} 그 할 일을 마치면 옮겨 서는 자리 (잔치가 끝나면 받침대 쪽으로 걸어옴)
 'use strict';
 // ---- 장면 그림 한 벌 (연출 C2·C7도 같이 씀) ----
 G.sceneView = (parent, id, o = {}) => {
   const S = G.D.scenes[id], [W, H] = S.size;
   const V = { W, H, S, cam: { x: W / 2, y: H / 2, z: 1 }, spr: {} };
+  const did = (m) => !!(G.st && G.st.done.includes(m));
+  V.rectOf = (d) => (d.at2 && did(d.at2.after)) ? d.at2.rect : d.rect;
+  V.home = () => (S.fest && !did(S.fest.until)) ? S.fest.cam : (S.cam || [W / 2, H / 2]);
   const el = V.el = G.el('div', 'world', parent); el.style.width = W + 'px'; el.style.height = H + 'px';
   const mono = G.el('img', 'bg', el); mono.src = G.asset(S.image.mono); mono.width = W; mono.height = H; mono.alt = '';
   const col = V.colorImg = G.el('img', 'bg', el); col.src = G.asset(S.image.color); col.width = W; col.height = H; col.alt = ''; col.style.transition = 'opacity .8s';
@@ -2042,12 +2047,13 @@ G.sceneView = (parent, id, o = {}) => {
   V.fx = G.el('div', 'layer', el);
   const addImg = (src, r) => { const i = G.el('img', 'scene-sprite idle', V.fx); i.src = G.asset(src); i.alt = ''; Object.assign(i.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px', animationDelay: (-Math.random() * 3).toFixed(2) + 's' }); G.fitTall(i, r); return i; };
   for (const sp of S.sprites) {
-    const v = V.spr[sp.id] = { img: addImg(sp.img, sp.rect), def: sp };
+    const r0 = V.rectOf(sp), v = V.spr[sp.id] = { img: addImg(sp.img, r0), def: sp, rect: r0 };
     if (sp.flat) v.img.classList.remove('idle');
     if (sp.back) { v.back = addImg(sp.back.img, sp.back.rect); v.back.style.transition = v.img.style.transition = 'opacity .5s'; }
     if (sp.lumi) {
       const l = V.lumi = G.el('div', 'scene-sprite', V.fx); const li = G.el('img', '', l); li.src = G.asset('assets/chars/lumi.png'); li.alt = '';
-      Object.assign(l.style, { left: (sp.lumi[0] - 55) + 'px', top: (sp.lumi[1] - 55) + 'px', width: '110px', height: '110px' });
+      V.lumiOff = [sp.lumi[0] - sp.rect[0], sp.lumi[1] - sp.rect[1]]; V.lumiAt = [r0[0] + V.lumiOff[0], r0[1] + V.lumiOff[1]];
+      Object.assign(l.style, { left: (V.lumiAt[0] - 55) + 'px', top: (V.lumiAt[1] - 55) + 'px', width: '110px', height: '110px' });
       li.style.cssText = 'width:100%;height:100%;animation:bob 2.4s ease-in-out infinite';
     }
   }
@@ -2074,7 +2080,17 @@ G.sceneView = (parent, id, o = {}) => {
     el.style.transform = `translate(${(sw / 2 - x * s).toFixed(1)}px,${(sh / 2 - y * s).toFixed(1)}px) scale(${s.toFixed(4)})`;
   };
   V.toScreen = (x, y) => { const s = G.stage.ws * V.cam.z; return [G.stage.W / 2 + (x - V.cam.x) * s, G.stage.H / 2 + (y - V.cam.y) * s]; };
-  V.setCam(W / 2, H / 2, 1);
+  V.setCam(V.home()[0], V.home()[1], 1);
+  // 인물 그림을 새 자리로 걸어가게 (발 자리 기준, 위로 키운 그림도 맞춤)
+  V.walk = (k, rect, d) => {
+    const v = V.spr[k]; if (!v) return Promise.resolve(); const a = v.rect, dh = G.tallDh(v.img, a), dh2 = Math.max(0, (parseFloat(v.img.style.height) || a[3]) - rect[3]);
+    const lu = k === 'hero' && V.lumi ? V.lumi : null;
+    const set = (t) => { const x = a[0] + (rect[0] - a[0]) * t, y = a[1] - dh + (rect[1] - dh2 - a[1] + dh) * t; v.img.style.left = x + 'px'; v.img.style.top = y + 'px';
+      if (lu) { lu.style.left = (x + V.lumiOff[0] - 55) + 'px'; lu.style.top = (y + dh + V.lumiOff[1] - 55) + 'px'; } };
+    v.rect = rect; if (lu) V.lumiAt = [rect[0] + V.lumiOff[0], rect[1] + V.lumiOff[1]];
+    if (G.reduced() || !d) { set(1); return Promise.resolve(); }
+    return G.tween(0, 1, d, set, 'io');
+  };
   return V;
 };
 
@@ -2099,7 +2115,7 @@ G.scene = (() => {
   function sizeHots() {
     const min = 72 / G.stage.ws;
     for (const h of hots) {
-      const [x, y, w, hh] = h.def.rect, W = Math.max(w, min), HH = Math.max(hh, min);
+      const [x, y, w, hh] = h.rect || h.def.rect, W = Math.max(w, min), HH = Math.max(hh, min);
       Object.assign(h.btn.style, { left: (x - (W - w) / 2) + 'px', top: (y - (HH - hh) / 2) + 'px', width: W + 'px', height: HH + 'px' });
     }
   }
@@ -2115,22 +2131,23 @@ G.scene = (() => {
     // 누를 곳: 별빛 테두리 + 할 일에는 ☆
     for (const h of def.hotspots) {
       const glow = G.el('img', 'hot-glow', V.fx); glow.src = G.asset(h.img); glow.alt = '';
-      Object.assign(glow.style, { left: h.glow[0] + 'px', top: h.glow[1] + 'px', width: h.glow[2] + 'px', height: h.glow[3] + 'px' }); G.fitTall(glow, h.glow);
+      const moved = h.at2 && G.st.done.includes(h.at2.after), hr = moved ? h.at2.rect : h.rect, hg = moved ? h.at2.glow : h.glow;
+      Object.assign(glow.style, { left: hg[0] + 'px', top: hg[1] + 'px', width: hg[2] + 'px', height: hg[3] + 'px' }); G.fitTall(glow, hg);
       if (G.st.seen.includes(id + ':' + h.id)) glow.classList.add('seen');
       if (h.cls) glow.classList.add(h.cls);   // 10/1: 물건 그림 자체를 보여 주는 누를 곳 (편지)
       let star = null;
       if (h.mission && !h.noStar) {
-        star = G.el('div', 'mstar', V.fx); star.style.left = (h.rect[0] + h.rect[2] / 2) + 'px'; star.style.top = (h.rect[1] - 6) + 'px';
+        star = G.el('div', 'mstar', V.fx); star.style.left = (hr[0] + hr[2] / 2) + 'px'; star.style.top = (hr[1] - 6) + 'px';
         setStar(star, allDone(h));
       }
       const btn = G.el('button', 'hot', V.fx); btn.type = 'button'; btn.setAttribute('aria-label', h.label);
       btn.style.zIndex = h.z || (h.mission ? 20 : 10);
-      const H = { def: h, glow, star, btn };
+      const H = { def: h, glow, star, btn, rect: hr };
       G.onTap(btn, () => tapHot(H));
       hots.push(H);
       showHot(H, shown(h));
       if (h.hideLv && G.lv('normal') && !G.st.seen.includes(id + ':' + h.id)) glow.classList.add('hide');   // 보통부터: 반짝이지 않아 찾아야 함
-      if (h.twinkle && !(h.twinkleLv && G.lv(h.twinkleLv))) { H.tw = G.el('div', 'twinkle p3tw', V.fx, G.sparkle()); Object.assign(H.tw.style, { left: (h.rect[0] + h.rect[2] / 2) + 'px', top: (h.rect[1] + h.rect[3] / 2) + 'px' }); showHot(H, shown(h)); }
+      if (h.twinkle && !(h.twinkleLv && G.lv(h.twinkleLv))) { H.tw = G.el('div', 'twinkle p3tw', V.fx, G.sparkle()); Object.assign(H.tw.style, { left: (hr[0] + hr[2] / 2) + 'px', top: (hr[1] + hr[3] / 2) + 'px' }); showHot(H, shown(h)); }
     }
     for (const h of def.hotspots) if (h.gone && G.st.done.includes(h.mission) && V.spr[h.id]) V.spr[h.id].img.style.display = 'none';
     if (G.sceneFx && G.sceneFx[id]) G.sceneFx[id](V, def);
@@ -2192,7 +2209,26 @@ G.scene = (() => {
     G.save.write();
     if (V) V.refreshSprites();
     revealHots();
+    if (V && S.fest && m === S.fest.until) festMove(m);
     return true;
+  }
+  // 10/8 선생님: 잔치는 잔치 마당에서, 별 올리기는 받침대 앞에서. 잔치를 마치면 카메라가 받침대 쪽으로 가고 인물들이 걸어옴
+  async function festMove(m) {
+    const v0 = V, c0 = { ...V.cam }, to = S.cam || [V.W / 2, V.H / 2], rm = G.reduced(), d = rm ? 0 : 2.2;
+    const hs = hots.filter(H => H.def.at2 && H.def.at2.after === m);
+    G.busy = (G.busy || 0) + 1;
+    hs.forEach(H => { H.glow.style.visibility = 'hidden'; if (H.star) H.star.style.visibility = 'hidden'; });
+    const walks = S.sprites.filter(sp => sp.at2 && sp.at2.after === m).map(sp => V.walk(sp.id, sp.at2.rect, d));
+    const pan = rm ? (V.setCam(to[0], to[1], 1), Promise.resolve()) : G.tween(0, 1, d, k => { if (V === v0) V.setCam(c0.x + (to[0] - c0.x) * k, c0.y + (to[1] - c0.y) * k, c0.z + (1 - c0.z) * k); }, 'io');
+    await Promise.all([pan, ...walks]);
+    G.busy--;
+    if (V !== v0) return;
+    for (const H of hs) {
+      const r = H.def.at2.rect, gl = H.def.at2.glow; H.rect = r;
+      Object.assign(H.glow.style, { left: gl[0] + 'px', top: gl[1] + 'px', width: gl[2] + 'px', height: gl[3] + 'px', visibility: '' }); G.fitTall(H.glow, gl);
+      if (H.star) Object.assign(H.star.style, { left: (r[0] + r[2] / 2) + 'px', top: (r[1] - 6) + 'px', visibility: '' });
+    }
+    sizeHots();
   }
 
   // 처음 방문: "여기가 광장이야" → "위를 봐, 할 일이 세 개" (☆☆☆ 반짝) → "반짝이는 곳을 눌러 봐" (테두리 한 번 밝아짐)
@@ -2313,7 +2349,7 @@ G.scene = (() => {
     G.help.set({
       l1: () => { const t = target(); const hn = t && (finding(t.def) ? t.def.find.hint : t.def.hint); if (hn) G.hud.say(hn); },
       l2: () => {
-        const t = target(); if (!t || arrowEl || !V) return; const r = t.def.rect;
+        const t = target(); if (!t || arrowEl || !V) return; const r = t.rect || t.def.rect;
         arrowEl = G.el('div', 'arrow', V.fx, G.arrowHtml());
         Object.assign(arrowEl.style, { left: (r[0] + r[2] / 2) + 'px', top: (r[1] - 40) + 'px', zIndex: 30 });
       },
@@ -2321,7 +2357,7 @@ G.scene = (() => {
         const t = target(); if (!t || !V) return;
         t.glow.classList.remove('seen', 'hide'); t.glow.classList.add('strong');
         if (trailEl) return;
-        const hs = S.sprites.find(s => s.lumi), a = hs ? hs.lumi : [1200, 800], r = t.def.rect, b = [r[0] + r[2] / 2, r[1] + r[3] * 0.75];
+        const a = V.lumiAt || [1200, 800], r = t.rect || t.def.rect, b = [r[0] + r[2] / 2, r[1] + r[3] * 0.75];
         const ns = 'http://www.w3.org/2000/svg';
         trailEl = document.createElementNS(ns, 'svg'); trailEl.setAttribute('class', 'trail'); trailEl.setAttribute('width', S.size[0]); trailEl.setAttribute('height', S.size[1]); trailEl.style.zIndex = 5;
         const p = document.createElementNS(ns, 'path'); const mx = (a[0] + b[0]) / 2, my = Math.max(a[1], b[1]) + 60;
@@ -3182,11 +3218,11 @@ G.cut.add({
   async C5(c, root, opts) {
     const U = G.cut.util, { V, off } = await U.arrive(c, root, opts, 'forest');
     const S = G.D.scenes.forest;
-    if (c.rm) V.setCam(1200, 540, 1); else V.setCam(900, 560, 1.3);
+    if (c.rm) V.setCam(V.home()[0], V.home()[1], 1); else V.setCam(V.home()[0] - 300, V.home()[1] + 20, 1.3);
     c.t0 = G.t;
     await Promise.all([
       U.fadeIn(c, root, 0.5),
-      (async () => { if (!c.rm) await c.tween(0, 1, 3.6, k => V.setCam(900 + 300 * k, 560 - 20 * k, 1.3 - 0.3 * k), 'io'); })(),
+      (async () => { if (!c.rm) await c.tween(0, 1, 3.6, k => V.setCam(V.home()[0] - 300 + 300 * k, V.home()[1] + 20 - 20 * k, 1.3 - 0.3 * k), 'io'); })(),
       (async () => { await c.until(0.4); c.sfx('sfx_wind', 0.8); if (!c.skipped && !c.light) { G.leafPuff(V, [700, 500], 5); G.leafPuff(V, S.wind, 5); } })(),
       (async () => { await c.until(2.0); if (!c.skipped) { const [x, y] = V.toScreen(S.wind[0] + 40, S.wind[1] - 150); G.waveMark(root, x, y, 2); } })(),
       (async () => { await c.until(2.6); if (c.skipped || c.light) return;
@@ -3194,17 +3230,17 @@ G.cut.add({
           c.tween(0, 1, 3 + Math.random(), k => { f.style.transform = `translateY(${-G.stage.H * 0.4 * k}px)`; f.style.opacity = Math.sin(k * Math.PI); }, 'lin').then(() => f.remove()); } })(),
       U.title(c, root, '숲 입구', 'S92_place_forest', 4.2, 6.9),
     ]);
-    V.setCam(1200, 540, 1); off();
+    V.setCam(V.home()[0], V.home()[1], 1); off();
   },
   // ---- C6 광장(두 번째) 도착 (6초): 주민들이 게시판 앞에 모여 있음 → 머리 위에 물음표가 하나씩 → 다온이 뛰어옴 ----
   async C6(c, root, opts) {
     const U = G.cut.util, { V, off } = await U.arrive(c, root, opts, 'plaza2');
-    if (c.rm) V.setCam(1200, 540, 1); else V.setCam(1350, 640, 1.3);
+    if (c.rm) V.setCam(V.home()[0], V.home()[1], 1); else V.setCam(V.home()[0] + 150, V.home()[1] + 100, 1.3);
     c.t0 = G.t;
     const marks = [];
     await Promise.all([
       U.fadeIn(c, root, 0.5),
-      (async () => { if (!c.rm) await c.tween(0, 1, 3.4, k => V.setCam(1350 - 150 * k, 640 - 100 * k, 1.3 - 0.3 * k), 'io'); })(),
+      (async () => { if (!c.rm) await c.tween(0, 1, 3.4, k => V.setCam(V.home()[0] + 150 - 150 * k, V.home()[1] + 100 - 100 * k, 1.3 - 0.3 * k), 'io'); })(),
       (async () => {
         for (const [i, k] of ['chief', 'haesol', 'post', 'daon'].entries()) {
           await c.until(1.0 + i * 0.45); const s = V.spr[k]; if (!s || c.skipped) continue;
@@ -3221,7 +3257,7 @@ G.cut.add({
       U.title(c, root, '광장', 'S92_place_plaza', 3.6, 6.0),
     ]);
     marks.forEach(m => m.remove());
-    V.setCam(1200, 540, 1); off();
+    V.setCam(V.home()[0], V.home()[1], 1); off();
   },
   // ---- C10 환경 변화 2 (7초): 기둥에서 차임과 소리 물결 → 노란 길을 따라 빛이 흘러 도서관 쪽으로 → 안내 음성 ----
   async C10(c, root, opts) {
@@ -3256,7 +3292,8 @@ G.cut.add({
     // 10/7 길의 별 줄이기: 시장과 봄이 아주머니가 없어져서 봄이 아주머니는 모임에서 뺌
     const GA = { chief: [880, 500], haesol: [1360, 440], daon: [1330, 690], post: [680, 600] };
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
-    const mv = Object.entries(GA).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0], y1: to[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
+    const gd = V.S.gatherDelta || [0, 0];   // 10/8 넓힌 광장: 받침대가 옮겨간 만큼 모여 서는 자리도
+    const mv = Object.entries(GA).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.rect || sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0] + gd[0], y1: to[1] + gd[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
     const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
     if (G.reduced()) place(1); else await c.tween(0, 1, 1.6, place, 'io');
     c.voice('S11_nar_01');
@@ -4719,14 +4756,14 @@ G.s2 = (() => {
     const U = G.cut.util, S = G.D.scenes[place];
     const { V, off } = await U.arrive(c, root, opts, place);
     if (S.zone === 'plaza' || cleared(place)) { V.colorImg.style.visibility = ''; V.colorImg.style.opacity = S.zone === 'plaza' ? V.colorImg.style.opacity : 1; }
-    if (c.rm) V.setCam(1200, 540, 1); else V.setCam(1050, 560, 1.25);
+    if (c.rm) V.setCam(V.home()[0], V.home()[1], 1); else V.setCam(V.home()[0] - 150, V.home()[1] + 20, 1.25);
     c.t0 = G.t;
     await Promise.all([
       U.fadeIn(c, root, 0.5),
-      (async () => { if (!c.rm) await c.tween(0, 1, 3.6, k => V.setCam(1050 + 150 * k, 560 - 20 * k, 1.25 - 0.25 * k), 'io'); })(),
+      (async () => { if (!c.rm) await c.tween(0, 1, 3.6, k => V.setCam(V.home()[0] - 150 + 150 * k, V.home()[1] + 20 - 20 * k, 1.25 - 0.25 * k), 'io'); })(),
       U.title(c, root, S.name, 'S92_place_' + (S.zone || place), 0.8, 4.4),
     ]);
-    V.setCam(1200, 540, 1); off();
+    V.setCam(V.home()[0], V.home()[1], 1); off();
   }
   G.cut.add({
     S2A_s2school: (c, r, o) => arriveS2(c, r, o, 's2school'),
@@ -5500,12 +5537,12 @@ G.s2 = (() => {
   async function concert(V, S) {
     const g = G.gen, rm = G.reduced(), light = G.settings && G.settings.light;
     G.audio.holdMusic(CONCERT_MUSIC, 2.2);
-    const glow = G.el('div', 's2-concert', V.fx); Object.assign(glow.style, { left: '1200px', top: '560px' });
+    const sg = S.stage || [1200, 560], glow = G.el('div', 's2-concert', V.fx); Object.assign(glow.style, { left: sg[0] + 'px', top: sg[1] + 'px' });   // 10/8: 잔치 마당 무대 위
     const box = G.el('div', 's2-cnotes', V.fx);
     const sps = ['chief', 'daon', 'duri', 'miru', 'hero'].map(k => V.spr[k]).filter(q => q && q.img.style.display !== 'none'), people = sps.map(q => q.img);
     people.forEach(p => p.style.transformOrigin = '50% 100%');   // 발을 붙인 채 살살 흔들기
-    const from = sps.map(q => [q.def.rect[0] + q.def.rect[2] / 2, q.def.rect[1] + 10]);
-    from.push([1200, 520], [1050, 600], [1350, 600]);   // 무대 둘레
+    const from = sps.map(q => { const r = q.rect || q.def.rect; return [r[0] + r[2] / 2, r[1] + 10]; });
+    from.push([sg[0], sg[1] - 40], [sg[0] - 150, sg[1] + 40], [sg[0] + 150, sg[1] + 40]);   // 무대 둘레
     const beats = rm ? 4 : 8, per = rm ? 1 : 1.25;   // 약 10초
     for (let i = 0; i < beats && g === G.gen; i++) {
       G.tween(0, 1, per * 0.9, k => glow.style.opacity = Math.sin(k * Math.PI) * 0.6);
@@ -5529,10 +5566,11 @@ G.s2 = (() => {
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
     // (가) 인물들이 받침대 둘레로 모임
-    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0], y1: to[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
+    const gd = V.S.gatherDelta || [0, 0];   // 10/8 넓힌 광장: 받침대가 옮겨간 만큼 모여 서는 자리도
+    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.rect || sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0] + gd[0], y1: to[1] + gd[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
     const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
     if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
-    const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
+    const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     // (나) 빛을 잃은 별이 주인공에게서 받침대로
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_sound')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
@@ -6076,14 +6114,14 @@ G.s3 = (() => {
     const U = G.cut.util, S = G.D.scenes[place];
     const { V, off } = await U.arrive(c, root, opts, place);
     if (S.zone === 'plaza' || cleared(place)) { V.colorImg.style.visibility = ''; V.colorImg.style.opacity = S.zone === 'plaza' ? V.colorImg.style.opacity : 1; }
-    if (c.rm) V.setCam(1200, 540, 1); else V.setCam(1050, 560, 1.25);
+    if (c.rm) V.setCam(V.home()[0], V.home()[1], 1); else V.setCam(V.home()[0] - 150, V.home()[1] + 20, 1.25);
     c.t0 = G.t;
     await Promise.all([
       U.fadeIn(c, root, 0.5),
-      (async () => { if (!c.rm) await c.tween(0, 1, 3.6, k => V.setCam(1050 + 150 * k, 560 - 20 * k, 1.25 - 0.25 * k), 'io'); })(),
+      (async () => { if (!c.rm) await c.tween(0, 1, 3.6, k => V.setCam(V.home()[0] - 150 + 150 * k, V.home()[1] + 20 - 20 * k, 1.25 - 0.25 * k), 'io'); })(),
       U.title(c, root, S.name, 'S92_place_' + (S.zone || place), 0.8, 4.4),
     ]);
-    V.setCam(1200, 540, 1); off();
+    V.setCam(V.home()[0], V.home()[1], 1); off();
   }
   G.cut.add({
     S3A_s3cafe: (c, r, o) => arriveS3(c, r, o, 's3cafe'),
@@ -7086,10 +7124,11 @@ G.s3 = (() => {
     const layer = G.el('div', 'layer', ov); layer.style.pointerEvents = 'none';
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');
-    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0], y1: to[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
+    const gd = V.S.gatherDelta || [0, 0];   // 10/8 넓힌 광장: 받침대가 옮겨간 만큼 모여 서는 자리도
+    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.rect || sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0] + gd[0], y1: to[1] + gd[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
     const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
     if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
-    const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
+    const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_word')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
     G.audio.sfx('sfx_star', 0.9);
@@ -7424,14 +7463,14 @@ G.s4 = (() => {
     const U = G.cut.util, S = G.D.scenes[place];
     const { V, off } = await U.arrive(c, root, opts, place);
     if (S.zone === 'plaza' || cleared(place)) { V.colorImg.style.visibility = ''; V.colorImg.style.opacity = S.zone === 'plaza' ? V.colorImg.style.opacity : 1; }
-    if (c.rm) V.setCam(1200, 540, 1); else V.setCam(1050, 560, 1.25);
+    if (c.rm) V.setCam(V.home()[0], V.home()[1], 1); else V.setCam(V.home()[0] - 150, V.home()[1] + 20, 1.25);
     c.t0 = G.t;
     await Promise.all([
       U.fadeIn(c, root, 0.5),
-      (async () => { if (!c.rm) await c.tween(0, 1, 3.6, k => V.setCam(1050 + 150 * k, 560 - 20 * k, 1.25 - 0.25 * k), 'io'); })(),
+      (async () => { if (!c.rm) await c.tween(0, 1, 3.6, k => V.setCam(V.home()[0] - 150 + 150 * k, V.home()[1] + 20 - 20 * k, 1.25 - 0.25 * k), 'io'); })(),
       U.title(c, root, S.name, 'S92_place_' + (S.zone || place), 0.8, 4.4),
     ]);
-    V.setCam(1200, 540, 1); off();
+    V.setCam(V.home()[0], V.home()[1], 1); off();
   }
   G.cut.add({
     S4A_s4shop: (c, r, o) => arriveS4(c, r, o, 's4shop'),
@@ -7992,10 +8031,11 @@ G.s4 = (() => {
     const layer = G.el('div', 'layer', ov); layer.style.pointerEvents = 'none';
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');
-    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0], y1: to[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
+    const gd = V.S.gatherDelta || [0, 0];   // 10/8 넓힌 광장: 받침대가 옮겨간 만큼 모여 서는 자리도
+    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.rect || sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0] + gd[0], y1: to[1] + gd[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
     const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
     if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
-    const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
+    const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_door')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
     G.audio.sfx('sfx_star', 0.9);
@@ -8504,7 +8544,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-08)';
-G.BUILT = '2026-10-08 05:26';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-08 08:30';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
