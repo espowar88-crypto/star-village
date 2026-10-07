@@ -7504,7 +7504,7 @@ G.s4 = (() => {
   }
   // 지도 주민이 별가루를 줄 때 한 줄 (청람 할아버지, 다솜 아주머니)
   const vd4 = G.p4.villagerDust;
-  G.p4.villagerDust = async (vid, el, fx, x, y) => { const ln = began() && (D4().dustLine || {})[vid]; if (ln && !sd().includes('map:' + vid)) await play([ln], { partner: vid }); return vd4(vid, el, fx, x, y); };
+  G.p4.villagerDust = async (vid, el, fx, x, y) => { const ln = began() && (D4().dustLine || {})[vid]; if (ln && !sd().includes('map:' + vid)) await play([].concat(ln), { partner: vid }); return vd4(vid, el, fx, x, y); };
 
   // ================= 장면마다 (scene.js가 들어갈 때 부름) =================
   for (const id of ['s4shop', 's4flower', 's4view', 's4plaza']) G.sceneFx[id] = (V, def) => fx(V, def, id);
@@ -7626,30 +7626,30 @@ G.s4 = (() => {
 
   // ================= 문턱의 별-3: 꽃집 =================
   G.flows.s4_flower = async (ctx) => {
-    const { V, H, g, complete } = ctx, ok = () => g === G.gen, id = H.def.id, dn = { partner: 'danbi' }, no = { partner: 'nuri' };
+    const { V, H, g, complete } = ctx, ok = () => g === G.gen, id = H.def.id, dn = { partner: 'yunseul' }, no = { partner: 'nuri' };
     if (id === 'boxes') {
-      if (done('s4flower_box')) { await play(['TD03_danbi_04'], dn); return; }
-      await play(['TD03_danbi_01', 'TD03_danbi_02'], dn); if (!ok()) return;
+      if (done('s4flower_box')) { await play(['TD03_yunseul_04'], dn); return; }
+      await play(['TD03_yunseul_01', 'TD03_yunseul_02'], dn); if (!ok()) return;
       await play(['TD03_nuri_01'], no); if (!ok()) return;
-      await play(['TD03_danbi_03', 'TD03_rumi_01'], dn); if (!ok()) return;
+      await play(['TD03_yunseul_03', 'TD03_rumi_01'], dn); if (!ok()) return;
       const w = await crates(); if (!ok() || !w) return;
-      await play(['TD03_danbi_04'], dn); if (!ok()) return;
+      await play(['TD03_yunseul_04'], dn); if (!ok()) return;
       complete('s4flower_box'); say('TD03_rumi_03'); return;
     }
     if (id === 'door') {
-      if (done('s4flower_door')) { await play(['TD03_danbi_09'], dn); return; }
+      if (done('s4flower_door')) { await play(['TD03_yunseul_09'], dn); return; }
       await play(['TD03_nuri_02'], no); if (!ok()) return;
-      await play(['TD03_danbi_05'], dn); if (!ok()) return;
+      await play(['TD03_yunseul_05'], dn); if (!ok()) return;
       await play(['TD03_rumi_03']); if (!ok()) return;
-      await play(['TD03_danbi_06'], dn); if (!ok()) return;
+      await play(['TD03_yunseul_06'], dn); if (!ok()) return;
       const w = await shopDoor(); if (!ok() || !w) return;
-      await play(['TD03_danbi_10', 'TD03_danbi_11'], dn); if (!ok()) return;
+      await play(['TD03_yunseul_10', 'TD03_yunseul_11'], dn); if (!ok()) return;
       if (!has('button')) { await presentItem('button'); if (!ok()) return; }
       await colorIn(V); if (!ok()) return;
       await play(['TD03_nuri_04'], no); if (!ok()) return;
       complete('s4flower_door'); return;
     }
-    if (id === 'danbi') { await play([done('s4flower_door') ? 'TD03_danbi_09' : done('s4flower_box') ? 'TD03_danbi_05' : 'TD03_danbi_03'], dn); return; }
+    if (id === 'yunseul') { await play([done('s4flower_door') ? 'TD03_yunseul_09' : done('s4flower_box') ? 'TD03_yunseul_05' : 'TD03_yunseul_03'], dn); return; }
     if (id === 'nuri') { await play([done('s4flower_door') ? 'TD03_nuri_04' : done('s4flower_box') ? 'TD03_nuri_02' : 'TD03_nuri_01'], no); }
   };
 
@@ -7708,7 +7708,7 @@ G.s4 = (() => {
   // ---- 퍼즐: 꽃집 문. 서랍에서 막대 손잡이를 찾아 둥근 손잡이 자리에 닮 → 단추 높이 고르기 (어떤 답도 좋은 생각, 같이 생각해 낮은 곳) ----
   function shopDoor() {
     return new Promise((res) => {
-      const g = G.gen, ok = () => g === G.gen, ITS = D4().drawer[lv()] || D4().drawer.normal, dn = { partner: 'danbi' }, no = { partner: 'nuri' };
+      const g = G.gen, ok = () => g === G.gen, ITS = D4().drawer[lv()] || D4().drawer.normal, dn = { partner: 'yunseul' }, no = { partner: 'nuri' };
       const S = screen('s4z-sdoor', 1600, 900); bgOf(S, 'td_shopdoor_bg', 'linear-gradient(#cfe3c4,#9fc690)');
       const noBg = !ART('td_shopdoor_bg');
       if (noBg) { const d = S.at(G.el('div', 's4-door', S.B), 520, 60, 420, 780); d.style.background = '#7FB77E'; }
@@ -7726,11 +7726,11 @@ G.s4 = (() => {
       }
       async function pick(k, b) {
         if (fin || G.dialog.active) return;
-        if (k !== 'lever') { wob(b); S.say('TD03_danbi_06'); return; }
+        if (k !== 'lever') { wob(b); S.say('TD03_yunseul_06'); return; }
         fin = true; G.help.off(); S.hush(); opts.forEach(o => o.remove());
         knob.remove(); const lev = S.at(G.el('div', 's4-lever', S.B), KN[0] - 22, KN[1] - 22); G.audio.sfx('sfx_chime', 0.5); spark(lev, 8);
         await G.wait(0.6); lev.style.transform = 'rotate(28deg)'; await G.wait(0.5); lev.style.transform = '';
-        await play(['TD03_danbi_07', 'TD03_danbi_08'], { ...dn, keep: true }); if (!ok()) return S.end();
+        await play(['TD03_yunseul_07', 'TD03_yunseul_08'], { ...dn, keep: true }); if (!ok()) return S.end();
         // 단추 높이: 어떤 답도 받아 줌
         const i = await G.dialog.choose(['TD03_ply_01', 'TD03_ply_02', 'TD03_ply_03'].map(v => ({ label: G.txt(v), icon: 'icon_good', voice: v })), true); if (!ok()) return S.end();
         const tmp = S.at(G.el('div', 's4-btnon', S.B), MT[i][0] - 45, MT[i][1] - 45); G.audio.sfx('sfx_tap', 0.5);
@@ -7738,12 +7738,12 @@ G.s4 = (() => {
         if (i !== 2) { await G.tween(0, 1, G.reduced() ? 0.2 : 0.7, k2 => { tmp.style.top = (MT[i][1] - 45 + (MT[2][1] - MT[i][1]) * k2) + 'px'; }, 'io'); }
         spark(tmp, 10); G.audio.sfx('sfx_sparkle', 0.6);
         await play(['TD03_nuri_03'], no); if (!ok()) return S.end();
-        await play(['TD03_danbi_09'], dn); if (!ok()) return S.end();
+        await play(['TD03_yunseul_09'], dn); if (!ok()) return S.end();
         cur = null; S.end(); res(ok());
       }
       cur = { solve: () => { if (!opened) openDrawer(); const b = opts.find(o => o.dataset.k === 'lever'); if (b) pick('lever', b); } };
-      S.say('TD03_danbi_06');
-      G.help.set({ l1: () => S.say('TD03_danbi_06'), l2: () => wob(opened ? (opts.find(o => o.dataset.k === 'lever') || drawer) : drawer),
+      S.say('TD03_yunseul_06');
+      G.help.set({ l1: () => S.say('TD03_yunseul_06'), l2: () => wob(opened ? (opts.find(o => o.dataset.k === 'lever') || drawer) : drawer),
         l3: () => { const e = opened ? opts.find(o => o.dataset.k === 'lever') : drawer; if (e) { e.classList.add('s3-hint'); setTimeout(() => e.classList.remove('s3-hint'), 3000); } }, clear: () => { } });
     });
   }
@@ -7874,8 +7874,8 @@ G.s4 = (() => {
       await play(['TD05_chief_01'], { partner: 'chief' }); if (!ok()) return;
       await play(['TD05_maru_01'], { partner: 'maru' }); if (!ok()) return;
       { const at = S.feastDust.maru; dustBtn(V, 's4plaza:maru', at[0], at[1]); G.audio.sfx('sfx_sparkle', 0.5); }
-      await play(['TD05_danbi_01'], { partner: 'danbi' }); if (!ok()) return;
-      { const at = S.feastDust.danbi; dustBtn(V, 's4plaza:danbi', at[0], at[1]); G.audio.sfx('sfx_sparkle', 0.5); }
+      await play(['TD05_yunseul_01'], { partner: 'yunseul' }); if (!ok()) return;
+      { const at = S.feastDust.yunseul; dustBtn(V, 's4plaza:yunseul', at[0], at[1]); G.audio.sfx('sfx_sparkle', 0.5); }
       await play(['TD05_nuri_01'], { partner: 'nuri' }); if (!ok()) return;
       await play(['TD05_rumi_01', 'TD05_rumi_02']); if (!ok()) return;
       // 별 카드: 우리가 바꾼 방법을 별에게 돌려주면 별이 빛남 (틀린 답 없음)
@@ -7898,7 +7898,7 @@ G.s4 = (() => {
     }
   };
   // ---- 별이 받침대에서 하늘로 (길의 별·소리의 별과 같은 차례): 모이기 → 받침대로 → 빛 기둥 → 밤하늘 제자리 → 가로등·색·불꽃놀이 → 「문턱의 별」 ----
-  const GATHER = { chief: [900, 520], maru: [1380, 430], nuri: [1310, 690], danbi: [960, 720] };
+  const GATHER = { chief: [900, 520], maru: [1380, 430], nuri: [1310, 690], yunseul: [960, 720] };
   async function starRise(V) {
     const s = G.STARS.find(q => q.id === 'door'), ov = G.$('#overlay'), u = G.stage.u, rm = G.reduced();
     const { W, H: SH } = G.stage, wl = V.el.parentNode, S = V.S, ped = S.hotspots.find(h => h.id === 'pedestal').rect;
@@ -7937,7 +7937,7 @@ G.s4 = (() => {
     for (const l of V.lamps) if (!l.el.classList.contains('on')) { l.el.classList.add('on'); G.audio.sfx('sfx_chime', 0.35); await G.wait(0.3); }
     const col = V.colorImg; col.style.visibility = ''; col.style.opacity = 1;
     G.fireworkShow(layer, 5);
-    for (const k of ['chief', 'maru', 'nuri', 'danbi', 'hero']) { const sp = V.spr[k]; if (sp && !rm && sp.img.animate && sp.img.style.display !== 'none') sp.img.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-16px)' }, { transform: 'translateY(0)' }], { duration: 500, iterations: 2 }); }
+    for (const k of ['chief', 'maru', 'nuri', 'yunseul', 'hero']) { const sp = V.spr[k]; if (sp && !rm && sp.img.animate && sp.img.style.display !== 'none') sp.img.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-16px)' }, { transform: 'translateY(0)' }], { duration: 500, iterations: 2 }); }
     const t = G.el('div', 'cut-title c11-title', layer, s.name || '문턱의 별'); t.style.opacity = 0;
     await G.tween(0, 1, 0.6, k => { t.style.opacity = k; t.style.transform = `translate(-50%,-50%) scale(${0.8 + 0.2 * k})`; }, 'out');
     await G.wait(2.4);
@@ -8040,8 +8040,8 @@ G.s4 = (() => {
     { done: ['s4_begin', 's4_fog'], cleared: ['s4gate'], items: ['s4map'], seen: ['CH:s4_1'] },
     { done: ['s4shop_intro', 's4shop_door', 's4shop_ramp'], cleared: ['s4shop'], items: ['plank'], seen: ['CH:s4shop', 'S4A_s4shop'], dust: ['s4shop:0', 's4shop:h:bench'], place: 's4shop' },
     { done: ['s4flower_intro', 's4flower_box', 's4flower_door'], cleared: ['s4flower'], items: ['button'], seen: ['CH:s4flower', 'S4A_s4flower'], dust: ['s4flower:0', 's4flower:h:door'], place: 's4flower' },
-    { done: ['s4view_intro', 's4view_path', 's4view_door', 's4view_scope'], cleared: ['s4view'], items: ['piece_door'], seen: ['CH:s4view', 'S4A_s4view'], dust: ['s4view:0', 's4view:h:scope', 'map:s4gran', 'map:s4mom'], place: 's4view' },
-    { done: ['s4plaza_intro', 's4plaza_card', 's4plaza_star'], seen: ['CH:s4plaza', 'S4A_s4plaza'], dust: ['s4plaza:maru', 's4plaza:danbi'], place: 'plaza' },
+    { done: ['s4view_intro', 's4view_path', 's4view_door', 's4view_scope'], cleared: ['s4view'], items: ['piece_door'], seen: ['CH:s4view', 'S4A_s4view'], dust: ['s4view:0', 's4view:h:scope', 'map:s4gran', 'map:seoyeon'], place: 's4view' },
+    { done: ['s4plaza_intro', 's4plaza_card', 's4plaza_star'], seen: ['CH:s4plaza', 'S4A_s4plaza'], dust: ['s4plaza:maru', 's4plaza:yunseul'], place: 'plaza' },
   ];
   async function chapter(id) {
     if (!G.st) return;
@@ -8418,7 +8418,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-07)';
-G.BUILT = '2026-10-07 07:55';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-07 09:29';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
