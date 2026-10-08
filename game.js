@@ -817,13 +817,13 @@ G.hud = (() => {
 })();
 
 /* ---- help.js ---- */
-// help.js — 도움 3단계 (GDD 6-1): 30초 질문 → 60초 화살표 → 90초(또는 [루미]) 반짝이는 길
+// help.js — 도움 3단계 (GDD 6-1): 질문 → 화살표 → 반짝이는 길(또는 [루미]), 보통은 10·15·20초
 // 대화·연출·이동 중(G.busy)과 교사용 설정이 열려 있을 때는 시간을 세지 않음
 'use strict';
 G.help = (() => {
   const Hp = {};
   let t = 0, level = 0, h = null;
-  const TIMES = { short: [20, 40, 60], normal: [30, 60, 90], long: [45, 90, 135] };
+  const TIMES = { short: [5, 10, 15], normal: [10, 15, 20], long: [10, 20, 30] };   // 10/8 선생님: 도움이 더 빨리 나오게 (짧게 5~15, 보통 10~20, 길게 10~30초)
   const times = () => TIMES[(G.settings && G.settings.help) || 'normal'];
   G.every(dt => {
     if (!h || G.busy > 0 || (G.dialog && G.dialog.active) || (G.settings && G.settings.help === 'off')) return;
@@ -2092,6 +2092,10 @@ G.sceneView = (parent, id, o = {}) => {
     return G.tween(0, 1, d, set, 'io');
   };
   // 10/8 선생님: 잔치 뒤 픽셀 걷기 그림으로 광장 길(at2.walk.path, 발 자리 점들)을 따라 걸어가 자리 잡기
+  const sheets = {};   // 걷기 그림 미리 불러 둠 (처음 걷는 사람이 깜빡 사라지지 않게)
+  V.sheet = (src) => { if (!sheets[src]) { const im = new Image(); im.src = G.asset(src); sheets[src] = im; } return sheets[src]; };
+  for (const sp of (S.sprites || [])) if (sp.at2 && sp.at2.walk && sp.at2.walk.sheet) V.sheet(sp.at2.walk.sheet);
+  for (const w of Object.values(S.gatherWalk || {})) if (w && w.sheet) V.sheet(w.sheet);
   V.walkPath = (k, rect, w, d) => {
     const v = V.spr[k]; if (!v || !w || !w.path || w.path.length < 2) return V.walk(k, rect, d);
     if (G.reduced() || !d) return V.walk(k, rect, 0);
@@ -2106,7 +2110,9 @@ G.sceneView = (parent, id, o = {}) => {
       el.style.backgroundPosition = `${-f * cw}px ${-ROW[dir] * ch}px`;
       if (lu) { lu.style.left = (x - rect[2] / 2 + V.lumiOff[0] - 55) + 'px'; lu.style.top = (y + 18 - rect[3] + V.lumiOff[1] - 55) + 'px'; } };
     const hide = (on) => { v.img.style.visibility = on ? 'hidden' : ''; if (v.back) v.back.style.visibility = on ? 'hidden' : ''; };
-    return G.wait(w.delay || 0).then(() => { if (!V.spr[k]) return; hide(true); el.style.display = '';
+    // 10/8 선생님: 걷기 그림이 다 불러지기 전에 서 있는 그림을 숨기면 잠깐 사라져 보임 → 그림이 준비된 뒤 바꿈
+    const im = V.sheet(w.sheet);
+    return Promise.all([G.wait(w.delay || 0), im.decode ? im.decode().catch(() => {}) : null]).then(() => { if (!V.spr[k]) return; put(P[0][0], P[0][1], 8); el.style.display = ''; hide(true);
       return G.tween(0, 1, d, (q) => { const s = q * L, p = at(s), a = at(Math.min(L, s + 40)), dx = a[0] - p[0], dy = a[1] - p[1];   // 앞쪽 40px를 보고 방향을 정해 자주 뒤집히지 않게
         if (Math.hypot(dx, dy) > 4) dir = (dy >= 0 || w.front) ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW');   // front: 뒷모습 칸이 없는 사람(해솔)
         t0 = q * d; put(p[0], p[1], q >= 1 ? 8 : Math.floor(t0 * fps) % 8); }, 'lin'); })
@@ -8276,7 +8282,7 @@ G.teacher = (() => {
     choice(s, 'textBig', [[false, '보통'], [true, '크게']]);
 
     s = sec(p, '3. 도움 시간 (루미가 알려 주기까지)');
-    choice(s, 'help', [['short', '짧게 20, 40, 60초'], ['normal', '보통 30, 60, 90초'], ['long', '길게 45, 90, 135초'], ['off', '끄기']]);
+    choice(s, 'help', [['short', '짧게 5, 10, 15초'], ['normal', '보통 10, 15, 20초'], ['long', '길게 10, 20, 30초'], ['off', '끄기']]);
     G.el('div', 't-note', s, '1단계 질문, 2단계 화살표, 3단계 반짝이는 길. [루미] 버튼을 누르면 바로 3단계.');
 
     s = sec(p, '4. 선택지 누르기');
@@ -8561,7 +8567,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-08)';
-G.BUILT = '2026-10-08 10:21';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-08 12:26';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
