@@ -2091,6 +2091,34 @@ G.sceneView = (parent, id, o = {}) => {
     if (G.reduced() || !d) { set(1); return Promise.resolve(); }
     return G.tween(0, 1, d, set, 'io');
   };
+  // 10/8 선생님: 잔치 뒤 픽셀 걷기 그림으로 광장 길(at2.walk.path, 발 자리 점들)을 따라 걸어가 자리 잡기
+  V.walkPath = (k, rect, w, d) => {
+    const v = V.spr[k]; if (!v || !w || !w.path || w.path.length < 2) return V.walk(k, rect, d);
+    if (G.reduced() || !d) return V.walk(k, rect, 0);
+    d = Math.max(3, d - (w.delay || 0));   // 늦게 출발한 사람은 조금 빨리 걸어 다 같이 자리 잡음
+    const P = w.path, kk = w.k, cw = 200 * kk, ch = 260 * kk, lu = k === 'hero' && V.lumi ? V.lumi : null;
+    const seg = []; let L = 0; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); seg.push(l); L += l; }
+    const el = G.el('div', 'scene-walker', V.fx);
+    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(w.sheet)}")`, backgroundSize: `${1800 * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none', display: 'none' });
+    const at = (s) => { let i = 0; while (i < seg.length - 1 && s > seg[i]) { s -= seg[i]; i++; } const t = seg[i] ? Math.min(1, s / seg[i]) : 1; return [P[i][0] + (P[i + 1][0] - P[i][0]) * t, P[i][1] + (P[i + 1][1] - P[i][1]) * t]; };
+    const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 }, fps = Math.min(14, 4 + (L / d) * 0.03); let dir = 'SE', t0 = 0;   // 걸음 빠르기는 지도 걷기와 같은 식
+    const put = (x, y, f) => { el.style.left = (x - w.fx * kk) + 'px'; el.style.top = (y + w.foot - w.fy * kk) + 'px'; el.style.zIndex = Math.round(y / 10);
+      el.style.backgroundPosition = `${-f * cw}px ${-ROW[dir] * ch}px`;
+      if (lu) { lu.style.left = (x - rect[2] / 2 + V.lumiOff[0] - 55) + 'px'; lu.style.top = (y + 18 - rect[3] + V.lumiOff[1] - 55) + 'px'; } };
+    const hide = (on) => { v.img.style.visibility = on ? 'hidden' : ''; if (v.back) v.back.style.visibility = on ? 'hidden' : ''; };
+    return G.wait(w.delay || 0).then(() => { if (!V.spr[k]) return; hide(true); el.style.display = '';
+      return G.tween(0, 1, d, (q) => { const s = q * L, p = at(s), a = at(Math.min(L, s + 40)), dx = a[0] - p[0], dy = a[1] - p[1];   // 앞쪽 40px를 보고 방향을 정해 자주 뒤집히지 않게
+        if (Math.hypot(dx, dy) > 4) dir = (dy >= 0 || w.front) ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW');   // front: 뒷모습 칸이 없는 사람(해솔)
+        t0 = q * d; put(p[0], p[1], q >= 1 ? 8 : Math.floor(t0 * fps) % 8); }, 'lin'); })
+      .then(() => { V.walk(k, rect, 0); el.remove(); hide(false); });
+  };
+  // 10/8 선생님: 별 올리러 받침대 둘레로 모일 때도 픽셀 걷기 (길은 장면 데이터 gatherWalk, 없으면 예전처럼 미끄러져 감)
+  V.gather = (GA, d) => {
+    const gd = S.gatherDelta || [0, 0], GW = S.gatherWalk || {};
+    return Promise.all(Object.entries(GA).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null;
+      const r = sp.rect || sp.def.rect, r1 = [to[0] + gd[0], to[1] + gd[1], r[2], r[3]];
+      return GW[k] ? V.walkPath(k, r1, GW[k], d) : V.walk(k, r1, G.reduced() ? 0 : 1.6); }));
+  };
   return V;
 };
 
@@ -2214,11 +2242,11 @@ G.scene = (() => {
   }
   // 10/8 선생님: 잔치는 잔치 마당에서, 별 올리기는 받침대 앞에서. 잔치를 마치면 카메라가 받침대 쪽으로 가고 인물들이 걸어옴
   async function festMove(m) {
-    const v0 = V, c0 = { ...V.cam }, to = S.cam || [V.W / 2, V.H / 2], rm = G.reduced(), d = rm ? 0 : 2.2;
+    const v0 = V, c0 = { ...V.cam }, to = S.cam || [V.W / 2, V.H / 2], rm = G.reduced(), d = rm ? 0 : 5;   // 10/8 선생님: 5초쯤 걸어가 자리 잡기
     const hs = hots.filter(H => H.def.at2 && H.def.at2.after === m);
     G.busy = (G.busy || 0) + 1;
     hs.forEach(H => { H.glow.style.visibility = 'hidden'; if (H.star) H.star.style.visibility = 'hidden'; });
-    const walks = S.sprites.filter(sp => sp.at2 && sp.at2.after === m).map(sp => V.walk(sp.id, sp.at2.rect, d));
+    const walks = S.sprites.filter(sp => sp.at2 && sp.at2.after === m).map(sp => V.walkPath(sp.id, sp.at2.rect, sp.at2.walk, d));
     const pan = rm ? (V.setCam(to[0], to[1], 1), Promise.resolve()) : G.tween(0, 1, d, k => { if (V === v0) V.setCam(c0.x + (to[0] - c0.x) * k, c0.y + (to[1] - c0.y) * k, c0.z + (1 - c0.z) * k); }, 'io');
     await Promise.all([pan, ...walks]);
     G.busy--;
@@ -3290,12 +3318,9 @@ G.cut.add({
     const u = G.stage.u; c.t0 = G.t;
     // 10/4 선생님: 별을 올릴 때는 촌장과 이 별 이야기의 인물들이 받침대 둘레로 모여 같이 올림 (소리의 별, 말의 별과 같은 방법)
     // 10/7 길의 별 줄이기: 시장과 봄이 아주머니가 없어져서 봄이 아주머니는 모임에서 뺌
-    const GA = { chief: [880, 500], haesol: [1360, 440], daon: [1330, 690], post: [680, 600] };
+    const GA = { chief: [880, 500], haesol: [1360, 440], daon: [1370, 870], post: [680, 600] };
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
-    const gd = V.S.gatherDelta || [0, 0];   // 10/8 넓힌 광장: 받침대가 옮겨간 만큼 모여 서는 자리도
-    const mv = Object.entries(GA).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.rect || sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0] + gd[0], y1: to[1] + gd[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
-    const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
-    if (G.reduced()) place(1); else await c.tween(0, 1, 1.6, place, 'io');
+    await Promise.race([V.gather(GA, c.skipped ? 0 : 4), c.skipP]);   // 10/8 선생님: 받침대로 올 때도 픽셀 걷기로 광장 길을 따라
     c.voice('S11_nar_01');
     // (가) 빛을 잃은 별과 별빛 조각이 주인공에게서 받침대로 날아감
     const piece = G.el('div', 'c11-item', root, G.icon(G.litIcon('piece'))), light = G.el('div', 'c11-item', root, G.icon('item_light'));
@@ -4037,7 +4062,8 @@ G.p4 = (() => {
       const first = !done('plaza_chief');
       if (first || !give) { await G.dialog.play(H.def.lines, { partner: 'chief', keep: give }); if (!ok()) return; complete('plaza_chief'); }
       if (!give) return;
-      await G.dialog.play(['E05_chief_01', 'E03_chief_02', 'E03_chief_03'], { partner: 'chief' }); if (!ok()) return;
+      await G.dialog.choose([{ label: G.txt('S03_ply_02'), icon: 'icon_star', voice: 'S03_ply_02' }], true); if (!ok()) return;   // 10/8 선생님: 주인공이 먼저 묻고, 촌장님이 해솔이 이야기를 하며 쪽지를 줌
+      await G.dialog.play(['E05_chief_00', 'E05_chief_01', 'E03_chief_02', 'E03_chief_03'], { partner: 'chief' }); if (!ok()) return;
       await G.present.item('note'); if (!ok()) return;
       mark('note_got'); G.map.refresh(); document.querySelectorAll('.p4-askq').forEach(e => e.remove());
       if (ok() && (G.hud.nextPlace() || {}).id === 'library') G.hud.goMap(() => G.scene.leave(), '도서관으로');   // 10/6 선생님: 쪽지를 받으면 가운데 [도서관으로] → 지도
@@ -5558,7 +5584,7 @@ G.s2 = (() => {
   }
   // 별이 받침대에서 하늘로 + 불꽃놀이
   // 10/3 선생님: 길의 별(C11)과 똑같이. 이 별 이야기의 인물들이 받침대 둘레로 모여 함께 올림 → 빛을 잃은 별이 받침대로 → 빛 기둥 → 기둥 꼭대기에서 별 → 카메라가 밤하늘로 → 광장으로 돌아와 가로등·색·불꽃놀이·「소리의 별」
-  const GATHER = { chief: [900, 520], duri: [1380, 430], daon: [1310, 690], miru: [960, 720] };   // 받침대(1098,502,203,215) 둘레 자리 (그림 왼쪽 위)
+  const GATHER = { chief: [900, 520], duri: [1380, 430], daon: [1370, 870], miru: [960, 720] };   // 받침대(1098,502,203,215) 둘레 자리 (그림 왼쪽 위)
   async function starRise(V, H) {
     const s = G.STARS.find(q => q.id === 'sound'), ov = G.$('#overlay'), u = G.stage.u, rm = G.reduced();
     const { W, H: SH } = G.stage, wl = V.el.parentNode, S = V.S, ped = S.hotspots.find(h => h.id === 'pedestal').rect;
@@ -5566,10 +5592,7 @@ G.s2 = (() => {
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
     // (가) 인물들이 받침대 둘레로 모임
-    const gd = V.S.gatherDelta || [0, 0];   // 10/8 넓힌 광장: 받침대가 옮겨간 만큼 모여 서는 자리도
-    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.rect || sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0] + gd[0], y1: to[1] + gd[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
-    const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
-    if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
+    await V.gather(GATHER, 4);   // 10/8 선생님: 받침대로 올 때도 픽셀 걷기로 광장 길을 따라
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     // (나) 빛을 잃은 별이 주인공에게서 받침대로
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_sound')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
@@ -7117,17 +7140,14 @@ G.s3 = (() => {
   }
 
   // ---- 별이 받침대에서 하늘로 (길의 별·소리의 별과 같은 차례): 모이기 → 받침대로 → 빛 기둥 → 밤하늘 제자리 → 가로등·색·불꽃놀이 → 「말의 별」 ----
-  const GATHER = { chief: [900, 520], bau: [1380, 430], harang: [1310, 690], moa: [960, 720] };
+  const GATHER = { chief: [900, 520], bau: [1380, 430], harang: [1370, 870], moa: [960, 720] };
   async function starRise(V) {
     const s = G.STARS.find(q => q.id === 'word'), ov = G.$('#overlay'), u = G.stage.u, rm = G.reduced();
     const { W, H: SH } = G.stage, wl = V.el.parentNode, S = V.S, ped = S.hotspots.find(h => h.id === 'pedestal').rect;
     const layer = G.el('div', 'layer', ov); layer.style.pointerEvents = 'none';
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');
-    const gd = V.S.gatherDelta || [0, 0];   // 10/8 넓힌 광장: 받침대가 옮겨간 만큼 모여 서는 자리도
-    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.rect || sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0] + gd[0], y1: to[1] + gd[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
-    const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
-    if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
+    await V.gather(GATHER, 4);   // 10/8 선생님: 받침대로 올 때도 픽셀 걷기로 광장 길을 따라
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_word')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
@@ -8024,17 +8044,14 @@ G.s4 = (() => {
     }
   };
   // ---- 별이 받침대에서 하늘로 (길의 별·소리의 별과 같은 차례): 모이기 → 받침대로 → 빛 기둥 → 밤하늘 제자리 → 가로등·색·불꽃놀이 → 「문턱의 별」 ----
-  const GATHER = { chief: [900, 520], maru: [1380, 430], nuri: [1310, 690], yunseul: [960, 720] };
+  const GATHER = { chief: [900, 520], maru: [1380, 430], nuri: [1370, 870], yunseul: [960, 720] };
   async function starRise(V) {
     const s = G.STARS.find(q => q.id === 'door'), ov = G.$('#overlay'), u = G.stage.u, rm = G.reduced();
     const { W, H: SH } = G.stage, wl = V.el.parentNode, S = V.S, ped = S.hotspots.find(h => h.id === 'pedestal').rect;
     const layer = G.el('div', 'layer', ov); layer.style.pointerEvents = 'none';
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');
-    const gd = V.S.gatherDelta || [0, 0];   // 10/8 넓힌 광장: 받침대가 옮겨간 만큼 모여 서는 자리도
-    const mv = Object.entries(GATHER).map(([k, to]) => { const sp = V.spr[k]; if (!sp || sp.img.style.display === 'none') return null; const r = sp.rect || sp.def.rect; return { e: sp.img, x0: r[0], y0: r[1] - G.tallDh(sp.img, r), x1: to[0] + gd[0], y1: to[1] + gd[1] - G.tallDh(sp.img, r) }; }).filter(Boolean);
-    const place = k => mv.forEach(m => { m.e.style.left = (m.x0 + (m.x1 - m.x0) * k) + 'px'; m.e.style.top = (m.y0 + (m.y1 - m.y0) * k) + 'px'; });
-    if (rm) place(1); else await G.tween(0, 1, 1.6, place, 'io');
+    await V.gather(GATHER, 4);   // 10/8 선생님: 받침대로 올 때도 픽셀 걷기로 광장 길을 따라
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_door')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
@@ -8544,7 +8561,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-08)';
-G.BUILT = '2026-10-08 08:30';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-08 10:21';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
