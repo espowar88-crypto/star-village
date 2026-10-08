@@ -7855,6 +7855,7 @@ G.s4 = (() => {
       const g = G.gen, ok = () => g === G.gen;
       const S = screen('s4z-place ' + o.cls, 1600, 900); bgOf(S, o.bg, o.color);
       if (o.tray) S.at(G.el('div', 's4-tray', S.B), ...o.tray);
+      (o.pre || []).forEach(([art, x, y, w, h]) => { const e = S.at(G.el('img', 's4-pre', S.B), x, y, w, h); e.src = ART(art); e.alt = ''; Object.assign(e.style, { position: 'absolute', objectFit: 'fill' }); });   // 미리 꽂혀 있는 것
       let fin = false, busy = false;
       const slots = o.slots.map(s => { const el = S.at(G.el('div', 's4-slot', S.B), s.x, s.y, s.w, s.h); return Object.assign(s, { el, item: null }); });
       const free = () => slots.filter(s => !s.item).map(s => s.el);
@@ -7904,19 +7905,18 @@ G.s4 = (() => {
       wrong: async (it, s) => { if (it.id !== 'nuri') return; await play([s.id === 'slope' ? 'TD01_nuri_13' : R[s.id].say], { partner: 'nuri' }); },
     });
   }
-  // 목공방: 계단 옆 점선 자리에 키가 맞는 난간 기둥 꽂기 (쉽게 앞 2개, 보통 앞·가운데 4개, 어렵게 6개)
+  // 목공방: 계단 옆 점선 자리에 난간 기둥 꽂기 (쉽게 앞 2개, 보통 앞·가운데 4개, 어렵게 6개). 10/8 선생님: 실제 기둥은 길이가 같으니 키로 나누지 않음 - 같은 기둥이 어느 자리든 원근에 맞게 커지고 작아짐
   function railPosts() {
     const L = lv();
     const SP = [['front', 830, 454, 68, 346], ['front', 1368, 454, 64, 346], ['mid', 898, 348, 54, 292], ['mid', 1302, 348, 56, 292], ['back', 952, 268, 42, 208], ['back', 1244, 268, 42, 208]];
     const n = L === 'easy' ? 2 : L === 'hard' ? 6 : 4;
     const slots = SP.slice(0, n).map(([k, x, y, w, h], i) => ({ id: 'p' + i, k, x, y, w, h, fit: 'fill' }));
-    const ART_K = { front: ['td_post_4', 104, 545], mid: ['td_post_2', 103, 474], back: ['td_post_1', 99, 392] };
-    const items = slots.map((s, i) => { const [art, w, h] = ART_K[s.k]; const k = 0.5; return { id: 'post' + i, k: s.k, art, w: w * k, h: h * k, label: '난간 기둥' }; });
+    const pre = SP.slice(n).map(([k, x, y, w, h]) => ['td_post_4', x, y, w, h]);   // 남는 점선 자리는 기둥이 이미 꽂혀 있음
+    const items = slots.map((s, i) => ({ id: 'post' + i, art: 'td_post_4', w: 104 * 0.5, h: 545 * 0.5, label: '난간 기둥' }));
     shuffle(items).forEach((it, i) => { it.x = 70 + i * 110; it.y = 860 - it.h; });
     return placePz({
-      cls: 's4z-rail', bg: 'td_rail_bg', color: 'linear-gradient(#8a6a4e,#5E4A3A)', tray: [40, 560, 690, 320], items, slots, hint: 'TD02_rumi_10',
-      fits: (it, s) => it.k === s.k, won: () => items.every(it => it.slot),
-      wrong: () => play(['TD02_maru_13'], { partner: 'maru' }),
+      cls: 's4z-rail', bg: 'td_rail_bg', color: 'linear-gradient(#8a6a4e,#5E4A3A)', tray: [40, 560, 690, 320], items, slots, pre, hint: 'TD02_rumi_10',
+      fits: () => true, won: () => items.every(it => it.slot),
     });
   }
   // 꽃집: 통로(노란 점선) 안 화분을 옆 선반 빈자리로 옮겨 길 넓히기 (쉽게 2개, 보통 3개, 어렵게 4개)
