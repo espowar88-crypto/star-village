@@ -7625,6 +7625,13 @@ G.s4 = (() => {
 .s4-drawer { position: absolute; background: #A0764F; border: 8px solid #6B4A30; border-radius: 14px; cursor: pointer; transition: transform .5s ease-out; }
 .s4-drawer::after { content: ''; position: absolute; left: 50%; top: 40%; width: 80px; height: 18px; margin-left: -40px; background: #E6B54A; border-radius: 9px; }
 .s4-drawer.open { transform: translateY(40px); }
+.s4-leverimg { position: absolute; transform-origin: 159px 41px; transition: transform .4s; z-index: 4; }
+.s4-leverimg img { width: 100%; height: 100%; transform: scaleX(-1); display: block; }
+.s4-btnimg { position: absolute; z-index: 4; }
+.s4-btnimg img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.s4-cab { position: absolute; background: none; padding: 0; border: 6px solid #FFD66B; border-radius: 22px; cursor: pointer; animation: s4cab 1.6s ease-in-out infinite; }
+.s4-cab.open { animation: none; opacity: 0; pointer-events: none; }
+@keyframes s4cab { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 .s4-knob { position: absolute; width: 70px; height: 70px; border-radius: 50%; background: #E6B54A; border: 6px solid #8a6a0a; }
 .s4-lever { position: absolute; width: 200px; height: 44px; border-radius: 22px; background: #E6B54A; border: 6px solid #8a6a0a; transform-origin: 22px 50%; transition: transform .4s; }
 .s4-mount { position: absolute; width: 90px; height: 90px; border-radius: 50%; background: #F1E2C4; border: 6px dashed #8B5E3C; }
@@ -7641,6 +7648,14 @@ G.s4 = (() => {
 .s4-pc { position: absolute; border: 0; padding: 0; background: none; cursor: grab; transition: left .45s ease-out, top .45s ease-out, width .45s, height .45s; z-index: 6; }
 .s4-pc img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; display: block; }
 .s4-pc.set { cursor: default; z-index: 5; }
+.s4-car { position: absolute; z-index: 7; cursor: grab; transform-origin: 50% 85%; }
+.s4-car.dragging { cursor: grabbing; filter: drop-shadow(0 0 10px rgba(255, 214, 107, .9)); }
+.s4-car img, .s4-pud img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; display: block; }
+.s4-pud { position: absolute; z-index: 6; transition: left .45s ease-out, top .45s ease-out; }
+.s4-pud.s4-live { cursor: grab; outline: 6px dashed #FFD66B; outline-offset: 4px; border-radius: 40px; }
+.s4-pud.gone { opacity: .55; }
+.s4-road { position: absolute; border: 0; background: none; padding: 0; z-index: 4; }
+.s4-roadglow { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 5; }
 .s4-slot { position: absolute; border-radius: 18px; }
 .s4-slot.drop-on { outline: 8px solid #FFD66B; outline-offset: -4px; background: rgba(255, 214, 107, .18); }
 .s4-slot.s3-hint { outline: 8px dashed #FFD66B; outline-offset: -4px; }
@@ -7889,20 +7904,111 @@ G.s4 = (() => {
       S.items = items; S.slots = slots;
     });
   }
-  // 언덕길: 누리를 지나갈 수 있는 길로 (쉽게 2갈래, 보통 3갈래, 어렵게는 비탈길에 웅덩이가 있어 먼저 옆 풀밭으로 치움)
+  // 언덕길: 누리 장난감 차를 끌어 길을 따라 올라감 (쉽게 2갈래, 보통 3갈래, 어렵게는 비탈길에 웅덩이)
+  // 10/8 선생님: 맞는 길은 끝까지 올라가고, 험한 길은 가다가 차가 넘어지며 "이 길로는 갈 수 없어". 웅덩이를 만나면 먼저 웅덩이를 없애고 다시 올라감
   function hillPath() {
-    const L = lv(), hard = L === 'hard';
-    const R = { stair: { x: 200, y: 330, w: 330, h: 300, say: 'TD01_nuri_10' }, pebble: { x: 690, y: 380, w: 260, h: 260, say: 'TD01_nuri_11' }, slope: { x: 1060, y: 420, w: 380, h: 260 } };
-    const ids = L === 'easy' ? ['stair', 'slope'] : ['stair', 'pebble', 'slope'];
-    const slots = ids.map(id => ({ id, ...R[id] }));
-    const items = [{ id: 'nuri', art: 'td_car', x: 680, y: 700, w: 200, h: 140, label: '누리' }];
-    if (hard) { slots.push({ id: 'grass', x: 1180, y: 700, w: 400, h: 190, fit: 'fill' }); items.push({ id: 'puddle', art: 'td_puddle', x: 1040, y: 520, w: 420, h: 220, label: '웅덩이' }); }
-    const moved = () => !hard || items[1].slot;
-    return placePz({
-      cls: 's4z-hill', bg: 'td_hill_bg', color: 'linear-gradient(#7FB77E,#4F7A4E)', items, slots, hint: 'TD01_rumi_10',
-      fits: (it, s) => it.id === 'puddle' ? s.id === 'grass' : s.id === 'slope' && moved(),
-      won: () => items[0].slot,
-      wrong: async (it, s) => { if (it.id !== 'nuri') return; await play([s.id === 'slope' ? 'TD01_nuri_13' : R[s.id].say], { partner: 'nuri' }); },
+    return new Promise((res) => {
+      const g = G.gen, ok = () => g === G.gen, L = lv(), easy = L === 'easy', hard = L === 'hard';
+      const S = screen('s4z-place s4z-hill', 1600, 900); bgOf(S, 'td_hill_bg', 'linear-gradient(#7FB77E,#4F7A4E)');
+      const ST = [800, 790];
+      const RT = {
+        stair: { pts: [ST, [600, 715], [470, 650], [420, 590], [365, 480], [315, 380], [300, 265]], fail: 0.45, say: 'TD01_nuri_10' },
+        pebble: { pts: [ST, [790, 690], [800, 575], [860, 460], [925, 340], [905, 270]], fail: 0.5, say: 'TD01_nuri_11' },
+        slope: { pts: [ST, [990, 745], [1150, 635], [1285, 520], [1400, 420], [1440, 335], [1335, 272]] },
+      };
+      const ids = easy ? ['stair', 'slope'] : ['stair', 'pebble', 'slope'];
+      for (const id of ids) {   // 길이 표 (0~1 위치 계산용)
+        const r = RT[id]; r.len = [0]; for (let i = 1; i < r.pts.length; i++) r.len.push(r.len[i - 1] + Math.hypot(r.pts[i][0] - r.pts[i - 1][0], r.pts[i][1] - r.pts[i - 1][1]));
+      }
+      const at = (r, t) => { const d = t * r.len[r.len.length - 1]; let i = 1; while (i < r.len.length - 1 && r.len[i] < d) i++;
+        const k = (d - r.len[i - 1]) / ((r.len[i] - r.len[i - 1]) || 1), a = r.pts[i - 1], b = r.pts[i]; return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, Math.atan2(b[1] - a[1], b[0] - a[0])]; };
+      const near = (r, x, y) => { let best = [1e9, 0];   // 끈 자리에서 가장 가까운 길 위치
+        for (let i = 1; i < r.pts.length; i++) { const a = r.pts[i - 1], b = r.pts[i], dx = b[0] - a[0], dy = b[1] - a[1], q = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy)));
+          const px = a[0] + dx * q, py = a[1] + dy * q, d = Math.hypot(x - px, y - py); if (d < best[0]) best = [d, (r.len[i - 1] + q * (r.len[i] - r.len[i - 1])) / r.len[r.len.length - 1]]; }
+        return best; };
+      const CW = 200, CH = 140;
+      const car = G.el('div', 's4-car', S.B, `<img src="${ART('td_car')}" alt="">`); car.setAttribute('aria-label', '누리 장난감 차'); car.style.touchAction = 'none';
+      let route = null, t = 0, busy = false, fin = false, stuck = false, pud = null, zone = null, arrow = null, glow = null;
+      function place(x, y, ang = 0, rot = 0) {
+        const s = 0.45 + 0.55 * Math.max(0, Math.min(1, (y - 265) / (ST[1] - 265)));
+        const flip = route && Math.cos(ang) < -0.2 ? -1 : 1;   // 왼쪽으로 가면 차가 왼쪽을 봄
+        Object.assign(car.style, { left: (x - CW * s / 2) + 'px', top: (y - CH * s + 10) + 'px', width: CW * s + 'px', height: CH * s + 'px', transform: `scaleX(${flip}) rotate(${rot}deg)` });
+      }
+      const home = () => { route = null; t = 0; stuck = false; place(...ST); };
+      home();
+      if (hard) {   // 비탈길 웅덩이: 차가 만나면 먼저 옆 풀밭으로 끌어서 치움
+        pud = S.at(G.el('div', 's4-pud', S.B, `<img src="${ART('td_puddle')}" alt="">`), 1100, 560, 300, 150); pud.dataset.t = '0.33';
+        zone = S.at(G.el('div', 's4-slot', S.B), 1180, 700, 400, 190);
+        G.p4.dragTo(pud, () => [zone], () => { if (!pud || fin) return; G.audio.sfx('sfx_chime', 0.5); S.at(pud, 1230, 730, 300, 150); pud.classList.add('gone'); pud = null; zone.classList.remove('s3-hint'); G.help.poke(); }, { can: () => !fin && !busy && !!pud && stuck });
+      }
+      const pudT = 0.33;
+      S.say('TD01_rumi_10');
+      // 끌기: 처음 움직인 쪽으로 길이 정해지고, 차는 그 길 위만 따라감
+      let drag = null;
+      const bxy = (e) => { const r = S.B.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 1600, (e.clientY - r.top) / r.height * 900]; };
+      car.addEventListener('pointerdown', (e) => { if (fin || busy || G.dialog.active) return; drag = e.pointerId; try { car.setPointerCapture(e.pointerId); } catch (_) { } G.help.poke(); clear(); car.classList.add('dragging'); });
+      car.addEventListener('pointermove', (e) => {
+        if (drag !== e.pointerId || fin || busy) return;
+        const [x, y] = bxy(e);
+        if (!route) {
+          if (Math.hypot(x - ST[0], y - ST[1]) < 40) return;
+          let best = null; for (const id of ids) { const n = near(RT[id], x, y); if (!best || n[0] < best[1][0]) best = [id, n]; }
+          route = best[0]; G.audio.sfx('sfx_tap', 0.4);
+        }
+        const r = RT[route], n = near(r, x, y);
+        if (n[0] > 220) return;
+        let nt = Math.min(n[1], t + 0.08);   // 한 번에 너무 멀리 뛰지 않게
+        if (route === 'slope' && pud && nt > pudT) nt = pudT;
+        t = Math.max(0, nt); const [px, py, a] = at(r, t); place(px, py, a);
+        if (r.fail && t >= r.fail) tumble();
+        else if (route === 'slope' && pud && t >= pudT - 0.005 && !stuck) blocked();
+        else if (route === 'slope' && t >= 0.97) win();
+      });
+      const up = (e) => { if (drag !== e.pointerId) return; drag = null; car.classList.remove('dragging'); if (fin || busy) return; if (!stuck && t < 0.97) rollBack(); };
+      car.addEventListener('pointerup', up); car.addEventListener('pointercancel', up);
+      // 쉽게 단계: 길을 눌러도 차가 그 길로 감
+      if (easy) for (const id of ids) { const [x, y] = at(RT[id], 0.35); const b = G.btn('s4-road', '', S.B, () => drive(id), '길'); S.at(b, x - 90, y - 70, 180, 140); }
+      async function drive(id) {
+        if (fin || busy || G.dialog.active) return; route = id; const r = RT[id], end = r.fail || (id === 'slope' && pud ? pudT : 1);
+        busy = true; await G.tween(t, end, 1.6, k => { t = k; const [x, y, a] = at(r, k); place(x, y, a); }, 'io'); busy = false; if (!ok()) return;
+        if (r.fail) tumble(); else if (id === 'slope' && pud) blocked(); else win();
+      }
+      async function rollBack() {
+        const r = RT[route]; if (!r) return home(); busy = true;
+        await G.tween(t, 0, 0.5, k => { const [x, y, a] = at(r, k); place(x, y, a); }, 'out'); busy = false; if (ok()) home();
+      }
+      async function tumble() {   // 험한 길: 덜컹 하다 옆으로 넘어짐 → 누리 말 → 처음 자리로
+        if (busy || fin) return; busy = true; drag = null; const r = RT[route], [x, y, a] = at(r, t);
+        G.audio.sfx('sfx_tap', 0.6, 0.6);
+        if (!G.reduced()) {
+          await G.tween(0, 1, 0.35, k => place(x + Math.sin(k * 40) * 6, y, a), 'lin');
+          G.audio.sfx('sfx_flap', 0.5, 0.7);
+          await G.tween(0, 1, 0.6, k => place(x + 40 * k * (route === 'stair' ? 1 : -1), y + 50 * k * k, a, 110 * k), 'in');
+        }
+        spark(car, 6); await G.wait(0.3); if (!ok()) return;
+        await play([r.say], { partner: 'nuri' }); if (!ok()) return;
+        car.style.opacity = 0; home(); await G.tween(0, 1, 0.4, k => car.style.opacity = k); busy = false;
+      }
+      async function blocked() {   // 웅덩이 앞에서 멈춤 → 먼저 웅덩이 없애기
+        if (stuck) return; stuck = true; busy = true; drag = null; wob(car);
+        await play(['TD01_nuri_13'], { partner: 'nuri' }); busy = false; if (!ok()) return;
+        if (pud) { wob(pud); pud.classList.add('s4-live'); }
+      }
+      async function win() {
+        if (fin) return; fin = true; busy = true; cur = null; G.help.off(); clear(); S.hush();
+        const r = RT.slope; await G.tween(t, 1, 0.8 * (1 - t) + 0.2, k => { const [x, y, a] = at(r, k); place(x, y, a); }, 'out'); if (!ok()) return;
+        G.audio.sfx('sfx_sparkle', 0.8); spark(car, 12); await G.wait(1.2); S.end(); res(ok());
+      }
+      function clear() { if (arrow) arrow.remove(); arrow = null; if (glow) glow.remove(); glow = null; if (zone) zone.classList.remove('s3-hint'); }
+      cur = { solve: async () => { if (pud) { S.at(pud, 1230, 730, 300, 150); pud = null; } stuck = false; busy = false; if (!fin) await drive('slope'); } };
+      G.help.set({
+        l1: () => S.say('TD01_rumi_10'),
+        l2: () => { if (!arrow) arrow = arrowAt(S, stuck && pud ? pud : car); },
+        l3: () => { if (stuck && zone) { zone.classList.add('s3-hint'); return; } if (glow) return;   // 비탈길을 빛으로 보여 줌
+          glow = G.el('div', 's4-roadglow', S.B, `<svg viewBox="0 0 1600 900" width="1600" height="900"><polyline points="${RT.slope.pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="#FFD66B" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 40" opacity=".9"/></svg>`);
+          setTimeout(() => { if (glow) glow.remove(); glow = null; }, 3500); },
+        clear,
+      });
     });
   }
   // 목공방: 계단 옆 점선 자리에 난간 기둥 꽂기 (쉽게 앞 2개, 보통 앞·가운데 4개, 어렵게 6개). 10/8 선생님: 실제 기둥은 길이가 같으니 키로 나누지 않음 - 같은 기둥이 어느 자리든 원근에 맞게 커지고 작아짐
@@ -8026,27 +8132,31 @@ G.s4 = (() => {
       const noBg = !ART('td_shopdoor_bg');
       if (noBg) { const d = S.at(G.el('div', 's4-door', S.B), 520, 60, 420, 780); d.style.background = '#7FB77E'; }
       const KN = [850, 470], MT = [[1150, 200], [1150, 430], [1150, 660]];   // 손잡이, 단추 자리 (높은 곳, 가운데, 낮은 곳)
-      const knob = S.at(G.el('div', 's4-knob', S.B), KN[0] - 35, KN[1] - 35);
+      const knob = noBg ? S.at(G.el('div', 's4-knob', S.B), KN[0] - 35, KN[1] - 35) : null;   // 10/8 선생님: 코드 그림 빼고 그림 속 둥근 손잡이를 씀
+      const KB = [940, 500];   // 그림 속 둥근 손잡이 자리
       if (noBg) MT.forEach(([x, y]) => S.at(G.el('div', 's4-mount', S.B), x - 45, y - 45));
-      const drawer = G.btn('s4-drawer', '', S.B, () => openDrawer(), '서랍'); S.at(drawer, 160, 660, 300, 170);
+      const drawer = G.btn(noBg ? 's4-drawer' : 's4-cab', '', S.B, () => openDrawer(), '서랍'); if (noBg) S.at(drawer, 160, 660, 300, 170); else S.at(drawer, 312, 612, 246, 236);   // 10/8 선생님: 그림 속 서랍장이 반짝이고, 누르면 손잡이 고르기
       let fin = false, opened = false;
       const NM = { lever: '막대 손잡이', knob: '둥근 손잡이', car: '장난감 차' };
       const PIC = { lever: ['td_lever', '<div style="width:150px;height:30px;background:#E6B54A;border:5px solid #8a6a0a;border-radius:15px"></div>'], knob: ['td_knob', '<div style="width:60px;height:60px;background:#E6B54A;border:5px solid #8a6a0a;border-radius:50%"></div>'], car: ['td_car', '<div style="width:90px;height:50px;background:#E8573F;border-radius:16px"></div>'] };
       let opts = [];
       function openDrawer() {
-        if (opened || fin || G.dialog.active) return; opened = true; G.help.poke(); drawer.classList.add('open'); G.audio.sfx('sfx_tap', 0.5);
+        if (opened || fin || G.dialog.active) return; opened = true; G.help.poke(); drawer.classList.add('open'); drawer.disabled = true; G.audio.sfx('sfx_tap', 0.5);
         opts = ITS.map((k, i) => { const b = G.btn('s4-choice', `<div class="s4-pic${ART(PIC[k][0]) ? ' art' : ''}" style="height:80px;display:flex;align-items:center">${artOr(PIC[k][0], PIC[k][1])}</div><span>${NM[k]}</span>`, S.B, () => pick(k, b), NM[k]); S.at(b, 120 + i * 230, 420 - (i % 2) * 0, 210, 190); b.dataset.k = k; return b; });
       }
       async function pick(k, b) {
         if (fin || G.dialog.active) return;
         if (k !== 'lever') { wob(b); S.say('TD03_yunseul_06'); return; }
         fin = true; G.help.off(); S.hush(); opts.forEach(o => o.remove());
-        knob.remove(); const lev = S.at(G.el('div', 's4-lever', S.B), KN[0] - 22, KN[1] - 22); G.audio.sfx('sfx_chime', 0.5); spark(lev, 8);
-        await G.wait(0.6); lev.style.transform = 'rotate(28deg)'; await G.wait(0.5); lev.style.transform = '';
+        let lev;
+        if (knob || !ART('td_lever')) { if (knob) knob.remove(); lev = S.at(G.el('div', 's4-lever', S.B), KN[0] - 22, KN[1] - 22); }
+        else { lev = S.at(G.el('div', 's4-leverimg', S.B, `<img src="${ART('td_lever')}" alt="">`), KB[0] - 159, KB[1] - 41, 200, 82); }   // 받은 막대 손잡이 그림, 둥근 손잡이 자리에서 문 안쪽으로
+        G.audio.sfx('sfx_chime', 0.5); spark(lev, 8);
+        await G.wait(0.6); lev.style.transform = lev.classList.contains('s4-leverimg') ? 'rotate(-28deg)' : 'rotate(28deg)'; await G.wait(0.5); lev.style.transform = '';
         await play(['TD03_yunseul_07', 'TD03_yunseul_08'], { ...dn, keep: true }); if (!ok()) return S.end();
         // 단추 높이: 어떤 답도 받아 줌
         const i = await G.dialog.choose(['TD03_ply_01', 'TD03_ply_02', 'TD03_ply_03'].map(v => ({ label: G.txt(v), icon: 'icon_good', voice: v })), true); if (!ok()) return S.end();
-        const tmp = S.at(G.el('div', 's4-btnon', S.B), MT[i][0] - 45, MT[i][1] - 45); G.audio.sfx('sfx_tap', 0.5);
+        const tmp = ART('item_button') ? S.at(G.el('div', 's4-btnimg', S.B, `<img src="${ART('item_button')}" alt="">`), MT[i][0] - 50, MT[i][1] - 50, 100, 100) : S.at(G.el('div', 's4-btnon', S.B), MT[i][0] - 45, MT[i][1] - 45); G.audio.sfx('sfx_tap', 0.5);
         await play(['TD03_rumi_04']); if (!ok()) return S.end();
         if (i !== 2) { await G.tween(0, 1, G.reduced() ? 0.2 : 0.7, k2 => { tmp.style.top = (MT[i][1] - 45 + (MT[2][1] - MT[i][1]) * k2) + 'px'; }, 'io'); }
         spark(tmp, 10); G.audio.sfx('sfx_sparkle', 0.6);
@@ -8755,7 +8865,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-08)';
-G.BUILT = '2026-10-08 22:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-08 22:56';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
