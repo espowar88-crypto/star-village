@@ -1915,7 +1915,8 @@ G.map = (() => {
     clearHint(); clearEnter();
     const from = Mp.node(G.st.place), to = p.node, g = G.gen;
     const names = G.mapPath(from, to), pts = names.map(nm => G.D.places.nodes[nm]);
-    if (names.length > 1) {
+    if (offNode()) pts.unshift([hero.x, hero.y]);   // 10/9 선생님: 주민 앞에 가 있던 자리에서 출발
+    if (pts.length > 1) {
       let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
       const W = G.D.places.walk, dur = Math.max(W.minSec, Math.min(W.maxSec, len / W.speed)), speed = len / dur;
       G.busy++;
@@ -1997,6 +1998,50 @@ G.map = (() => {
     Mp.lumiFree = false;
   };
 
+  // ---- 10/9 선생님: 주민을 누르면 주인공이 지도 길을 따라 그 앞까지 걸어감 (걸음 빠르기는 장소 걷기와 같음, 빠르게 모드·움직임 줄이기면 바로 옆에 섬) ----
+  function offNode() { const n = G.D.places.nodes[Mp.node(G.st.place)]; return !!(hero && n && Math.hypot(hero.x - n[0], hero.y - n[1]) > 3); }
+  function walkToVillager(w) {
+    if (!hero || !V) return Promise.resolve();
+    const N = G.D.places.nodes, n0 = Mp.node(G.st.place), off = offNode(), goal = [w.x, w.y];
+    const len = (q) => { let s = 0; for (let i = 1; i < q.length; i++) s += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]); return s; };
+    const proj = (pt) => { let b = null; for (const [a, c] of G.D.places.edges) { const A = N[a], C = N[c]; if (!A || !C) continue; const dx = C[0] - A[0], dy = C[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((pt[0] - A[0]) * dx + (pt[1] - A[1]) * dy) / L2)), p = [A[0] + dx * t, A[1] + dy * t], dd = Math.hypot(pt[0] - p[0], pt[1] - p[1]); if (!b || dd < b.dd) b = { a, c, p, dd }; } return b; };
+    const gp = proj(goal), hp = off ? proj([hero.x, hero.y]) : null, H = [hero.x, hero.y];
+    const starts = off ? (hp ? [hp.a, hp.c].map(nm => ({ nm, q: [H, hp.p, N[nm]] })) : [{ nm: n0, q: [H, N[n0]] }]) : [{ nm: n0, q: [H] }];
+    const cands = [];
+    for (const s of starts) for (const e of (gp ? [gp.a, gp.c] : [n0])) cands.push([...s.q, ...G.mapPath(s.nm, e).map(k => N[k]), ...(gp ? [gp.p] : []), goal]);
+    if (off && hp && gp && ((hp.a === gp.a && hp.c === gp.c))) cands.push([H, hp.p, gp.p, goal]);   // 같은 길 위
+    let q = cands.reduce((b, c) => (!b || len(c) < len(b)) ? c : b, null) || [H, goal];
+    q = q.filter((p, i) => i === 0 || Math.hypot(p[0] - q[i - 1][0], p[1] - q[i - 1][1]) > 1);
+    // 주민 바로 앞에서 멈춤
+    const STOP = 70; let total = len(q);
+    if (total <= STOP + 10) { hero.face(goal[0] - hero.x, goal[1] - hero.y); hero.frame = 8; hero.draw(); return Promise.resolve(); }
+    let keep = total - STOP; const pts = [q[0]];
+    for (let i = 1; i < q.length; i++) { const a = q[i - 1], b = q[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (keep <= L) { const k = keep / L; pts.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]); break; } keep -= L; pts.push(b); }
+    total = len(pts);
+    Mp.userCam = false; clearHint(); clearEnter();
+    const W = G.D.places.walk, dur = Math.max(0.3, Math.min(W.maxSec, total / W.speed)), speed = total / dur, g = G.gen;
+    const fin = () => { const e = pts[pts.length - 1]; hero.set(e[0], e[1]); hero.face(goal[0] - e[0], goal[1] - e[1]); hero.frame = 8; hero.draw(); };
+    if (G.fast() || G.reduced()) { fin(); return Promise.resolve(); }
+    G.busy++; walking = { skip: false };
+    return new Promise(res => {
+      let seg = 1, d = 0, t = 0, stepT = 0, stepN = 0;
+      const done = () => { off2(); if (g === G.gen && hero) fin(); walking = null; G.busy = Math.max(0, G.busy - 1); res(); };
+      const off2 = G.every(dt => {
+        if (!walking || !V || g !== G.gen) { off2(); G.busy = Math.max(0, G.busy - 1); res(); return; }
+        t += dt; d += speed * dt; stepT += dt;
+        while (seg < pts.length) {
+          const a = pts[seg - 1], b = pts[seg], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          if (d <= L) { const k = d / L; hero.set(a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k); hero.face(b[0] - a[0], b[1] - a[1]); break; }
+          d -= L; seg++;
+        }
+        if (seg >= pts.length) { done(); return; }
+        hero.frame = Math.floor(t * 10) % 8; hero.draw();
+        if (stepT > 0.4) { stepT = 0; G.audio.sfx(stepN++ % 2 ? 'sfx_step2' : 'sfx_step1', 0.35); }
+      });
+      offs.push(off2);
+    });
+  }
+
   // ---- 배경 주민 (GDD 8장): 단계마다 걷는 속도·멈춤·한숨 구름 ----
   function makeVillager(d, stage) {
     const w = V.walker(d.sheet, 'villager');
@@ -2011,7 +2056,10 @@ G.map = (() => {
       const id0 = stage >= 5 ? d.line.replace(/_a$/, '_b') : d.line;
       const ids = (G.p4 && G.p4.villagerLines && G.p4.villagerLines(d.id, id0, !!(gift && G.p4.villagerHas(d.id)))) || [id0];   // 10/6 소리의 별: 주인공이 먼저 묻고 주민이 줌
       const id = ids[ids.length - 1]; const L = G.D.dialogues[id]; if (!L) return;
-      v.pause = Math.max(v.pause, 5); w.frame = 8; w.face(hero.x - w.x, hero.y - w.y); w.draw();
+      bub = true; v.pause = 1e9; w.frame = 8; w.draw();
+      const g0 = G.gen; await walkToVillager(w); bub = null;   // 10/9 선생님: 주인공이 주민 앞까지 걸어간 뒤 대화
+      if (!V || g0 !== G.gen) return;
+      v.pause = 0; v.pause = Math.max(v.pause, 5); w.frame = 8; w.face(hero.x - w.x, hero.y - w.y); w.draw();
       if (G.D.portraits[d.id] && !G.dialog.active) {   // 10/1 선생님 배경 주민 일러스트: 대화창에 얼굴과 함께
         bub = true; v.pause = 1e9; await G.dialog.play(ids, { partner: d.id });
         if (gift && G.p4.villagerHas(d.id)) { await G.p4.villagerDust(d.id, w.el, V.fx, w.x, w.y - 120); gift.remove(); }
@@ -2159,8 +2207,9 @@ G.sceneView = (parent, id, o = {}) => {
   V.walkPath = (k, rect, w, d) => {
     const v = V.spr[k]; if (!v || !w || !w.path || w.path.length < 2) return V.walk(k, rect, d);
     if (G.reduced() || !d) return V.walk(k, rect, 0);
-    d = Math.max(3, d - (w.delay || 0));   // 늦게 출발한 사람은 조금 빨리 걸어 다 같이 자리 잡음
-    const P = w.path, kk = w.k, cw = 200 * kk, ch = 260 * kk, lu = k === 'hero' && V.lumi ? V.lumi : null;
+    d = Math.max(w.minD ?? 3, d - (w.delay || 0));   // 늦게 출발한 사람은 조금 빨리 걸어 다 같이 자리 잡음
+    const r0 = v.rect, c0 = [r0[0] + r0[2] / 2, r0[1] + r0[3] - 18], P = Math.hypot(c0[0] - w.path[0][0], c0[1] - w.path[0][1]) > 30 ? [c0, ...w.path] : w.path;   // 10/9: 인물 옆에 가 있던 주인공은 지금 자리에서 출발
+    const kk = w.k, cw = 200 * kk, ch = 260 * kk, lu = k === 'hero' && V.lumi ? V.lumi : null;
     const seg = []; let L = 0; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); seg.push(l); L += l; }
     const el = G.el('div', 'scene-walker', V.fx);
     Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(w.sheet)}")`, backgroundSize: `${1800 * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none', display: 'none' });
@@ -2352,6 +2401,7 @@ G.scene = (() => {
     if (!G.st.seen.includes(id + ':' + h.id)) G.st.seen.push(id + ':' + h.id);
     H.glow.classList.add('seen'); H.glow.classList.remove('hide');
     if (h.louder) G.audio.ambientBoost(h.louder, true);
+    if (h.id !== 'hero' && G.D.portraits[h.id] && V.spr[h.id]) { await heroToNpc(h.id); if (g !== G.gen || !V) { busy = false; return; } }   // 10/9 선생님: 인물 앞까지 걸어간 뒤 대화
     if (h.flow) {
       // 할 일 여러 개가 이어지는 대화·아이템·퍼즐 (flows.js)
       try { await G.flows[h.flow]({ S, V, H, g, complete, closeup: showCloseup, hideCloseup }); } catch (e) { console.error('흐름 오류', h.flow, e); G.dialog.close(); }
@@ -2384,6 +2434,16 @@ G.scene = (() => {
     // 10/1 선생님: 이미 끝낸 장소에 다시 들어와 누르면 진행이 멈춘 것처럼 보임 → 다음에 갈 곳을 알려 줌
     if (G.st.cleared.includes(id) && S.onClear && S.onClear.now) { const np = G.hud.nextPlace(); G.hud.say(np ? 'S92_now_' + np.id : S.onClear.now); }   // 10/1: 촌장에게 쪽지를 받은 뒤에는 도서관
     busy = false;
+  }
+  // 10/9 선생님: 인물을 누르면 주인공이 그 옆까지 픽셀 걸음으로 걸어감 (장면 걷기와 같은 빠르기, 빠르게 모드·움직임 줄이기면 바로 옆에 섬)
+  function heroToNpc(id) {
+    const hs = V.spr.hero, ns = V.spr[id];
+    if (!hs || !ns || hs.img.style.display === 'none' || ns.img.style.display === 'none') return Promise.resolve();
+    const a = hs.rect, b = ns.rect, foot = (r) => [r[0] + r[2] / 2, r[1] + r[3] - 18], fa = foot(a), fb = foot(b), side = fa[0] <= fb[0] ? -1 : 1;
+    const to = [Math.max(a[2] / 2, Math.min(V.W - a[2] / 2, fb[0] + side * (a[2] / 2 + b[2] / 2 - 50))), fb[1]], L = Math.hypot(to[0] - fa[0], to[1] - fa[1]);
+    if (L < 40) return Promise.resolve();
+    const r = [to[0] - a[2] / 2, to[1] + 18 - a[3], a[2], a[3]], d = G.fast() ? 0 : Math.min(4, Math.max(0.4, L / 300));
+    return V.walkPath('hero', r, { sheet: 'assets/chars/walk_hero.png', k: 1, fx: 100, fy: 212, foot: 14, minD: 0, path: [fa, to] }, d);
   }
   function popStar(el) { el.animate && el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.8)' }, { transform: 'scale(1)' }], { duration: 700, easing: 'ease-out' }); }
 
