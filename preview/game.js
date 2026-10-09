@@ -3130,7 +3130,8 @@ Object.assign(G.flows, {
     G.dialog.onLine = null; if (blocks) blocks.classList.remove('shine'); if (!ok()) return;
     await G.dialog.play(['S10_post_03'], { partner: 'post' }); if (!ok()) return;
     await p3WalkAway(V, S); if (!ok()) return;
-    await G.dialog.play(['S10_haesol_06'], { partner: 'haesol' }); if (!ok()) return;
+    await G.dialog.choose([{ label: G.txt('S10_ply_02'), icon: 'icon_good', voice: 'S10_ply_02' }], true); if (!ok()) return;   // 10/9 수정안: 돕기 전에 먼저 묻기, 거절도 괜찮다
+    await G.dialog.play(['S10_haesol_06', 'S10_haesol_07'], { partner: 'haesol' }); if (!ok()) return;
     G.st.env.guide = true;
     complete('plaza2_road');
   },
@@ -4086,7 +4087,8 @@ G.p4 = (() => {
       await G.cut.play('C10', { live: { V, S } }); if (!ok()) return;
       await G.dialog.play(['S10_post_03'], { partner: 'post' }); if (!ok()) return;
       await p3WalkAway(V, S); if (!ok()) return;
-      await G.dialog.play(['S10_haesol_06'], { partner: 'haesol' }); if (!ok()) return;
+      await G.dialog.choose([{ label: G.txt('S10_ply_02'), icon: 'icon_good', voice: 'S10_ply_02' }], true); if (!ok()) return;   // 10/9 수정안: 돕기 전에 먼저 묻기, 거절도 괜찮다
+      await G.dialog.play(['S10_haesol_06', 'S10_haesol_07'], { partner: 'haesol' }); if (!ok()) return;
       G.st.env.guide = true;
       complete('plaza2_road');
       if (!done('plaza2_look')) await G.flows.plaza2_look({ V, complete, g, auto: true });   // 10/6 선생님: 게시판 다시 보기 없이 바로 모두 모임
@@ -5324,7 +5326,9 @@ G.s2 = (() => {
       await play(['SD04_rumi_07']); if (!ok()) return;
       st.remove();
       await presentItem('piece_sound'); if (!ok()) return;
-      await play(['SD04_miru_13', 'SD04_miru_14', 'SD04_miru_15'], o); if (!ok()) return;
+      await play(['SD04_miru_13', 'SD04_miru_14'], o); if (!ok()) return;
+      await ask('SD04_ply_02', 'icon_good'); if (!ok()) return;   // 10/9 수정안: 먼저 묻기
+      await play(['SD04_miru_15'], o); if (!ok()) return;
       await colorIn(V); if (!ok()) return;
       complete('s2rest_star');
     }
@@ -6027,6 +6031,7 @@ G.s3 = (() => {
 .s3-relay-tray { position: absolute; display: flex; gap: 40px; align-items: center; justify-content: center; }
 .s3-opt { border: 6px solid #e0b96a; border-radius: 28px; background: #fffaf0; padding: 16px 26px; cursor: pointer; display: flex; gap: 10px; font-family: var(--f-title); font-size: 44px; color: var(--brown); box-shadow: 0 8px 0 #c9a45c; position: relative; }
 .s3-opt .g svg, .s3-opt .g img { width: 120px; height: 120px; display: block; }
+.s3-opt > img { width: 120px; height: 120px; object-fit: contain; display: block; }
 .s3-waitq { background: rgba(15, 18, 38, .35); }
 .s3-hour { position: relative; width: calc(var(--u) * 260); height: calc(var(--u) * 260); }
 .s3-hour img { position: absolute; inset: 22%; width: 56%; height: 56%; object-fit: contain; }
@@ -6998,13 +7003,13 @@ G.s3 = (() => {
         const u = await G.p4.useItem('piece_word', H.btn, { say, hint: 'WD05_rumi_04' }); if (!u || !ok()) return;
       }
       await starRise(V); if (!ok()) return;
-      await play(['WD05_chief_05', 'WD05_chief_06'], { partner: 'chief' }); if (!ok()) return;
+      // 10/9 수정안: WD05_chief_05·06 뺌 (촌장이 하랑이 카드로 직접 대답하는 장면이 대신함)
       if (!cleared('s3plaza')) G.st.cleared.push('s3plaza');
       complete('s3plaza_star'); if (!ok()) return;
       await ending();
     }
   };
-  // ---- 퍼즐 F: 말 전하기 릴레이. 하랑(카드) → 바우(손짓) → 모아(글) → 촌장(말). 같은 뜻을 골라 차례로 전함 ----
+  // ---- 퍼즐 F: 하랑이의 카드 초대에 모두가 자기 방법으로 대답. 바우(손짓)·모아(글)·촌장(카드). 10/9 수정안: 통역 사슬이 아니라 각자 하랑이에게 직접 대답 ----
   const GEST = {   // 손짓 그림 (선생님 그림 hand_<이름>이 오면 그 그림)
     bow: '<svg viewBox="0 0 100 100"><circle cx="62" cy="34" r="14" fill="#F6D2B4" stroke="#4A3B32" stroke-width="3"/><path d="M30 86 L40 50 Q48 40 60 46" stroke="#7DBBE3" stroke-width="16" fill="none" stroke-linecap="round"/><path d="M60 46 l12 10" stroke="#F6D2B4" stroke-width="7" stroke-linecap="round"/></svg>',
     hold: '<svg viewBox="0 0 100 100"><rect x="14" y="40" width="34" height="28" rx="12" fill="#F6D2B4" stroke="#4A3B32" stroke-width="3"/><rect x="52" y="40" width="34" height="28" rx="12" fill="#D9A27A" stroke="#4A3B32" stroke-width="3"/><path d="M44 54 h12" stroke="#4A3B32" stroke-width="3"/></svg>',
@@ -7023,7 +7028,7 @@ G.s3 = (() => {
       const sw = 1440 / who.length;
       const st = who.map((k, i) => {
         const x = 80 + sw * i, e = S.at(G.el('div', 's3-station', S.B, `<img class="pf" src="${G.asset(G.D.portraits[k].img)}" alt=""><div class="msg"></div>`), x, 50, sw - 40, 420);
-        if (i < who.length - 1) S.at(G.el('div', 's3-arrow', S.B, '<svg viewBox="0 0 60 40"><path d="M4 20 H44 M34 8 L52 20 L34 32" stroke="#F4A259" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'), x + sw - 60, 230);
+        if (i === 0) S.at(G.el('div', 's3-arrow', S.B, '<svg viewBox="0 0 60 40"><path d="M4 20 H44 M34 8 L52 20 L34 32" stroke="#F4A259" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'), x + sw - 60, 230);
         return { k, e, msg: e.querySelector('.msg') };
       });
       // 하랑이의 카드는 처음부터
@@ -7034,7 +7039,8 @@ G.s3 = (() => {
         tray.innerHTML = ''; opts = [];
         st.forEach((s, i) => s.e.classList.toggle('now', i === step));
         const k = st[step].k;
-        if (k === 'chief') { win(); return; }
+        if (k === 'chief') { S.say('WD05_chief_07'); const list = shuffle([R.chief.ok, ...R.chief.no.slice(0, easy ? 1 : 2)]);
+          opts = list.map(set => { const h = set.map(q => `<img src="${cardImg(q)}" alt="">`).join(''); const b = G.btn('s3-opt', h, tray, () => choose(b, set === R.chief.ok, h), '카드'); b.dataset.set = set.join(','); return b; }); }
         if (k === 'bau') { S.say('WD05_bau_02'); const list = shuffle([R.bau.ok, ...R.bau.no.slice(0, hard ? 2 : 1)]);
           opts = list.map(set => { const b = G.btn('s3-opt', set.map(q => `<span class="g">${gest(q)}</span>`).join(''), tray, () => choose(b, set === R.bau.ok, set.map(q => `<span class="g">${gest(q)}</span>`).join('')), '손짓'); return b; }); }
         if (k === 'moa') { S.say('WD05_moa_02'); const list = shuffle([R.moa.ok, ...R.moa.no.slice(0, easy ? 1 : hard ? 2 : 1)]);
@@ -7045,12 +7051,12 @@ G.s3 = (() => {
         if (fin || G.dialog.active) return; clear();
         if (!right) { wob(b); G.audio.sfx('sfx_tap', 0.4); S.say('WD05_rumi_02'); return; }
         G.audio.sfx('sfx_chime', 0.5, 1 + step * 0.1); st[step].msg.innerHTML = html; st[step].e.classList.add('on'); spark(st[step].e, 8);
-        step++; await G.wait(0.6); if (!ok()) return; show();
+        step++; await G.wait(0.6); if (!ok()) return; if (step >= st.length) { win(); return; } show();
       }
       async function win() { if (fin) return; fin = true; cur = null; G.help.off(); clear(); S.hush(); tray.innerHTML = ''; st[st.length - 1].e.classList.add('on'); G.audio.sfx('sfx_sparkle', 0.7); await G.wait(1.0); S.end(); res(ok()); }
       function clear() { if (arrow) arrow.remove(); arrow = null; opts.forEach(b => b.classList.remove('s3-hint')); }
-      const right = () => { const k = st[step] && st[step].k; return opts.find(b => k === 'bau' ? b.innerHTML.includes(gest(R.bau.ok[0]).slice(0, 40)) && b.innerHTML.includes(gest(R.bau.ok[2]).slice(0, 40)) : b.textContent === R.moa.ok); };
-      cur = { solve: () => { step = st.length - 1; show(); } };
+      const right = () => { const k = st[step] && st[step].k; return opts.find(b => k === 'chief' ? b.dataset.set === R.chief.ok.join(',') : k === 'bau' ? b.innerHTML.includes(gest(R.bau.ok[0]).slice(0, 40)) && b.innerHTML.includes(gest(R.bau.ok[2]).slice(0, 40)) : b.textContent === R.moa.ok); };
+      cur = { solve: () => { step = st.length; win(); } };
       G.help.set({ l1: () => S.say('WD05_rumi_02'), l2: () => { const b = right(); if (b && !arrow) arrow = arrowAt(S, b); }, l3: () => { const b = right(); if (b) b.classList.add('s3-hint'); }, clear });
       show();
     });
@@ -7548,6 +7554,8 @@ G.s4 = (() => {
       await play(['TD01_nuri_01', 'TD01_hero_02', 'TD01_nuri_02', 'TD01_nuri_03', 'TD01_nuri_04'], no); if (!ok()) return;
       await play(['TD01_rumi_03']); if (!ok()) return;
       if (!done('s4gate_path')) {   // 10/8 검토 보강: 언덕길에도 퍼즐 하나 (누리와 같이 갈 길 찾기)
+        await G.dialog.choose([{ label: G.txt('TD01_ply_02'), icon: 'icon_good', voice: 'TD01_ply_02' }], true); if (!ok()) return;   // 10/9 수정안: 돕기 전에 먼저 묻기
+        await play(['TD01_nuri_14'], no); if (!ok()) return;
         await play(['TD01_rumi_10']); if (!ok()) return;
         G.busy = Math.max(0, G.busy - 1); const w = await hillPath(); G.busy++; if (!ok() || !w) return;
         mark('s4gate_path'); await play(['TD01_nuri_12'], no); if (!ok()) return;
@@ -7595,6 +7603,7 @@ G.s4 = (() => {
       await play(['TD02_rumi_01']); if (!ok()) return;
       await play(['TD02_maru_01'], mo); if (!ok()) return;
       await play(['TD02_nuri_01'], no); if (!ok()) return;
+      await play(['TD02_maru_14'], mo); if (!ok()) return;   // 10/9 수정안: 누구나 열 수 있는 문(추)
       const w = await pulley(); if (!ok() || !w) return;
       if (V.spr.maru) { V.spr.maru.img.style.display = ''; V.spr.maru.img.animate && V.spr.maru.img.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 600 }); }
       await play(['TD02_maru_02', 'TD02_maru_03', 'TD02_maru_04'], mo); if (!ok()) return;
@@ -8047,7 +8056,9 @@ G.s4 = (() => {
       await play(['TD04_nuri_04', 'TD04_nuri_05'], no); if (!ok()) return;
       await play(['TD04_rumi_04']); if (!ok()) return;
       const w = await scope(); if (!ok() || !w) return;
-      await play(['TD04_rumi_05', 'TD04_nuri_06'], no); if (!ok()) return;
+      await play(['TD04_rumi_05']); if (!ok()) return;
+      await G.dialog.choose([{ label: G.txt('TD04_ply_07'), icon: 'icon_good', voice: 'TD04_ply_07' }], true); if (!ok()) return;   // 10/9 수정안: 돕기 전에 먼저 묻기
+      await play(['TD04_nuri_06'], no); if (!ok()) return;
       // 누리가 새 경사로로 내려가 별을 가져옴
       const n = V.spr.nuri && V.spr.nuri.img, rm = G.reduced();
       if (n) { await G.tween(1, 0, rm ? 0.2 : 0.8, v => { n.style.opacity = v; n.style.translate = `${(1 - v) * -120}px 0`; }); await G.wait(rm ? 0.3 : 1.6); await G.tween(0, 1, rm ? 0.2 : 0.8, v => { n.style.opacity = v; n.style.translate = `${(1 - v) * -120}px 0`; }); n.style.translate = ''; }
@@ -8706,7 +8717,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-09)';
-G.BUILT = '2026-10-09 07:37';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-09 08:55';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
