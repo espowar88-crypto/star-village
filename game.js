@@ -1653,9 +1653,9 @@ G.cut = (() => {
           await c.until(0.6); c.sfx('sfx_door', 0.9);
           await c.tween(0, 1, 2.2, k => {
             if (c.rm) { door.style.opacity = 1 - k; return; }
-            dl.style.transform = `perspective(${G.stage.W}px) rotateY(${-100 * k}deg)`; dr.style.transform = `perspective(${G.stage.W}px) rotateY(${100 * k}deg)`;
-            const fr = door.querySelector('.door-frame'); if (fr) fr.style.opacity = Math.min(1, (1 - k) / 0.35);   // 문이 거의 열리면 돌 테두리가 사라지며 도서관 안으로
+            dl.style.transform = `perspective(${G.stage.W}px) rotateY(${80 * k}deg)`; dr.style.transform = `perspective(${G.stage.W}px) rotateY(${-80 * k}deg)`;   // 10/9 선생님: 문짝은 안쪽으로 열려 돌 테두리 뒤에 숨음(테두리는 끝까지 그대로)
           }, 'io');
+          if (!c.rm) await c.tween(0, 1, 0.5, k => { door.style.opacity = 1 - k; door.style.transform = `scale(${1 + 0.12 * k})`; }, 'in');   // 열린 문 안으로 들어감
           door.remove();
         })(),
         (async () => {   // 빛이 쏟아지고 먼지가 반짝
