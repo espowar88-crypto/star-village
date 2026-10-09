@@ -1106,7 +1106,13 @@ G.dialog = (() => {
   // opts.partner: 오른쪽 인물 ('chief', 'post', 'bom', 'haesol'), opts.keep: 끝나도 창을 닫지 않음, opts.noPortraits: 인물 그림 없이
   Dl.play = async (ids, opts = {}) => {
     if (!ids || !ids.length) return;
-    open(opts.partner, opts.noPortraits);
+    // 10/9 선생님: 상대를 적지 않은 대화(장소 첫 방문 등)는 대사에서 상대를 찾음 (촌장 대사인데 루미 대화처럼 나오던 문제)
+    let partner = opts.partner;
+    if (!('partner' in opts) && !opts.noPortraits) {
+      const P = G.D.portraits || {};
+      partner = (ids.map(i => (G.D.dialogues[i] || {}).speaker).find(sp => sp && sp !== 'hero' && sp !== 'lumi' && P[sp])) || (Dl.active ? Dl.partner : null);
+    }
+    open(partner, opts.noPortraits);
     G.audio.preload(ids.slice(0, 3));
     for (let i = 0; i < ids.length; i++) {
       G.audio.preload(ids.slice(i + 1, i + 3));
