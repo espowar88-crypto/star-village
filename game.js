@@ -92,6 +92,7 @@ G.riseTrail = (parent, starEl, col = '#FFD66B', light = false) => {
     }
   };
   step.shift = (d) => { off = d; L.style.translate = `0 ${d}px`; };
+  step.reset = () => { lastG = lastS = lastP = -1; };   // 10/9: 오래 이어지는 잔상(첫 만남 루미)은 k를 0부터 다시
   step.end = () => { if (fired) burst(px, py, ps, light ? 8 : 16); setTimeout(() => L.remove(), 2600); };
   return step;
 };
@@ -1976,9 +1977,20 @@ G.map = (() => {
     G.audio.sfx('sfx_sparkle', 0.7);
     const tx = hero.x + 60, ty = hero.y - 150;
     let sx = lumiPos.x, sy = lumiPos.y;
-    if (o.catchMe) {   // 10/8 검토: 처음에 학생이 떨어지는 루미를 눌러서 받아 줌 (누를 때까지 주인공 위에 떠 있음, 30초 지나면 저절로)
+    // 10/9 선생님: 첫 만남 루미는 별 올리기처럼 별가루 잔상을 남기며 공처럼 통통 튀어 다님 (떨어져 헤매는 루미를 잡는 느낌). 움직임 줄이기면 예전처럼 떠 있기만
+    const rm = G.reduced(), BH = 110, BT = 0.8;   // 튀는 높이, 한 번 튀는 시간(초)
+    const tr = o.catchMe && !rm ? G.riseTrail(V.fx, lumi, '#FFD66B') : null, lsz = lumi.offsetWidth || 90;
+    let tk = 0; const offT = tr ? G.every(dt => { tk += dt / 12; if (tk > 0.9) { tk = 0; tr.reset(); } tr(tk, lumiPos.x, lumiPos.y, lsz); }) : null;
+    if (o.catchMe) {   // 10/8 검토: 처음에 학생이 떨어지는 루미를 눌러서 받아 줌 (누를 때까지 주인공 위에서 튀어 다님, 30초 지나면 저절로)
       const mx = tx, my = ty - 260;
-      await G.tween(0, 1, G.reduced() ? 0.3 : 1.6, k => { lumiPos.x = sx + (mx - sx) * k; lumiPos.y = sy + (my - sy) * k; placeLumi(); }, 'io');
+      await G.tween(0, 1, rm ? 0.3 : 1.6, k => { lumiPos.x = sx + (mx - sx) * k; lumiPos.y = sy + (my - sy) * k - (rm ? 0 : Math.abs(Math.sin(k * Math.PI * 2)) * BH); placeLumi(); }, 'io');
+      let wx = mx, dir = Math.random() < 0.5 ? 1 : -1, ph = 0;
+      const offW = rm ? null : G.every(dt => {
+        wx += dir * 95 * dt; if (wx > mx + 200) dir = -1; else if (wx < mx - 200) dir = 1;
+        ph += dt / BT; const b = Math.abs(Math.sin(ph * Math.PI)), sq = b < 0.12 ? 1 - (0.12 - b) * 1.2 : 1;   // 바닥에 닿을 때 살짝 납작
+        lumiPos.x = wx; lumiPos.y = my - b * BH;
+        lumi.style.transform = `translate(${lumiPos.x.toFixed(1)}px,${lumiPos.y.toFixed(1)}px) scale(${(2 - sq).toFixed(3)},${sq.toFixed(3)})`;
+      });
       lumi.classList.add('lumi-catch'); lumi.tabIndex = 0; lumi.setAttribute('role', 'button'); lumi.setAttribute('aria-label', '루미 받아 주기');
       const say = G.hud.say('S01_nar_10');
       await new Promise((done) => {
@@ -1988,13 +2000,15 @@ G.map = (() => {
         const t = setTimeout(fin, 30000);
         lumi.addEventListener('click', tap); lumi.addEventListener('keydown', key);
       });
+      if (offW) offW();
       lumi.classList.remove('lumi-catch'); lumi.removeAttribute('tabindex'); lumi.removeAttribute('role');
       G.audio.sfx('sfx_chime', 0.6); void say;
-      sx = lumiPos.x; sy = lumiPos.y;
+      sx = lumiPos.x; sy = lumiPos.y; placeLumi();
     }
     await G.tween(0, 1, G.reduced() ? 0.3 : 2.2, k => {
       lumiPos.x = sx + (tx - sx) * k; lumiPos.y = sy + (ty - sy) * k - Math.sin(k * Math.PI) * 160; placeLumi();
     }, 'io');
+    if (offT) { offT(); tr.end(); }
     Mp.lumiFree = false;
   };
 
