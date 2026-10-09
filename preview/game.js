@@ -8664,15 +8664,26 @@ G.teacher = (() => {
     choice(s, 'choiceOne', [[false, '두 번 누르면 선택 (읽어 주고 확인)'], [true, '한 번 누르면 선택']]);
 
     s = sec(p, '5. 챕터 바로 가기');
-    r = row(s);
-    for (const ch of G.D.story.chapters) {
-      const b = tb(ch.label, r, () => confirmJump(s, ch));   // 10/8 검토: 바로 가기는 지금 칸을 덮어쓰므로 한 번 더 묻고, 바뀌기 전 진행을 보관
-      if (!ch.ready || !G.st) b.disabled = true;
+    if (!T.chOpen) {   // 10/9 선생님: 챕터 바로 가기는 비밀번호(처음 881111)를 넣어야 열림, 한 번 열면 게임을 다시 켤 때까지 열려 있음
+      r = row(s);
+      const pw = G.el('input', '', r); pw.type = 'password'; pw.inputMode = 'numeric'; pw.autocomplete = 'off'; pw.placeholder = '비밀번호';
+      pw.style.cssText = 'font:inherit;font-size:22px;width:8em;padding:6px 12px;border-radius:12px;border:2px solid #b9a27a';
+      const msg = G.el('span', 't-note', r, '');
+      const go = () => { if (pw.value === String(G.store.get('teacherPw', '881111'))) { T.chOpen = true; render(); } else { pw.value = ''; msg.textContent = '비밀번호가 달라요.'; pw.focus(); } };
+      pw.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); if (e.key === 'Enter') go(); });
+      r.insertBefore(tb('열기', r, go), msg);
+      G.el('div', 't-note', s, '교사용 비밀번호를 넣으면 열려요.');
+    } else {
+      r = row(s);
+      for (const ch of G.D.story.chapters) {
+        const b = tb(ch.label, r, () => confirmJump(s, ch));   // 10/8 검토: 바로 가기는 지금 칸을 덮어쓰므로 한 번 더 묻고, 바뀌기 전 진행을 보관
+        if (!ch.ready || !G.st) b.disabled = true;
+      }
+      if (G.p4) { r = row(s); const b = tb('이 퍼즐 바로 풀기', r, () => T.close(() => G.p4.skip())); if (!G.p4.can()) b.disabled = true; }   // 10/1 프로토타입 4: 지금 하는 퍼즐·자물쇠를 바로 풂
+      const bak = G.st && G.store.get('slot' + G.st.slot + '_bak', null);
+      if (bak) { r = row(s); tb('바로 가기 전으로 되돌리기', r, () => { G.store.set('slot' + bak.slot, bak); G.store.del('slot' + bak.slot + '_bak'); try { sessionStorage.setItem('bs_play', String(bak.slot)); } catch (_) { } location.reload(); }); }
+      G.el('div', 't-note', s, G.st ? '고른 곳 앞까지의 할 일, 아이템, 마을 단계가 채워진 채로 시작해요.' : '먼저 저장 칸 번호를 고른 뒤에 쓸 수 있어요.');
     }
-    if (G.p4) { r = row(s); const b = tb('이 퍼즐 바로 풀기', r, () => T.close(() => G.p4.skip())); if (!G.p4.can()) b.disabled = true; }   // 10/1 프로토타입 4: 지금 하는 퍼즐·자물쇠를 바로 풂
-    const bak = G.st && G.store.get('slot' + G.st.slot + '_bak', null);
-    if (bak) { r = row(s); tb('바로 가기 전으로 되돌리기', r, () => { G.store.set('slot' + bak.slot, bak); G.store.del('slot' + bak.slot + '_bak'); try { sessionStorage.setItem('bs_play', String(bak.slot)); } catch (_) { } location.reload(); }); }
-    G.el('div', 't-note', s, G.st ? '고른 곳 앞까지의 할 일, 아이템, 마을 단계가 채워진 채로 시작해요.' : '먼저 저장 칸 번호를 고른 뒤에 쓸 수 있어요.');
 
     s = sec(p, '6. 연출');
     r = row(s); G.el('span', '', r, '다시 보기:');
