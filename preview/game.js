@@ -3475,8 +3475,9 @@ G.p4 = (() => {
   function screen(cls, task) {
     const root = G.el('div', 'puzzle p4 ' + cls, G.$('#world'));
     const top = G.el('div', 'pz-top', root);
-    if (task) { const t = G.el('button', 'quest pz-task', top); t.type = 'button'; G.el('div', 'q2', t, G.txt(task)); G.onTap(t, () => G.audio.voice(task)); }
+    if (task) { const t = G.el('button', 'quest pz-task', top); t.type = 'button'; const tl = G.el('img', 'pz-tlumi', t); tl.src = G.asset('assets/chars/lumi.png'); tl.alt = ''; G.el('div', 'q2', t, G.txt(task)); G.onTap(t, () => G.audio.voice(task)); }
     const sayEl = G.el('div', 'pz-say', top); sayEl.style.display = 'none';
+    placeBg(root);
     const bl = G.el('div', 'pz-bl', root);
     const lb = G.el('button', 'lumi-btn', bl); lb.type = 'button'; lb.setAttribute('aria-label', '루미 도움');
     const li = G.el('img', '', lb); li.src = G.asset('assets/chars/lumi.png'); li.alt = ''; G.el('span', '', lb, '루미');
@@ -3492,11 +3493,21 @@ G.p4 = (() => {
     S.end = () => { w(); G.resizers.delete(re); root.remove(); G.help.off(); cur = null; if (hud) G.hud.hide(false); };
     return S;
   }
+  // 10/9 개선 2: 퍼즐 화면 뒤에 지금 장면 그림을 흐리게 깖 (작게 줄였다 키워 흐림, 새 그림 없음). 못 읽으면 그대로 광장
+  const bgCache = {};
+  function placeBg(root) {
+    const im = [...document.querySelectorAll('#world img.bg')].filter(i => i.complete && i.naturalWidth && getComputedStyle(i).opacity > 0.5).pop();
+    if (!im) return;
+    try {
+      if (!bgCache[im.src]) { const c = document.createElement('canvas'); c.width = 96; c.height = 54; c.getContext('2d').drawImage(im, 0, 0, 96, 54); bgCache[im.src] = c.toDataURL('image/jpeg', 0.8); }
+      root.style.setProperty('--bg-plaza', `url("${bgCache[im.src]}")`);
+    } catch (_) { }
+  }
   // 그림 판 (W x H 판 좌표) → 화면 네모 안에 맞춤
   function board(parent, W, H, cls) {
     const el = G.el('div', 'p4-board ' + (cls || ''), parent); el.style.width = W + 'px'; el.style.height = H + 'px';
     const B = { el, W, H, k: 1, x: 0, y: 0 };
-    B.fit = ([x, y, w, h], cover) => { const k = (cover ? Math.max : Math.min)(w / W, h / H); B.k = k; B.x = x + (w - W * k) / 2; B.y = y + (h - H * k) / 2; el.style.transform = `translate(${B.x.toFixed(1)}px,${B.y.toFixed(1)}px) scale(${k.toFixed(4)})`; };
+    B.fit = (r, cover) => { if (r.alt && !cover && Math.min(r.alt[2] / W, r.alt[3] / H) > Math.min(r[2] / W, r[3] / H)) r = r.alt; const [x, y, w, h] = r; const k = (cover ? Math.max : Math.min)(w / W, h / H); B.k = k; B.x = x + (w - W * k) / 2; B.y = y + (h - H * k) / 2; el.style.transform = `translate(${B.x.toFixed(1)}px,${B.y.toFixed(1)}px) scale(${k.toFixed(4)})`; };
     B.at = (e) => { const r = el.getBoundingClientRect(); return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height]; };   // 화면 → 판 좌표
     return B;
   }
@@ -3505,7 +3516,12 @@ G.p4 = (() => {
     const { W, H, u } = G.stage, rr = S.root.getBoundingClientRect();
     const t = S.top.getBoundingClientRect().bottom - rr.top + u * 12, box = G.$('.dlg-box');
     const b = G.dialog.active && box ? rr.bottom - box.getBoundingClientRect().top + u * 16 : u * 30;
-    return [u * 30, t, W - u * 60, Math.max(60, H - t - b)];
+    const a = [u * 30, t, W - u * 60, Math.max(60, H - t - b)];
+    // 10/9 개선 1: 왼쪽 아래 루미 단추를 판이 덮지 않게, 아래를 비우거나(a) 왼쪽을 비운(alt) 자리 중 판이 더 크게 남는 쪽을 B.fit이 고름
+    const lb = !G.dialog.active && S.root.querySelector('.pz-bl .lumi-btn');
+    if (lb && lb.offsetParent) { const r = lb.getBoundingClientRect(), top = r.top - rr.top - u * 10, right = r.right - rr.left + u * 14;
+      if (top < a[1] + a[3]) { const alt = [right, a[1], W - right - u * 30, a[3]]; a[3] = Math.max(60, top - a[1]); a.alt = alt; } }
+    return a;
   }
   const arrowAt = (parent, x, y) => { const a = G.el('div', 'arrow p4-arrow', parent, G.arrowHtml()); a.style.left = x + 'px'; a.style.top = y + 'px'; return a; };
   const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -3611,6 +3627,7 @@ G.p4 = (() => {
   // ---- 10/9 수정안 3단계: 다온의 쉬운 안내판. 그림 쪽지 세 장 가운데 알맞은 하나를 안내판에 끌어다 붙임(쉽게는 눌러도 됨)
   //      다른 그림이면 살짝 흔들리고 다온이 한 번 더 권함(실패음 없음). 그림이 아직 없으면 건너뜀 ----
   const GUIDE = { road: ['guide_books', 'guide_shoe', 'guide_umbrella'], sound: ['guide_rest', 'guide_drum', 'guide_run'], word: ['guide_tea', 'guide_ice', 'guide_ball'], door: ['guide_ramp', 'guide_stairs', 'guide_ladder'] };   // 첫째가 알맞은 그림
+  const GPLACE = { road: '도서관', sound: '공연장', word: '찻집', door: '꽃집' };
   P.daonGuide = (key, ask, yes) => new Promise(async (res) => {
     const set = GUIDE[key]; if (!set || !set.every(a => G.art(a))) return res(true);
     const g = G.gen, ok = () => g === G.gen, easy = !G.lv('normal');
@@ -3618,11 +3635,12 @@ G.p4 = (() => {
     G.dialog.close();
     const S = screen('p4-guide', 'S90_task_guide'), B = board(S.root, 1400, 820, 'p4-gboard');
     const sign = G.el('div', 'p4-gsign', B.el); if (G.art('board_front')) { sign.classList.add('art'); sign.style.borderImageSource = `url("${G.art('board_front')}")`; }
-    const slot = G.el('div', 'p4-gslot', sign); G.el('div', 'p4-glabel', sign, '쉬운 안내판');
+    const slot = G.el('div', 'p4-gslot', sign); if (G.art('slot_frame')) { slot.classList.add('art'); slot.style.backgroundImage = `url("${G.art('slot_frame')}")`; } G.el('div', 'p4-glabel', sign, GPLACE[key] + ' 안내판');
+    const dn = G.el('img', 'p4-gdaon', B.el); dn.src = G.asset('assets/scenes/plaza2_daon.png'); dn.alt = '다온';
     let fin = false, arrow = null;
     const notes = shuffle(set.map((a, i) => ({ a, right: i === 0 }))).map((o, k) => {
       const b = G.el('button', 'p4-gnote', B.el, G.artImg(o.a) || ''); b.type = 'button'; b.setAttribute('aria-label', '그림 쪽지');
-      Object.assign(b.style, { left: (730 + k * 220) + 'px', top: '300px' }); o.b = b;
+      Object.assign(b.style, { left: (730 + k * 215) + 'px', top: '290px' }); o.b = b;
       P.dragTo(b, () => [slot], () => pick(o), { can: () => !fin });
       G.onTap(b, () => { if (easy) pick(o); else S.say('S90_task_guide'); });
       return o;
@@ -3657,14 +3675,14 @@ G.p4 = (() => {
     const g = G.gen, ok = () => g === G.gen;
     const S = screen('p4-sign', task), B = board(S.root, 1200, 760, 'p4-sboard');
     const card = G.el('button', 'p4-scard', B.el); card.type = 'button';
-    const name = G.el('div', 'p4-sname', B.el), dots = G.el('div', 'p4-sdots', B.el, list.map(() => '<i></i>').join(''));
+    const name = G.el('div', 'p4-sname', B.el), dots = G.el('div', 'p4-sdots', B.el, list.map(() => '<i>' + G.svgDot(false) + '</i>').join(''));
     let i = -1, fin = false, arrow = null;
     const yes = G.btn('pill gold p4-syes', '했어요', B.el, () => next());
     G.onTap(card, () => { if (i >= 0) G.audio.voice(list[i][1]); });
     function clear() { if (arrow) arrow.remove(); arrow = null; yes.classList.remove('hint'); }
     async function next() {
       if (fin || G.dialog.active) return; clear();
-      if (i >= 0) { dots.children[i].classList.add('on'); G.audio.sfx('sfx_click', 0.6); }
+      if (i >= 0) { dots.children[i].classList.add('on'); dots.children[i].innerHTML = G.svgDot(true); G.audio.sfx('sfx_click', 0.6); }
       if (++i >= list.length) return win();
       card.innerHTML = G.artImg(list[i][0]) || ''; name.textContent = G.txt(list[i][1]);
       yes.disabled = true; await G.audio.voice(list[i][1]); await G.wait(0.6); if (!ok()) return; yes.disabled = false;
@@ -3686,6 +3704,13 @@ G.p4 = (() => {
 
   // ---- 10/9 수정안 3단계: 전과 후 그림. 같은 장면 두 장을 겹치고 가운데 막대 손잡이를 옆으로 끌면 바뀐 모습(후)이 드러남
   //      거의 끝까지 끌면 끝. 쉽게는 손잡이를 누르면 저절로 끝까지. 그림이 아직 없으면 건너뜀 ----
+  // 10/9 개선 4: 끝까지 끈 뒤 바뀐 곳을 테두리 빛으로 하나씩 짚음 (그림 비율 [x, y, w, h], 새 그림 없음)
+  const BASPOT = {
+    board_after: [[.044, .782, .92, .124], [.375, .216, .25, .38], [.437, .639, .125, .073], [.587, .553, .063, .136]],
+    s2hall_after: [[.025, .42, .225, .52], [.27, .42, .27, .36], [.6875, .19, .056, .15]],
+    s3cafe_after: [[.6, .083, .1, .28], [.4375, .556, .0875, .139]],
+    s4flower_after: [[.6, .667, .125, .167], [.7375, .222, .05, .444], [.827, .426, .03, .074]],
+  };
   P.beforeAfter = (before, after, done) => new Promise(async (res) => {
     if (!G.art(before) || !G.art(after)) return res(true);
     const g = G.gen, ok = () => g === G.gen, easy = !G.lv('normal');
@@ -3696,7 +3721,8 @@ G.p4 = (() => {
     const a = G.el('img', 'p4-baimg', B.el); a.src = G.art(before); a.alt = ''; a.style.width = W + 'px'; a.style.height = H + 'px';
     const wrap = G.el('div', 'p4-bawrap', B.el), b = G.el('img', 'p4-baimg', wrap); b.src = G.art(after); b.alt = ''; b.style.width = W + 'px'; b.style.height = H + 'px';
     G.el('span', 'p4-batag l', B.el, '바뀐 뒤'); G.el('span', 'p4-batag r', B.el, '바뀌기 전');
-    const bar = G.el('div', 'p4-babar', B.el), knob = G.el('button', 'p4-baknob', bar, '<i class="l"></i><i class="r"></i>'); knob.type = 'button'; knob.setAttribute('aria-label', '막대 손잡이');
+    const bar = G.el('div', 'p4-babar', B.el), knob = G.el('button', 'p4-baknob', bar, G.artImg('ba_knob') || '<i class="l"></i><i class="r"></i>');
+    if (G.art('ba_knob')) knob.classList.add('art'); if (G.art('ba_bar')) { bar.classList.add('art'); bar.style.setProperty('--babar', `url("${G.art('ba_bar')}")`); } knob.type = 'button'; knob.setAttribute('aria-label', '막대 손잡이');
     let p = 0.06, fin = false, drag = null, arrow = null;
     const set = (v) => { p = Math.max(0.06, Math.min(1, v)); wrap.style.width = (p * W) + 'px'; bar.style.left = (p * W) + 'px'; };
     set(p);
@@ -3710,6 +3736,8 @@ G.p4 = (() => {
       if (fin) return; fin = true; drag = null; cur = null; G.help.off(); clear();
       const p0 = p; await G.tween(0, 1, G.reduced() ? 0.15 : 0.6, k => set(p0 + (1 - p0) * k), 'io'); if (!ok()) return res(false);
       bar.style.opacity = '0'; G.audio.sfx('sfx_sparkle', 0.8);
+      for (const [x, y, w, h] of BASPOT[after] || []) { const e = G.el('div', 'p4-baspot', B.el); Object.assign(e.style, { left: x * W + 'px', top: y * H + 'px', width: w * W + 'px', height: h * H + 'px' });
+        e.animate && e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, fill: 'forwards' }); G.audio.sfx('sfx_chime', 0.35); await G.wait(G.reduced() ? 0.3 : 0.8); if (!ok()) return res(false); }
       if (done) await G.dialog.play([done]); if (!ok()) return res(false);
       await G.wait(0.4); S.end(); res(ok());
     }
@@ -5496,7 +5524,7 @@ G.s2 = (() => {
       await presentItem('piece_sound'); if (!ok()) return;
       await play(['SD04_miru_13', 'SD04_miru_14'], o); if (!ok()) return;
       if (!await G.p4.askHelp(V, 'miru', 'SD04_ply_02')) return;   // 10/9 수정안: 먼저 묻기
-      await play(['SD04_miru_15'], o); if (!ok()) return;
+      await play(['SD04_miru_15', 'SD04_miru_20'], o); if (!ok()) return;   // 10/9 개선 6: 미루가 조용한 길 안내
       await colorIn(V); if (!ok()) return;
       complete('s2rest_star');
     }
@@ -5602,6 +5630,7 @@ G.s2 = (() => {
     const { S, V, H, g, complete } = ctx, ok = () => g === G.gen, id = H.def.id;
     if (id === 'duri') {
       if (done('s2plaza_concert')) { await play(['SD05_duri_02'], { partner: 'duri' }); return; }
+      await play(['SD04_rumi_21']); if (!ok()) return;   // 10/9 개선 6
       await play(['SD05_duri_01'], { partner: 'duri' }); if (!ok()) return;
       await play(['SD05_miru_01'], { partner: 'miru' }); if (!ok()) return;
       // B5 (10/5): 미루를 위해 음악회를 바꾸는 장면
@@ -6301,7 +6330,7 @@ G.s3 = (() => {
       }
       // 북쪽 입구: 말풍선이 실처럼 엉킴
       await camTo(V, D3().gate[0], D3().gate[1], 1.8); if (!ok()) return;
-      await play(['WD01_rumi_04']); if (!ok()) return;
+      await play(['WD01_rumi_04', 'WD01_rumi_30']); if (!ok()) return;   // 10/9 개선 6: 퍼즐 까닭
       const won = await tangle(); if (!ok() || !won) return;
       await play(['WD01_rumi_07']); if (!ok()) return;
       await play(['WD01_v5_02'], { partner: 'v5' }); if (!ok()) return;
@@ -6464,7 +6493,7 @@ G.s3 = (() => {
     }
     if (id === 'window') {
       if (done('s3cafe_window')) { await play(['WD02_rumi_11']); return; }
-      await play(['WD02_rumi_10']); if (!ok()) return;
+      await play(['WD02_rumi_30', 'WD02_rumi_10']); if (!ok()) return;   // 10/9 개선 6: 퍼즐 까닭
       const w = await rub(); if (!ok() || !w) return;
       await play(['WD02_rumi_11']); if (!ok()) return;
       await presentItem('codeA'); if (!ok()) return;
@@ -6645,7 +6674,7 @@ G.s3 = (() => {
     if (id === 'bau') { await play(['WD03_bau_04'], o); return; }
     if (id === 'sign') {
       if (done('s3dock_sign')) { await play(['WD03_rumi_08']); return; }
-      await play(['WD03_rumi_03', 'WD03_rumi_04']); if (!ok()) return;
+      await play(['WD03_rumi_03', 'WD03_rumi_32', 'WD03_rumi_04']); if (!ok()) return;   // 10/9 개선 6: 퍼즐 까닭
       const w = await sign(); if (!ok() || !w) return;
       await ask('WD03_ply_01', 'icon_star'); if (!ok()) return;
       complete('s3dock_sign');
@@ -6962,7 +6991,8 @@ G.s3 = (() => {
       await play(['WD04_rumi_16']); if (!ok()) return;
       st.remove();
       await presentItem('piece_word'); if (!ok()) return;
-      await play(['WD04_harang_12'], o); if (!ok()) return;
+      await play(['WD04_harang_12', 'WD04_harang_20'], o); if (!ok()) return;
+      await play(['WD04_rumi_22']); if (!ok()) return;   // 10/9 개선 6: 하랑이 카드로 지름길 안내
       await colorIn(V); if (!ok()) return;
       complete('s3h_star');
     }
@@ -7978,7 +8008,7 @@ G.s4 = (() => {
         pud = S.at(G.el('div', 's4-pud', S.B, `<img src="${ART('td_puddle')}" alt="">`), 1100, 560, 300, 150); pud.dataset.t = '0.33';
         zone = S.at(G.el('div', 's4-slot', S.B), 1180, 700, 400, 190);
         G.p4.dragTo(pud, () => [zone], () => { if (!pud || fin) return; G.audio.sfx('sfx_chime', 0.5); S.at(pud, 1230, 730, 300, 150); pud.classList.add('gone'); pud = null; zone.classList.remove('s3-hint'); G.help.poke(); }, { can: () => !fin && !!pud && (stuck || (duo && !busy)) });
-        if (duo) { tags.push(S.at(G.el('div', 's4-duo', S.B, '친구 1 · 웅덩이 치우기'), 1080, 500)); tags.push(S.at(G.el('div', 's4-duo', S.B, '친구 2 · 차 몰기'), 640, 830)); }
+        if (duo) { tags.push(S.at(G.el('div', 's4-duo', S.B, '친구 1: 웅덩이 치우기'), 1080, 500)); tags.push(S.at(G.el('div', 's4-duo', S.B, '친구 2: 차 몰기'), 640, 830)); }
       }
       const pudT = 0.33;
       S.say('TD01_rumi_10');
@@ -8242,7 +8272,7 @@ G.s4 = (() => {
     }
     if (id === 'scope') {
       if (done('s4view_scope')) { await play(['TD04_nuri_07'], no); return; }
-      await play(['TD04_nuri_04', 'TD04_nuri_05'], no); if (!ok()) return;
+      await play(['TD04_nuri_04', 'TD04_nuri_05', 'TD04_nuri_20'], no); if (!ok()) return;   // 10/9 개선 6: 앉은 눈높이 까닭
       await play(['TD04_rumi_04']); if (!ok()) return;
       const w = await scope(); if (!ok() || !w) return;
       await play(['TD04_rumi_05']); if (!ok()) return;
@@ -8912,7 +8942,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-09)';
-G.BUILT = '2026-10-09 11:44';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-09 18:06';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
