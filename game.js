@@ -8853,6 +8853,7 @@ G.s4 = (() => {
     // 밤 덧칠·구름은 판 하나씩(곱하기, 다시 그리지 않음), 빛은 캔버스(밝게, 30번/초)
     const nightEl = G.el('div', 'mfx-night', layer), add = G.el('canvas', 'mfx-add', layer);
     const ac = add.getContext('2d');
+    const lc = document.createElement('canvas'), lx = lc.getContext('2d');   // 10/11 가로등·창문·루미 빛만 따로(가려지는 조각에도 같은 빛을 그리려고)
     let cw = 0, ch = 0, vx0 = 0, vy0 = 0, sc = 1, vw = 1, vh = 1;
     // ---- 풀밭 칸 ----
     const gbits = Uint8Array.from(atob(D.grass), c => c.charCodeAt(0));
@@ -8902,9 +8903,13 @@ G.s4 = (() => {
     }
 
     // ---- 가려지는 곳(나무·집을 인물 위에 다시 그린 조각)에도 같은 밤 덧칠 ----
-    V.fxPatch = (c) => {
+    // 10/11 선생님(두리 단장 둘레 네모): 조각에는 밤 덧칠만 있고 구름·창문 불빛·가로등 바닥빛이 없어 둘레와 밝기가 달라 네모로 보였음 → 같은 순서로 모두 그림
+    V.fxPatch = (c, x0, y0) => {
       if (!V.night) return;
-      c.globalCompositeOperation = 'multiply'; c.globalAlpha = V.night; c.fillStyle = 'rgb(120,128,190)'; c.fillRect(0, 0, 100, 130); c.globalAlpha = 1;
+      c.globalCompositeOperation = 'multiply'; c.globalAlpha = V.night; c.fillStyle = 'rgb(120,128,190)'; c.fillRect(0, 0, 100, 130);
+      for (const k of clouds) { if (Math.abs(k.x - x0 - 50) > k.w / 2 + 60 || Math.abs(k.y - y0 - 65) > k.w / 4 + 70) continue; c.save(); c.translate(k.x - x0, k.y - y0); c.scale(1, 0.5); c.globalAlpha = 0.28; c.drawImage(glow(70, 80, 130), -k.w / 2, -k.w / 2, k.w, k.w); c.restore(); }
+      if (cw) { c.globalCompositeOperation = 'screen'; c.globalAlpha = 1; c.drawImage(lc, (x0 - vx0) * sc, (y0 - vy0) * sc, 100 * sc, 130 * sc, 0, 0, 100, 130); }
+      c.globalAlpha = 1;
     };
 
     // ---- A1 루미: 주인공 둘레를 돌고, 가끔 갈 곳 쪽으로 날아가 알려 줌. 지나간 자리에 별가루 ----
@@ -8934,7 +8939,7 @@ G.s4 = (() => {
 
     // ---- 매 장면 ----
     const stop = G.every((dt) => {
-      if (!V.el.isConnected) { if (V.fxSeen) { stop(); add.width = add.height = 0; } return; }   // 10/10: 지도를 떠나면 빛 캔버스를 비움(휴대폰 메모리)
+      if (!V.el.isConnected) { if (V.fxSeen) { stop(); add.width = add.height = lc.width = lc.height = 0; } return; }   // 10/10: 지도를 떠나면 빛 캔버스를 비움(휴대폰 메모리)
       V.fxSeen = true;
       const { W, H, ws } = G.stage; if (!W) return;
       if (off()) { if (layer.style.display !== 'none') { layer.style.display = 'none'; V.night = 0; for (const w of V.walkers) relight(w); } return; }
@@ -8947,7 +8952,7 @@ G.s4 = (() => {
       // 보이는 곳
       const s = ws * V.cam.z; vw = W / s; vh = H / s; vx0 = V.cam.x - vw / 2; vy0 = V.cam.y - vh / 2;
       const q = Math.min(0.75, 700 / W), nw = Math.round(W * q), nh = Math.round(H * q);
-      if (nw !== cw || nh !== ch) { cw = add.width = nw; ch = add.height = nh; }
+      if (nw !== cw || nh !== ch) { cw = add.width = lc.width = nw; ch = add.height = lc.height = nh; }
       sc = cw / vw;
       add.style.transform = `translate(${vx0.toFixed(1)}px,${vy0.toFixed(1)}px) scale(${(vw / cw).toFixed(5)})`;
       // A6 별을 되찾을수록 별똥별이 자주, 8개면 새벽빛
@@ -8965,6 +8970,8 @@ G.s4 = (() => {
       ac.setTransform(1, 0, 0, 1, 0, 0); ac.globalAlpha = 1; ac.globalCompositeOperation = 'source-over'; ac.clearRect(0, 0, cw, ch);
       ac.setTransform(sc, 0, 0, sc, -vx0 * sc, -vy0 * sc); ac.globalCompositeOperation = 'lighter';
       const dark = V.night > 0;
+      lx.setTransform(1, 0, 0, 1, 0, 0); lx.globalAlpha = 1; lx.globalCompositeOperation = 'source-over'; lx.clearRect(0, 0, cw, ch);
+      lx.setTransform(sc, 0, 0, sc, -vx0 * sc, -vy0 * sc); lx.globalCompositeOperation = 'lighter';
       if (dark) {
         // 가로등 바닥빛 (살짝 흔들림)
         const gl = glow(255, 190, 110), gb = glow(255, 236, 190);
@@ -8972,20 +8979,21 @@ G.s4 = (() => {
           if (!l.el.classList.contains('on')) continue; const [x, y] = l.def.at; if (!inView(x, y, 260)) continue;
           const lf = litF(x, y); if (lf <= 0) continue;
           const fl = rm ? 0.92 : 0.9 + Math.sin(T * 3 + x) * 0.05 + Math.sin(T * 7.3 + y) * 0.03, R = 230 * fl;
-          ac.globalAlpha = 0.32 * lf; ac.drawImage(gl, x - R, y + 60 - R * 0.62, R * 2, R * 1.24);
-          ac.globalAlpha = 0.7 * lf; ac.drawImage(gb, x - 46 * fl, y - 4 - 46 * fl, 92 * fl, 92 * fl);
+          lx.globalAlpha = 0.32 * lf; lx.drawImage(gl, x - R, y + 60 - R * 0.62, R * 2, R * 1.24);
+          lx.globalAlpha = 0.7 * lf; lx.drawImage(gb, x - 46 * fl, y - 4 - 46 * fl, 92 * fl, 92 * fl);
         }
         // 창문 불빛: 색이 돌아온 곳만
         const gw = glow(255, 190, 100);
         D.windows.forEach(([x, y], i) => {
           if (!inView(x, y, 30)) return;
           const on = V.colorAlphaAt(x, y) * litF(x, y) * (rm ? 0.85 : 0.75 + 0.25 * Math.sin(T * 0.7 + i * 1.7)); if (on < 0.02) return;
-          ac.globalAlpha = 0.8 * on; ac.drawImage(gw, x - 26, y - 26, 52, 52);
+          lx.globalAlpha = 0.8 * on; lx.drawImage(gw, x - 26, y - 26, 52, 52);
         });
         // 루미 빛
         const lu = V.fxLumi && V.fxLumi();
-        if (lu && inView(lu.x, lu.y, 190)) { ac.globalAlpha = 0.45; ac.drawImage(glow(255, 236, 160), lu.x - 190, lu.y - 190, 380, 380); }
+        if (lu && inView(lu.x, lu.y, 190)) { lx.globalAlpha = 0.45; lx.drawImage(glow(255, 236, 160), lu.x - 190, lu.y - 190, 380, 380); }
       }
+      ac.setTransform(1, 0, 0, 1, 0, 0); ac.globalAlpha = 1; ac.drawImage(lc, 0, 0); ac.setTransform(sc, 0, 0, sc, -vx0 * sc, -vy0 * sc);
       if (!rm) {
         // 물 반짝임
         ac.fillStyle = 'rgb(220,235,255)';
@@ -9054,7 +9062,7 @@ G.s4 = (() => {
       ac.globalAlpha = 1; ac.globalCompositeOperation = 'source-over';
 
       // ---- 인물 빛 받기 (0.2초마다), 가려진 조각은 구름이 지나가니 가끔 다시 ----
-      litT -= dt; if (litT < 0) { litT = 0.2; for (const w of V.walkers) relight(w); }
+      litT -= dt; if (litT < 0) { litT = 0.2; for (const w of V.walkers) { relight(w); if (w.hid) V.occDirty(w); } }   // 가려진 조각도 빛·구름이 바뀌니 다시
       // A3 물소리: 주인공이 물가에 가까울수록 크게
       sndT -= dt;
       if (sndT < 0 && V.fxHero && G.audio.ambientLevel) {
@@ -9438,7 +9446,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-10)';
-G.BUILT = '2026-10-10 15:38';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-10 15:59';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
