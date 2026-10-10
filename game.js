@@ -4261,10 +4261,11 @@ G.p4 = (() => {
       const g = G.gen, ok = () => g === G.gen, S = screen('p4-wipe', 'E90_hint_03b');
       const BW = 1458, BH = 672, B = board(S.root, BW, BH, 'p4-wboard');
       if (G.art('board_front')) B.el.style.backgroundImage = `url("${G.art('board_front')}")`;
-      for (const [x, y, w, h] of [[150, 110, 330, 230], [560, 90, 360, 260], [1000, 120, 300, 220], [300, 390, 420, 190], [820, 400, 470, 170]]) {
-        const n = G.el('div', 'p4-paper', B.el); Object.assign(n.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', transform: `rotate(${(Math.random() * 4 - 2).toFixed(1)}deg)` });
-        for (let i = 0; i < Math.floor(h / 40); i++) { const l = G.el('i', '', n); l.style.width = (50 + Math.random() * 45) + '%'; }
-      }
+      [[150, 110, 330, 230], [560, 90, 360, 260], [1000, 120, 300, 220], [300, 390, 420, 190], [820, 400, 470, 170]].forEach(([x, y, w, h], k) => {
+        const art = G.art('bd_note' + (k + 1));   // 10/10 선생님 그림 쪽지 (없으면 코드 쪽지)
+        const n = G.el('div', 'p4-paper' + (art ? ' art' : ''), B.el, art ? `<img src="${art}" alt="">` : ''); Object.assign(n.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', transform: `rotate(${(Math.random() * 4 - 2).toFixed(1)}deg)` });
+        if (!art) for (let i = 0; i < Math.floor(h / 40); i++) { const l = G.el('i', '', n); l.style.width = (50 + Math.random() * 45) + '%'; }
+      });
       const cv = G.el('canvas', 'p4-dustcv', B.el), CW = 729, CH = 336; cv.width = CW; cv.height = CH;
       const cx = cv.getContext('2d');
       cx.fillStyle = '#8c7d6a'; cx.fillRect(0, 0, CW, CH);
@@ -6380,6 +6381,7 @@ G.s3 = (() => {
 .s3-bub img { width: 100px; height: 100px; object-fit: contain; }
 .s3-knot { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 0; padding: 0; pointer-events: none; background: radial-gradient(circle, #fff3c9 0%, #f4a259 60%, #b0663a 100%); box-shadow: 0 0 0 5px #fff, 0 6px 10px rgba(0,0,0,.4); }
 .s3-knot.under { filter: grayscale(.7) brightness(.8); }
+.s3-knot.art { background: none; box-shadow: none; } .s3-knot.art img { width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 4px 4px rgba(0,0,0,.35)); }
 .s3-cardrow { display: flex; gap: calc(var(--u) * 10); margin-top: calc(var(--u) * 8); flex-wrap: wrap; }
 /* 10/4 선생님: 하랑이 대사 창을 낮게 → 괄호 글을 앞에, 그림 카드를 가운데 쪽에 한 줄로 */
 #dialog .dlg-text:has(.s3-cardrow) { display: flex; align-items: center; gap: calc(var(--u) * 30); flex-wrap: nowrap; }
@@ -6406,6 +6408,8 @@ G.s3 = (() => {
 .s3-tile svg { width: 100%; height: 100%; display: block; transition: transform .2s; }
 .s3-tile.lit { background: #a9d79f; }
 .s3-tile.off { opacity: .3; cursor: default; }
+.s3-tile .leaf { width: 100%; height: 100%; display: block; transition: transform .2s; pointer-events: none; }
+.s3-tile:has(.leaf) { background: transparent; box-shadow: none; } .s3-tile.lit .leaf { filter: brightness(1.12) drop-shadow(0 0 8px #FFD66B); }
 .s3-dial { position: absolute; width: 170px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .s3-dial .num { width: 150px; height: 150px; border-radius: 26px; background: #fff; border: 6px solid #8a6a4e; display: flex; align-items: center; justify-content: center; font-size: 100px; }
 .s3-dial button { width: 130px; height: 80px; border: 0; border-radius: 22px; background: #FFD66B; box-shadow: 0 6px 0 #c98f14; cursor: pointer; padding: 0; }
@@ -6458,7 +6462,8 @@ G.s3 = (() => {
 .reduce .s3-pointer path, .reduce .s3-phand { animation: none; }
 .s3-paper { background: #fffdf3; border: 4px solid #c9b48a; border-radius: 10px; padding: 6px 14px; font-size: 32px; transform: rotate(-3deg); white-space: nowrap; }
 .s3-torn { position: absolute; right: 0; top: 0; bottom: 0; width: 220px; background: repeating-linear-gradient(170deg, #cfdcec 0 30px, #b9c8dc 30px 34px); clip-path: polygon(30% 0, 100% 0, 100% 100%, 10% 100%, 40% 80%, 15% 60%, 45% 40%, 20% 20%); }
-.s3-water { background: linear-gradient(#3f6fb0, #2d4f8a); overflow: hidden; }
+.s3-water { background: linear-gradient(#3f6fb0, #2d4f8a); background-size: cover; background-position: center; overflow: hidden; }
+.s3-water.art .s3-rip { border-color: rgba(60, 110, 185, .75); background: rgba(255, 255, 255, .2); }
 .s3-refl { position: absolute; background: rgba(255, 250, 235, .85); border-radius: 26px; transition: filter .4s; }
 .s3-lpic { position: absolute; width: 300px; height: 300px; border: 6px dashed #c9b48a; border-radius: 26px; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-family: var(--f-title); color: var(--brown); }
 .s3-lpic img { width: 190px; height: 190px; object-fit: contain; }
@@ -6488,7 +6493,7 @@ G.s3 = (() => {
 .s3-station .msg img { width: 86px; height: 86px; object-fit: contain; }
 .s3-station .msg .g svg, .s3-station .msg .g img { width: 80px; height: 80px; }
 .s3-station.on, .s3-station.now { opacity: 1; } .s3-station.now { border-color: #F29BB0; box-shadow: 0 0 30px rgba(242, 155, 176, .8); }
-.s3-arrow { position: absolute; width: 80px; height: 54px; z-index: 3; }
+.s3-arrow { position: absolute; width: 80px; height: 54px; z-index: 3; } .s3-arrow img.side { width: 60px; height: 60px; transform: rotate(-90deg); display: block; margin: -3px auto 0; }
 .s3-relay-tray { position: absolute; display: flex; gap: 40px; align-items: center; justify-content: center; }
 .s3-opt { border: 6px solid #e0b96a; border-radius: 28px; background: #fffaf0; padding: 16px 26px; cursor: pointer; display: flex; gap: 10px; font-family: var(--f-title); font-size: 44px; color: var(--brown); box-shadow: 0 8px 0 #c9a45c; position: relative; }
 .s3-opt .g svg, .s3-opt .g img { width: 120px; height: 120px; display: block; }
@@ -6638,7 +6643,7 @@ G.s3 = (() => {
         path.setAttribute('d', `M${x0} ${y0} C${c1} ${y0 + wig}, ${c1 + 200} ${y1 - wig}, ${x1} ${y1}`);
         Object.assign(path.style, { fill: 'none', stroke: COL[i % 4], strokeWidth: 16, strokeLinecap: 'round', transition: 'opacity .6s' }); svg.appendChild(path);
         const L = path.getTotalLength ? path.getTotalLength() : 1000, pt = path.getPointAtLength ? path.getPointAtLength(L * (0.3 + 0.4 * (z + 0.5) / n)) : { x: 800, y: (y0 + y1) / 2 };
-        const kn = G.el('div', 's3-knot', S.B); S.at(kn, pt.x, pt.y); kn.style.zIndex = 5 + z;   // 10/4: 매듭은 누르는 단추가 아니라 실이 겹친 자리 표시
+        const kn = G.el('div', 's3-knot' + (G.art('s3_knot') ? ' art' : ''), S.B, G.art('s3_knot') ? `<img src="${G.art('s3_knot')}" alt="">` : ''); S.at(kn, pt.x, pt.y); kn.style.zIndex = 5 + z;   // 10/4: 매듭은 누르는 단추가 아니라 실이 겹친 자리 표시
         return { i, z, path, kn, done: false, x0, y0, y1, c1, wig };
       });
       // 10/4 선생님: 누르기만 하면 쉬움 → 말풍선(실 끝)을 잡고 주인에게 끌어 와서 실을 풂. 위에 있는 실부터 풀 수 있고, 아래 실을 당기면 팽팽해지며 제자리로
@@ -6987,7 +6992,7 @@ G.s3 = (() => {
     return new Promise((res) => {
       const g = G.gen, ok = () => g === G.gen, hard = G.lv('hard'), easy = !G.lv('normal');
       const S = screen('s3-sign', 1600, 900);
-      const water = S.at(G.el('div', 's3-panel s3-water', S.B), 260, 30, 1080, 840);
+      const water = S.at(G.el('div', 's3-panel s3-water', S.B), 260, 30, 1080, 840); if (G.art('s3_water')) { water.style.backgroundImage = `url("${G.art('s3_water')}")`; water.classList.add('art'); }   // 10/10 선생님 물 그림
       const refl = S.at(G.el('div', 's3-refl', water), 140, 120, 800, 600);
       const CD = D3().code.b;
       CD.forEach((k, i) => { const r = S.at(G.el('div', 's3-row', refl, `<img src="${cardImg(k)}" alt=""><span>${cardWord(k)}</span>`), 150, 20 + i * 145); r.style.fontSize = '58px'; });
@@ -7117,7 +7122,7 @@ G.s3 = (() => {
       cup(ox - 80, oy + r0 * T + T / 2); cup(ox + cw * T + 80, oy + r1 * T + T / 2);
       let fin = false, arrow = null;
       S.say('WD03_rumi_10');
-      function draw(t) { t.b.querySelector('svg').style.transform = `rotate(${t.rot * 90}deg)`; }
+      function draw(t) { t.b.querySelector('svg, img').style.transform = `rotate(${t.rot * 90}deg)`; }
       function turn(t) {
         if (fin || G.dialog.active) return; clear(); t.rot = (t.rot + 1) % 4; draw(t); G.audio.sfx('sfx_tap', 0.35, 1.2);
         if (easy) tiles.forEach(q => q.b.classList.toggle('lit', q.on && fits(q)));
@@ -7141,6 +7146,7 @@ G.s3 = (() => {
     });
   }
   function pipeSvg(kind) {   // 잎 위의 실 (I: 위-아래, L: 위-오른쪽)
+    const art = G.art('s3_leaf_' + kind); if (art) return `<img class="leaf" src="${art}" alt="" draggable="false">`;   // 10/10 선생님 그림
     const p = kind === 'I' ? 'M50 0 V100' : 'M50 0 V50 H100';
     return `<svg viewBox="0 0 100 100"><path d="M18 50 q32-40 64 0 q-32 40-64 0z" fill="#9fd08f" opacity=".7"/><path d="${p}" stroke="#E88D7A" stroke-width="12" fill="none" stroke-linecap="round"/></svg>`;
   }
@@ -7506,7 +7512,7 @@ G.s3 = (() => {
       const sw = 1440 / who.length;
       const st = who.map((k, i) => {
         const x = 80 + sw * i, e = S.at(G.el('div', 's3-station', S.B, `<img class="pf" src="${G.asset(G.D.portraits[k].img)}" alt=""><div class="msg"></div>`), x, 50, sw - 40, 420);
-        if (i === 0) S.at(G.el('div', 's3-arrow', S.B, '<svg viewBox="0 0 60 40"><path d="M4 20 H44 M34 8 L52 20 L34 32" stroke="#F4A259" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'), x + sw - 60, 230);
+        if (i === 0) S.at(G.el('div', 's3-arrow', S.B, G.art('hint_arrow') ? `<img class="side" src="${G.art('hint_arrow')}" alt="">` : '<svg viewBox="0 0 60 40"><path d="M4 20 H44 M34 8 L52 20 L34 32" stroke="#F4A259" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'), x + sw - 60, 230);   // 10/10: 코드 화살표 대신 있는 화살표 그림을 옆으로
         return { k, e, msg: e.querySelector('.msg') };
       });
       // 하랑이의 카드는 처음부터
@@ -10413,7 +10419,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-11)';
-G.BUILT = '2026-10-11 00:07';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-11 07:11';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
