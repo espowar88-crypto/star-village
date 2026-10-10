@@ -1993,7 +1993,9 @@ G.map = (() => {
   Mp.userCam = false;
   // 10/9 수정안 3단계: 지도 확대 (휠, 두 손가락). 1배~2배. 확대하면 모두의 지도 표시가 보임
   const ZDEF = 1.4, ZMAX = 2 * ZDEF;   // 10/10: 처음 보기가 1.4배라 확대 끝·모두의 지도 표시도 그만큼 (표시는 처음 보기보다 1.3배 더 가까이)
-  function zoomTo(z) { if (!V) return; const z0 = V.zBase || (V.zBase = V.cam.z), zt = z0 * ZDEF * 1.3; V.setCam(V.cam.x, V.cam.y, Math.max(z0, Math.min(z0 * ZMAX, z))); V.fx.classList.toggle('zoomed', V.cam.z >= zt); Mp.userCam = true; if (V.cam.z < zt) V.fx.querySelectorAll('.acc-tip').forEach(t => t.remove()); }
+  // 10/10 선생님: 휴대폰에서 지도를 멀리 빼면 메모리가 모자라 페이지가 다시 켜짐(이어서 하기 화면) → 휴대폰은 처음 보기보다 멀리 못 뺌(확대는 그대로, PC·태블릿·전자칠판은 그대로)
+  const PHONE = /iPhone|iPod/.test(navigator.userAgent) || /Android.*Mobile/.test(navigator.userAgent);
+  function zoomTo(z) { if (!V) return; const z0 = V.zBase || (V.zBase = V.cam.z), zt = z0 * ZDEF * 1.3; V.setCam(V.cam.x, V.cam.y, Math.max(PHONE ? z0 * ZDEF : z0, Math.min(z0 * ZMAX, z))); V.fx.classList.toggle('zoomed', V.cam.z >= zt); Mp.userCam = true; if (V.cam.z < zt) V.fx.querySelectorAll('.acc-tip').forEach(t => t.remove()); }
   function dragCam(world) {
     let st = null; const pts = new Map(); let pinch = null;
     const wheel = (e) => { if (!V || walking || G.busy > 0 || G.paused || G.screen !== 'map') return; e.preventDefault(); zoomTo(V.cam.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12)); };
