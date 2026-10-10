@@ -910,6 +910,7 @@ G.mapView = (parent, o = {}) => {
       parts.push(`radial-gradient(ellipse ${rx.toFixed(0)}px ${ry.toFixed(0)}px at ${z.center[0]}px ${z.center[1]}px, rgba(0,0,0,${a.toFixed(3)}) 0%, rgba(0,0,0,${a.toFixed(3)}) 42%, rgba(0,0,0,${(a * .55).toFixed(3)}) 72%, rgba(0,0,0,0) 100%)`);
     }
     V.colorFull = null;
+    if (V.monoFreed) { V.monoFreed = false; if (!mono.getAttribute('src')) mono.src = G.asset(M.mono); }
     if (!parts.length) { col.style.visibility = 'hidden'; return; }
     col.style.visibility = '';
     const m = parts.join(',');
@@ -919,7 +920,9 @@ G.mapView = (parent, o = {}) => {
     for (const z of MOOD.zones) { V.alpha[z.id] = z.alpha[Math.max(0, Math.min(5, stage))]; V.grow[z.id] = 1; }
     V.applyMask(); V.setLamps(stage);
   };
-  V.fullColor = (a) => { V.colorFull = a; col.style.webkitMaskImage = 'none'; col.style.maskImage = 'none'; col.style.visibility = ''; col.style.opacity = a; };
+  // 10/10 메모리 줄이기 2번: 색이 100%로 다 덮이면(fullColor(1)) 가려진 흑백 그림을 메모리에서 비움. 다시 마스크로 돌아가면(applyMask) 다시 불러옴
+  V.fullColor = (a) => { V.colorFull = a; col.style.webkitMaskImage = 'none'; col.style.maskImage = 'none'; col.style.visibility = ''; col.style.opacity = a;
+    if (a >= 1 && !V.monoFreed && mono.getAttribute('src')) { V.monoFreed = true; setTimeout(() => { if (V.monoFreed) mono.removeAttribute('src'); }, 700); } };   // 700ms: 색이 천천히 나타나는 transition(.6s)이 끝난 뒤
 
   // ---- 장소 표시(별)와 이름표 ----
   V.addMarkers = () => {
@@ -1004,6 +1007,7 @@ G.mapView = (parent, o = {}) => {
   if (dsrc && DC[dsrc]) { if (DC[dsrc].gy) useDepth(DC[dsrc]); else DC[dsrc].wait.push(useDepth); }
   else if (dsrc) {
     const ent = DC[dsrc] = { wait: [useDepth] };
+    const done = (w, h, gy) => { Object.assign(ent, { w, h, gy }); const ws = ent.wait; ent.wait = []; for (const f of ws) f(ent); };
     const im = new Image();
     im.onerror = () => { delete DC[dsrc]; };
     im.onload = () => {
@@ -1014,14 +1018,24 @@ G.mapView = (parent, o = {}) => {
         const d = x.getImageData(0, 0, w, h).data, gy = new Uint16Array(w * h);
         for (let i = 0; i < gy.length; i++) if (d[i * 4 + 3] > 128) gy[i] = (d[i * 4] * 256 + d[i * 4 + 1] || 1) | (d[i * 4 + 3] < 255 ? 0x8000 : 0);   // 10/10 알파 254 = 올라설 수 있는 땅(전망대 언덕 윗면·계단, fix_plateau.py)
         c.width = c.height = 0;   // iOS는 다 쓴 캔버스 메모리를 늦게 돌려줌
-        Object.assign(ent, { w, h, gy }); const ws = ent.wait; ent.wait = []; for (const f of ws) f(ent);
+        done(w, h, gy);
       } catch (e) { delete DC[dsrc]; }
     };
     const src = G.asset(dsrc);
-    if (location.protocol === 'file:' && !/^data:/.test(src)) {   // 폴더 판: 파일로 연 그림은 점을 못 읽음 → <이름>.js 글자판으로 받음
-      window.__depth = (u, b64) => { if (u === dsrc) im.src = 'data:image/png;base64,' + b64; };
-      const sc = document.createElement('script'); sc.src = src + '.js'; document.head.appendChild(sc);
-    } else im.src = src;
+    // 10/10 메모리 줄이기 4번: 웹 주소는 미리 만든 숫자 파일(<지도>_depth.dep, depth_pack.py)을 바로 읽음 → PNG를 캔버스에 풀 때의 순간 +37MB 없음.
+    //  DecompressionStream이 없거나 파일을 못 받으면 예전처럼 PNG로(폴더 판·한 파일은 PNG 그대로)
+    const viaPng = () => {
+      if (location.protocol === 'file:' && !/^data:/.test(src)) {   // 폴더 판: 파일로 연 그림은 점을 못 읽음 → <이름>.js 글자판으로 받음
+        window.__depth = (u, b64) => { if (u === dsrc) im.src = 'data:image/png;base64,' + b64; };
+        const sc = document.createElement('script'); sc.src = src + '.js'; document.head.appendChild(sc);
+      } else im.src = src;
+    };
+    if (/^https?:$/.test(location.protocol) && typeof DecompressionStream === 'function' && !window.EMBED?.[dsrc]) {
+      fetch(dsrc.replace(/\.png$/, '.dep')).then((r) => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+        .then((b) => new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer())
+        .then((b) => { const hd = new Uint16Array(b, 0, 2), w = hd[0], h = hd[1]; if (b.byteLength !== 4 + w * h * 2) throw 0; done(w, h, new Uint16Array(b, 4, w * h)); })
+        .catch(viaPng);
+    } else viaPng();
   }
   const occQ = new Set(); let occRaf = 0;
   V.occDirty = (w) => { if (!V.depth) return; occQ.add(w); if (!occRaf) occRaf = requestAnimationFrame(() => { occRaf = 0; for (const q of occQ) occlude(q); occQ.clear(); }); };
@@ -9449,7 +9463,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-10)';
-G.BUILT = '2026-10-10 19:11';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-10 22:24';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
