@@ -1078,9 +1078,12 @@ G.mapView = (parent, o = {}) => {
   }
 
   // ---- 카메라: 가운데 (x,y), 확대 z. 지도 밖이 보이지 않게 막음 (free면 안 막음) ----
+  // 10/10 선생님: 휴대폰에서 넓은 지도(소리의 별부터)를 멀리 보면 메모리가 모자라 페이지가 다시 켜짐(이어서 하기 화면, 별 엔딩 연출에서도)
+  //  → 휴대폰은 넓은 지도를 지도 화면 처음 보기(1.4배)보다 멀리 보지 않음. 옛 지도(길의 별)·PC·태블릿·전자칠판은 그대로
+  V.zMin = (!o.free && /map2_/.test(M.color) && (/iPhone|iPod/.test(navigator.userAgent) || /Android.*Mobile/.test(navigator.userAgent))) ? 1.4 : 0;
   V.setCam = (x, y, z = V.cam.z) => {
     const { W, H, ws, u } = G.stage;
-    if (!o.free) z = Math.max(z, W / (ws * V.W), H / (ws * V.H));   // 10/1 선생님: 지도보다 멀리 빼서 둘레에 여백이 생기지 않게
+    if (!o.free) z = Math.max(z, W / (ws * V.W), H / (ws * V.H), V.zMin);   // 10/1 선생님: 지도보다 멀리 빼서 둘레에 여백이 생기지 않게
     const s = ws * z;
     if (!o.free) {
       const vw = W / s, vh = H / s;
@@ -1939,7 +1942,7 @@ G.map = (() => {
     for (const d of G.D.mood.villagers) if (d.from <= stage && !(G.settings.light && vills.length >= 2)) vills.push(makeVillager(d, stage));
     // 카메라는 주인공을 따라감 (갈 곳 쪽으로 조금 치우침)
     // 10/10 선생님(지도 생동감 1): 1.4배 가까이 보기 (V.zBase = 예전 보기, 휠·두 손가락으로 예전만큼 멀리까지 뺄 수 있음)
-    V.setCam(hero.x, hero.y - 40); V.zBase = V.cam.z; V.setCam(hero.x, hero.y - 40, V.zBase * ZDEF);
+    const zm = V.zMin; V.zMin = 0; V.setCam(hero.x, hero.y - 40); V.zBase = V.cam.z; V.zMin = zm; V.setCam(hero.x, hero.y - 40, V.zBase * ZDEF);   // 처음 보기는 휴대폰 한계(V.zMin)와 상관없이 셈
     V.fxHero = hero; V.fxLumi = () => (lumi && lumi.style.display !== 'none' ? lumiPos : null);
     offs.push(G.every(update)); update(10);
     G.resizers.add(onResize);
