@@ -2131,11 +2131,13 @@ G.map = (() => {
     const tx = hero.x + 60, ty = hero.y - 150;
     let sx = lumiPos.x, sy = lumiPos.y;
     // 10/9 선생님: 첫 만남 루미는 별 올리기처럼 별가루 잔상을 남기며 공처럼 통통 튀어 다님 (떨어져 헤매는 루미를 잡는 느낌). 움직임 줄이기면 예전처럼 떠 있기만
-    const rm = G.reduced(), BH = 110, BT = 0.8;   // 튀는 높이, 한 번 튀는 시간(초)
+    const rm = G.reduced(), BH0 = 110, BT = 0.8;   // 튀는 높이, 한 번 튀는 시간(초)
     const tr = o.catchMe && !rm ? G.riseTrail(V.fx, lumi, '#FFD66B') : null, lsz = lumi.offsetWidth || 90;
     let tk = 0; const offT = tr ? G.every(dt => { tk += dt / 12; if (tk > 0.9) { tk = 0; tr.reset(); } tr(tk, lumiPos.x, lumiPos.y, lsz); }) : null;
     if (o.catchMe) {   // 10/8 검토: 처음에 학생이 떨어지는 루미를 눌러서 받아 줌 (누를 때까지 주인공 위에서 튀어 다님, 30초 지나면 저절로)
-      const mx = tx, my = ty - 260;
+      // 10/10 선생님: 1.4배 가까이 보기 뒤로 루미가 화면 위로 잘려 PC에서 누르기 어려웠음 → 지금 보이는 화면 높이에 맞춰 위 20% 아래에서 튀게 (모든 기기)
+      const vh = G.stage.H / (G.stage.ws * V.cam.z), BH = Math.min(BH0, vh * 0.15), vTop = V.cam.y - vh / 2;
+      const mx = tx, my = Math.min(hero.y - 130, Math.max(ty - 260, vTop + vh * 0.2 + BH));
       await G.tween(0, 1, rm ? 0.3 : 1.6, k => { lumiPos.x = sx + (mx - sx) * k; lumiPos.y = sy + (my - sy) * k - (rm ? 0 : Math.abs(Math.sin(k * Math.PI * 2)) * BH); placeLumi(); }, 'io');
       let wx = mx, dir = Math.random() < 0.5 ? 1 : -1, ph = 0;
       const offW = rm ? null : G.every(dt => {
@@ -9481,7 +9483,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-10)';
-G.BUILT = '2026-10-10 23:41';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-10 23:59';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
