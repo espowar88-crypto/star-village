@@ -991,7 +991,7 @@ G.mapView = (parent, o = {}) => {
   //  <지도>_depth.png(지도 절반 크기, 소리의별/지도/도구/가려지기_1010/gen_depth.py): 키 큰 물건 점마다 그 바로 아래 땅의 y.
   //  인물 발보다 땅이 앞(아래)인 점만 지도 그림 그대로 인물 위에 다시 그림. 다 가려져도 놓치지 않게 흐리게 비춤
   V.monoImg = mono;
-  const dsrc = /map2?_color\.jpg$/.test(M.color) ? M.color.replace(/_color\.jpg$/, '_depth.png') : null;
+  const dsrc = /map2?_color(_s)?\.jpg$/.test(M.color) ? M.color.replace(/_color(_s)?\.jpg$/, '_depth.png') : null;   // _s = 휴대폰용 작은 지도 그림(깊이는 같은 것)
   if (dsrc) {
     const im = new Image();
     im.onload = () => {
@@ -2293,6 +2293,18 @@ G.sceneView = (parent, id, o = {}) => {
       li.style.cssText = 'width:100%;height:100%;animation:bob 2.4s ease-in-out infinite';
     }
   }
+  // 10/10 선생님: 장면 속 픽셀 인물도 숨쉬기·눈 깜빡임 (gen_scene_live.py가 만든 <그림>_b·_k·_bk.png, 목록 data/scene_live.json). 움직임 줄이기면 멈춤
+  const LV = G.D.sceneLive || {}, lives = [];
+  const liveOf = (img, src) => { if (!LV[src]) return; const fr = [src, ...['_b', '_k', '_bk'].map(s => src.replace(/\.png$/, s + '.png'))].map(G.asset);
+    fr.slice(1).forEach(u => { new Image().src = u; }); img.classList.remove('idle');
+    lives.push({ img, fr, ph: Math.random() * 2600, nb: performance.now() + 1500 + Math.random() * 3000, bu: 0, cur: 0 }); };
+  for (const k in V.spr) { const v = V.spr[k]; liveOf(v.img, v.def.img); if (v.back) liveOf(v.back, v.def.back.img); }
+  if (lives.length) { let seen = false; const tick = setInterval(() => {
+    if (!el.isConnected) { if (seen) clearInterval(tick); return; } seen = true;
+    const now = performance.now(), rm = G.reduced();
+    for (const L of lives) { let i = 0;
+      if (!rm) { if (now > L.nb) { L.bu = now + 120; L.nb = now + (Math.random() < 0.25 ? 260 : 2000 + Math.random() * 3000); } i = ((now + L.ph) % 2600 < 1100 ? 1 : 0) + (now < L.bu ? 2 : 0); }
+      if (i !== L.cur) { L.cur = i; L.img.src = L.fr[i]; } } }, 100); }
   // 할 일에 따라 보이는 인물·물건 (두 번째 광장: 안내 기둥·노란 길은 설치 뒤에, 우편배달부는 도서관에 다녀오는 동안 없음)
   V.spriteOn = (sp) => { const d = (m) => !!(G.st && G.st.done.includes(m));
     if (sp.showAfter && !d(sp.showAfter)) return false;
@@ -2328,19 +2340,21 @@ G.sceneView = (parent, id, o = {}) => {
     return G.tween(0, 1, d, set, 'io');
   };
   // 10/8 선생님: 잔치 뒤 픽셀 걷기 그림으로 광장 길(at2.walk.path, 발 자리 점들)을 따라 걸어가 자리 잡기
+  const liveSheet = (src) => { const m = /\/walk_([^/]+)\.png$/.exec(src); return m && Object.values(LV).includes(m[1]) ? src.replace(/\.png$/, '_live.png') : src; };   // 10/10: 16자세 부드러운 걸음 그림
   const sheets = {};   // 걷기 그림 미리 불러 둠 (처음 걷는 사람이 깜빡 사라지지 않게)
   V.sheet = (src) => { if (!sheets[src]) { const im = new Image(); im.src = G.asset(src); sheets[src] = im; } return sheets[src]; };
-  for (const sp of (S.sprites || [])) if (sp.at2 && sp.at2.walk && sp.at2.walk.sheet) V.sheet(sp.at2.walk.sheet);
-  for (const w of Object.values(S.gatherWalk || {})) if (w && w.sheet) V.sheet(w.sheet);
+  for (const sp of (S.sprites || [])) if (sp.at2 && sp.at2.walk && sp.at2.walk.sheet) V.sheet(liveSheet(sp.at2.walk.sheet));
+  for (const w of Object.values(S.gatherWalk || {})) if (w && w.sheet) V.sheet(liveSheet(w.sheet));
   V.walkPath = (k, rect, w, d) => {
     const v = V.spr[k]; if (!v || !w || !w.path || w.path.length < 2) return V.walk(k, rect, d);
     if (G.reduced() || !d) return V.walk(k, rect, 0);
     d = Math.max(w.minD ?? 3, d - (w.delay || 0));   // 늦게 출발한 사람은 조금 빨리 걸어 다 같이 자리 잡음
     const r0 = v.rect, c0 = [r0[0] + r0[2] / 2, r0[1] + r0[3] - 18], P = Math.hypot(c0[0] - w.path[0][0], c0[1] - w.path[0][1]) > 30 ? [c0, ...w.path] : w.path;   // 10/9: 인물 옆에 가 있던 주인공은 지금 자리에서 출발
     const kk = w.k, cw = 200 * kk, ch = 260 * kk, lu = k === 'hero' && V.lumi ? V.lumi : null;
+    const sheet = liveSheet(w.sheet), lv = sheet !== w.sheet;
     const seg = []; let L = 0; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); seg.push(l); L += l; }
     const el = G.el('div', 'scene-walker', V.fx);
-    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(w.sheet)}")`, backgroundSize: `${1800 * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none', display: 'none' });
+    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(sheet)}")`, backgroundSize: `${(lv ? 4200 : 1800) * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none', display: 'none' });
     const at = (s) => { let i = 0; while (i < seg.length - 1 && s > seg[i]) { s -= seg[i]; i++; } const t = seg[i] ? Math.min(1, s / seg[i]) : 1; return [P[i][0] + (P[i + 1][0] - P[i][0]) * t, P[i][1] + (P[i + 1][1] - P[i][1]) * t]; };
     const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 }, fps = Math.min(14, 4 + (L / d) * 0.03); let dir = 'SE', t0 = 0;   // 걸음 빠르기는 지도 걷기와 같은 식
     const put = (x, y, f) => { el.style.left = (x - w.fx * kk) + 'px'; el.style.top = (y + w.foot - w.fy * kk) + 'px'; el.style.zIndex = Math.round(y / 10);
@@ -2348,11 +2362,11 @@ G.sceneView = (parent, id, o = {}) => {
       if (lu) { lu.style.left = (x - rect[2] / 2 + V.lumiOff[0] - 55) + 'px'; lu.style.top = (y + 18 - rect[3] + V.lumiOff[1] - 55) + 'px'; } };
     const hide = (on) => { v.img.style.visibility = on ? 'hidden' : ''; if (v.back) v.back.style.visibility = on ? 'hidden' : ''; };
     // 10/8 선생님: 걷기 그림이 다 불러지기 전에 서 있는 그림을 숨기면 잠깐 사라져 보임 → 그림이 준비된 뒤 바꿈
-    const im = V.sheet(w.sheet);
-    return Promise.all([G.wait(w.delay || 0), im.decode ? im.decode().catch(() => {}) : null]).then(() => { if (!V.spr[k]) return; put(P[0][0], P[0][1], 8); el.style.display = ''; hide(true);
+    const im = V.sheet(sheet);
+    return Promise.all([G.wait(w.delay || 0), im.decode ? im.decode().catch(() => {}) : null]).then(() => { if (!V.spr[k]) return; put(P[0][0], P[0][1], lv ? 16 : 8); el.style.display = ''; hide(true);
       return G.tween(0, 1, d, (q) => { const s = q * L, p = at(s), a = at(Math.min(L, s + 40)), dx = a[0] - p[0], dy = a[1] - p[1];   // 앞쪽 40px를 보고 방향을 정해 자주 뒤집히지 않게
         if (Math.hypot(dx, dy) > 4) dir = (dy >= 0 || w.front) ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW');   // front: 뒷모습 칸이 없는 사람(해솔)
-        t0 = q * d; put(p[0], p[1], q >= 1 ? 8 : Math.floor(t0 * fps) % 8); }, 'lin'); })
+        t0 = q * d; put(p[0], p[1], q >= 1 ? (lv ? 16 : 8) : lv ? Math.floor(t0 * fps * 2) % 16 : Math.floor(t0 * fps) % 8); }, 'lin'); })
       .then(() => { V.walk(k, rect, 0); el.remove(); hide(false); });
   };
   // 10/8 선생님: 별 올리러 받침대 둘레로 모일 때도 픽셀 걷기 (길은 장면 데이터 gatherWalk, 없으면 예전처럼 미끄러져 감)
@@ -9147,7 +9161,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-10)';
-G.BUILT = '2026-10-10 13:04';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-10 13:53';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
