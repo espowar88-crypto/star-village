@@ -338,9 +338,12 @@ G.audio = (() => {
   }
 
   // ---- 효과음 ----
-  A.sfx = async (name, vol = 1, rate = 1) => {   // 10/1 rate: 음높이 (반딧불 소리 자물쇠)
+  A.sfx = async (name, vol = 1, rate = 1, fx) => {   // 10/1 rate: 음높이 (반딧불 소리 자물쇠), 10/10 fx: {pan 좌우, lp 부드럽게(Hz)} 지도 발소리
     if (!A.ready) return; A.wake();
-    try { const buf = await loadBuf(G.asset('assets/audio/' + name + '.mp3')); const s = A.ctx.createBufferSource(); s.buffer = buf; s.playbackRate.value = rate; const g = A.ctx.createGain(); g.gain.value = vol; s.connect(g); g.connect(gSfx); s.start(); } catch (e) { }
+    try { const buf = await loadBuf(G.asset('assets/audio/' + name + '.mp3')); const s = A.ctx.createBufferSource(); s.buffer = buf; s.playbackRate.value = rate; const g = A.ctx.createGain(); g.gain.value = vol; let n = s;
+      if (fx && fx.lp) { const f = A.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = fx.lp; n.connect(f); n = f; }
+      if (fx && fx.pan && A.ctx.createStereoPanner) { const p = A.ctx.createStereoPanner(); p.pan.value = fx.pan; n.connect(p); n = p; }
+      n.connect(g); g.connect(gSfx); s.start(); } catch (e) { }
   };
 
   // ---- 음악 (반복). <audio>가 막힌 환경이면 풀어서 재생으로 바꿈 ----
@@ -390,10 +393,12 @@ G.audio = (() => {
       try {
         const buf = await loadBuf(G.asset('assets/audio/' + n + '.mp3')); if (!ambs[n]) continue;
         const s = A.ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.connect(g); s.start(); ambs[n].s = s;
-        g.gain.linearRampToValueAtTime(n === 'amb_crickets' ? 0.5 : n === 'amb_market' ? 0.6 : 1, A.ctx.currentTime + 1.2);
+        g.gain.linearRampToValueAtTime(ambs[n].lv ?? (n === 'amb_crickets' ? 0.5 : n === 'amb_market' ? 0.6 : 1), A.ctx.currentTime + 1.2);
       } catch (e) { }
     }
   };
+  // 10/10 지도 물소리: 물가에 가까울수록 크게 (mapfx.js)
+  A.ambientLevel = (name, v) => { const a = ambs[name]; if (!a || !A.ready) return; if (a.lv != null && Math.abs(a.lv - v) < 0.01) return; a.lv = v; if (!a.s) return; const t = A.ctx.currentTime; a.g.gain.cancelScheduledValues(t); a.g.gain.setValueAtTime(a.g.gain.value, t); a.g.gain.linearRampToValueAtTime(v, t + 0.3); };
   A.ambientBoost = (name, on) => { const a = ambs[name]; if (!a || !A.ready) return; const t = A.ctx.currentTime; a.g.gain.cancelScheduledValues(t); a.g.gain.setValueAtTime(a.g.gain.value, t); a.g.gain.linearRampToValueAtTime(on ? 3 : 1, t + 0.5); };
   return A;
 })();
@@ -1045,6 +1050,7 @@ G.mapView = (parent, o = {}) => {
     const draw = (img, a) => { if (!img || !img.naturalWidth || a <= 0.003) return; const s = img.naturalWidth / V.W; c.globalAlpha = a; c.drawImage(img, x0 * s, y0 * s, 100 * s, 130 * s, 0, 0, 100, 130); };
     draw(mono, 1); draw(col, V.colorAlphaAt(fx, fy) * (+(col.style.opacity || 1)));
     if (V.s2 && V.s2.fog) draw(V.s2.fog, +(V.s2.fog.style.opacity || 1));
+    if (V.fxPatch) V.fxPatch(c, x0, y0);   // 10/10 지도 밤 덧칠(mapfx.js)
     // 가로등 불빛 (지도 위 불빛과 같은 모양)
     const light = !!el.closest('.light');
     for (const L of V.lamps) {
@@ -1114,7 +1120,7 @@ function wordCard(id) {
 }
 G.dialog = (() => {
   const Dl = { active: false };
-  const BAND = { lumi: '#FFD66B', hero: '#7FB77E', chief: '#A0764F', post: '#5B8FD0', bom: '#F4A259', haesol: '#3AA39A', daon: '#E88D7A', villager: '#B58BC4', nar: '', ui: '' };
+  const BAND = { lumi: '#FFD66B', hero: '#7FB77E', chief: '#A0764F', post: '#5B8FD0', haesol: '#3AA39A', daon: '#E88D7A', villager: '#B58BC4', nar: '', ui: '' };
   let wrap, box, nameEl, textEl, nextBtn, replayBtn, pgL, pgR, heroImg, lumiImg, partnerImg, choicesEl;
   let ready = false, vtok = 0, curId = null, waiter = null, blinkOff = null, lastLine = false;
 
@@ -1216,7 +1222,7 @@ G.dialog = (() => {
   }
 
   // ---- 대사 여러 개를 차례로 ----
-  // opts.partner: 오른쪽 인물 ('chief', 'post', 'bom', 'haesol'), opts.keep: 끝나도 창을 닫지 않음, opts.noPortraits: 인물 그림 없이
+  // opts.partner: 오른쪽 인물 ('chief', 'post', 'haesol'), opts.keep: 끝나도 창을 닫지 않음, opts.noPortraits: 인물 그림 없이
   Dl.play = async (ids, opts = {}) => {
     if (!ids || !ids.length) return;
     // 10/9 선생님: 상대를 적지 않은 대화(장소 첫 방문 등)는 대사에서 상대를 찾음 (촌장 대사인데 루미 대화처럼 나오던 문제)
@@ -1924,12 +1930,14 @@ G.map = (() => {
     const stage = G.st.mood;
     for (const d of G.D.mood.villagers) if (d.from <= stage && !(G.settings.light && vills.length >= 2)) vills.push(makeVillager(d, stage));
     // 카메라는 주인공을 따라감 (갈 곳 쪽으로 조금 치우침)
-    V.setCam(hero.x, hero.y - 40);
+    // 10/10 선생님(지도 생동감 1): 1.4배 가까이 보기 (V.zBase = 예전 보기, 휠·두 손가락으로 예전만큼 멀리까지 뺄 수 있음)
+    V.setCam(hero.x, hero.y - 40); V.zBase = V.cam.z; V.setCam(hero.x, hero.y - 40, V.zBase * ZDEF);
+    V.fxHero = hero; V.fxLumi = () => (lumi && lumi.style.display !== 'none' ? lumiPos : null);
     offs.push(G.every(update)); update(10);
     G.resizers.add(onResize);
     dragCam(world);
     G.hud.map();
-    G.audio.music('music_night'); G.audio.ambient(['amb_crickets']);
+    G.audio.music('music_night'); G.audio.ambient(['amb_crickets', 'amb_fountain']);   // 10/10 A3: 물소리는 물가에 가까울수록 (mapfx.js)
     setHelp();
     await V.ready;
   };
@@ -1949,7 +1957,8 @@ G.map = (() => {
     if (!V) return;
     // 루미는 주인공 오른쪽 위를 살짝 늦게 따라옴
     if (hero && lumi && !Mp.lumiFree) {
-      const tx = hero.x + 60, ty = hero.y - 150, k = Math.min(1, dt * 4);
+      const lt = V.lumiTarget && V.lumiTarget(hero, dt);   // 10/10 A1: 주인공 둘레를 날고, 가끔 갈 곳을 알려 줌 (mapfx.js)
+      const tx = lt ? lt[0] : hero.x + 60, ty = lt ? lt[1] : hero.y - 150, k = Math.min(1, dt * (lt ? lt[2] : 4));
       lumiPos.x += (tx - lumiPos.x) * k; lumiPos.y += (ty - lumiPos.y) * k; placeLumi();
     }
     for (const v of vills) v.update(dt);
@@ -1975,8 +1984,8 @@ G.map = (() => {
   // ---- 10/2 선생님: 지도를 끌면 시점만 옮김 (장소를 누르면 다시 주인공을 따라감) ----
   Mp.userCam = false;
   // 10/9 수정안 3단계: 지도 확대 (휠, 두 손가락). 1배~2배. 확대하면 모두의 지도 표시가 보임
-  const ZMAX = 2;
-  function zoomTo(z) { if (!V) return; const z0 = V.zBase || (V.zBase = V.cam.z); V.setCam(V.cam.x, V.cam.y, Math.max(z0, Math.min(z0 * ZMAX, z))); V.fx.classList.toggle('zoomed', V.cam.z >= z0 * 1.3); Mp.userCam = true; if (V.cam.z < z0 * 1.3) V.fx.querySelectorAll('.acc-tip').forEach(t => t.remove()); }
+  const ZDEF = 1.4, ZMAX = 2 * ZDEF;   // 10/10: 처음 보기가 1.4배라 확대 끝·모두의 지도 표시도 그만큼 (표시는 처음 보기보다 1.3배 더 가까이)
+  function zoomTo(z) { if (!V) return; const z0 = V.zBase || (V.zBase = V.cam.z), zt = z0 * ZDEF * 1.3; V.setCam(V.cam.x, V.cam.y, Math.max(z0, Math.min(z0 * ZMAX, z))); V.fx.classList.toggle('zoomed', V.cam.z >= zt); Mp.userCam = true; if (V.cam.z < zt) V.fx.querySelectorAll('.acc-tip').forEach(t => t.remove()); }
   function dragCam(world) {
     let st = null; const pts = new Map(); let pinch = null;
     const wheel = (e) => { if (!V || walking || G.busy > 0 || G.paused || G.screen !== 'map') return; e.preventDefault(); zoomTo(V.cam.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12)); };
@@ -2052,7 +2061,7 @@ G.map = (() => {
           }
           if (seg >= pts.length) { const e = pts[pts.length - 1]; hero.set(e[0], e[1]); off(); res(); return; }
           hero.frame = Math.floor(t * 10) % 8; hero.draw();
-          if (stepT > 0.4) { stepT = 0; G.audio.sfx(stepN++ % 2 ? 'sfx_step2' : 'sfx_step1', 0.35); }
+          if (stepT > 0.4) { stepT = 0; stepSfx(stepN++); }
         });
         offs.push(off);
       });
@@ -2164,11 +2173,14 @@ G.map = (() => {
         }
         if (seg >= pts.length) { done(); return; }
         hero.frame = Math.floor(t * 10) % 8; hero.draw();
-        if (stepT > 0.4) { stepT = 0; G.audio.sfx(stepN++ % 2 ? 'sfx_step2' : 'sfx_step1', 0.35); }
+        if (stepT > 0.4) { stepT = 0; stepSfx(stepN++); }
       });
       offs.push(off2);
     });
   }
+
+  // 10/10 A3: 발소리는 주인공이 있는 쪽(좌우)에서, 풀밭이면 부드럽게
+  function stepSfx(n) { const f = V && V.stepFx ? V.stepFx(hero) : null; G.audio.sfx(n % 2 ? 'sfx_step2' : 'sfx_step1', 0.35 * (f ? f.vol : 1), f ? 0.92 + Math.random() * 0.16 : 1, f); }
 
   // ---- 배경 주민 (GDD 8장): 단계마다 걷는 속도·멈춤·한숨 구름 ----
   function makeVillager(d, stage) {
@@ -2201,9 +2213,16 @@ G.map = (() => {
     const v = { w, i: 1, step: 1, pause: Math.random() * 2, look: 0, sighT: Math.random() * 4 };
     v.update = (dt) => {
       if (stage === 0) { v.sighT += dt; sigh.classList.toggle('on', (v.sighT % 7) < 2.4); sigh.classList.toggle('l', w.dir === 'SW' || w.dir === 'NW'); }   // 10/1 한숨은 입 옆에서 (보는 쪽)
+      // 10/10 A2: 주인공이 가까이 오면 걸음을 멈추고 돌아보며 고개를 끄덕 (움직임 줄이기면 안 함)
+      if (hero && !bub && !G.reduced() && !(G.settings && G.settings.light)) {
+        const dh = Math.hypot(hero.x - w.x, hero.y - w.y);
+        if (dh < 170 && !v.greet) { v.greet = true; w.greet = performance.now() + 150; v.pause = Math.max(v.pause, 1.6); }
+        else if (dh > 260) v.greet = false;
+        if (v.greet && v.pause > 0) w.face(hero.x - w.x, hero.y - w.y);
+      }
       if (v.pause > 0) {
         v.pause -= dt; w.frame = 8;
-        if (stage === 0 && !bub) { v.look += dt; if (v.look > 0.9) { v.look = 0; const ds = ['SE', 'SW', 'NE', 'NW']; w.dir = ds[(ds.indexOf(w.dir) + 1) % 4]; } }
+        if (stage === 0 && !bub && !v.greet) { v.look += dt; if (v.look > 0.9) { v.look = 0; const ds = ['SE', 'SW', 'NE', 'NW']; w.dir = ds[(ds.indexOf(w.dir) + 1) % 4]; } }
         w.draw(); return;
       }
       const tgt = pts[v.i], dx = tgt[0] - w.x, dy = tgt[1] - w.y, dist = Math.hypot(dx, dy), mv = speed * dt;
@@ -6032,7 +6051,7 @@ G.s2 = (() => {
 
   // ================= 교사용 챕터 바로 가기 (소리의 별-1 ~ -6) =================
   const CH1 = {
-    done: ['meet_lumi', 'plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'market_intro', 'market_bom', 'market_ask', 'market_map', 'library_intro', 'library_haesol', 'library_tactile', 'library_puzzle', 'plaza_post_ask', 'letter_1', 'letter_2', 'letter_3', 'market_jig', 'libdoor_seen', 'libdoor_open', 'note_got',
+    done: ['meet_lumi', 'plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'library_intro', 'library_haesol', 'library_tactile', 'library_puzzle', 'plaza_post_ask', 'letter_1', 'letter_2', 'letter_3', 'market_jig', 'libdoor_seen', 'libdoor_open', 'note_got',
       'forest_intro', 'forest_wind', 'forest_star', 'forest_daon', 'plaza2_intro', 'plaza2_board', 'plaza2_road', 'plaza2_look', 'plaza2_star', 'road_tiles'],
     cleared: ['plaza', 'market', 'library', 'forest', 'plaza2'], items: ['note', 'map', 'tactile', 'piece', 'light'],
     seen: ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C10', 'C11', 'C12', 'CH:intro', 'CH:plaza', 'CH:market', 'CH:library', 'CH:forest', 'CH:plaza2', 'CH:ending'],
@@ -7610,7 +7629,7 @@ G.s3 = (() => {
   }
 
   const DONE12 = {
-    done: ['meet_lumi', 'plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'market_intro', 'market_bom', 'market_ask', 'market_map', 'library_intro', 'library_haesol', 'library_tactile', 'library_puzzle', 'plaza_post_ask', 'letter_1', 'letter_2', 'letter_3', 'market_jig', 'libdoor_seen', 'libdoor_open', 'note_got',
+    done: ['meet_lumi', 'plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'library_intro', 'library_haesol', 'library_tactile', 'library_puzzle', 'plaza_post_ask', 'letter_1', 'letter_2', 'letter_3', 'market_jig', 'libdoor_seen', 'libdoor_open', 'note_got',
       'forest_intro', 'forest_wind', 'forest_star', 'forest_daon', 'plaza2_intro', 'plaza2_board', 'plaza2_road', 'plaza2_look', 'plaza2_star', 'road_tiles',
       's2_begin', 's2_fog', 's2school_intro', 's2s_talk', 's2n_chair', 's2n_window', 's2n_bell', 's2n_locker', 's2school_noise', 's2f_chair', 's2f_window', 's2f_bell', 's2f_locker', 's2school_fix', 's2school_ask', 's2school_card',
       's2door_open', 's2hall_intro', 's2hall_duri', 's2hall_seats', 's2hall_score', 's2rest_intro', 's2rest_miru', 's2rest_box', 's2rest_deco', 's2rest_star', 's2plaza_intro', 's2plaza_concert', 's2plaza_star', 's2_end'],
@@ -8734,7 +8753,7 @@ G.s4 = (() => {
   }
 
   const DONE12 = {
-    done: ['meet_lumi', 'plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'market_intro', 'market_bom', 'market_ask', 'market_map', 'library_intro', 'library_haesol', 'library_tactile', 'library_puzzle', 'plaza_post_ask', 'letter_1', 'letter_2', 'letter_3', 'market_jig', 'libdoor_seen', 'libdoor_open', 'note_got',
+    done: ['meet_lumi', 'plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'library_intro', 'library_haesol', 'library_tactile', 'library_puzzle', 'plaza_post_ask', 'letter_1', 'letter_2', 'letter_3', 'market_jig', 'libdoor_seen', 'libdoor_open', 'note_got',
       'forest_intro', 'forest_wind', 'forest_star', 'forest_daon', 'plaza2_intro', 'plaza2_board', 'plaza2_road', 'plaza2_look', 'plaza2_star', 'road_tiles',
       's2_begin', 's2_fog', 's2school_intro', 's2s_talk', 's2n_chair', 's2n_window', 's2n_bell', 's2n_locker', 's2school_noise', 's2f_chair', 's2f_window', 's2f_bell', 's2f_locker', 's2school_fix', 's2school_ask', 's2school_card',
       's2door_open', 's2hall_intro', 's2hall_duri', 's2hall_seats', 's2hall_score', 's2rest_intro', 's2rest_miru', 's2rest_box', 's2rest_deco', 's2rest_star', 's2plaza_intro', 's2plaza_concert', 's2plaza_star', 's2_end'],
@@ -8787,6 +8806,251 @@ G.s4 = (() => {
   T.begin = begin; T.ending = ending; T.chapter = chapter; T.state = () => ({ dust: G.st && G.st.s4dust });
   T.pulley = pulley; T.planks = planks; T.crates = crates; T.shopDoor = shopDoor; T.tiles = tiles; T.scope = scope;   // 점검용
   return T;
+})();
+
+/* ---- mapfx.js ---- */
+// mapfx.js — 10/10 선생님(지도 생동감, 시안 review/mapfx1010 1~5 + review/mapfx2_1010 A1~A6)
+//  지도 그림 위에 밤 덧칠·구름 그림자(곱하기 캔버스)와 가로등 바닥빛·창문 불빛·루미 빛·반딧불·물 반짝임·강물 물결·꽃잎·발밑 먼지·별똥별(빛 캔버스)을 얹음.
+//  두 캔버스는 화면에 보이는 만큼만 그림(지도 전체 크기 캔버스는 휴대폰에서 무거움). 인물은 빛 받기(가까운 불빛 쪽 따뜻하게, 먼 곳은 달빛 푸르게)와 테두리.
+//  물·풀·창문 자리는 data/mapfx.json(소리의별/지도/도구/가려지기_1010/gen_mapfx.py, 창문은 3D 렌더의 창문 모델 자리).
+//  움직임 줄이기: 날리는 것·깜빡임 없이 빛만. 가벼운 모드(G.settings.light): 모두 끔.
+'use strict';
+(() => {
+  const mv0 = G.mapView;
+  G.mapView = (parent, o = {}) => { const V = mv0(parent, o); try { attach(V); } catch (e) { console.error(e); } return V; };
+
+  const NIGHT = 0.42;
+  const glowCache = {};
+  function glow(r, g, b) {   // 둥근 빛 한 장 (그릴 때 크기·세기만 바꿈)
+    const k = r + ',' + g + ',' + b; if (glowCache[k]) return glowCache[k];
+    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+    const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, `rgba(${r},${g},${b},1)`); gr.addColorStop(0.3, `rgba(${r},${g},${b},.42)`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return (glowCache[k] = c);
+  }
+  const off = () => !!(G.settings && G.settings.light);
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  function attach(V) {
+    const M = G.D.places.map, all = G.D.mapfx; if (!all) return;
+    const D = all[/map2_/.test(M.color) ? 'map2' : 'map']; if (!D) return;
+    const MOOD = G.D.mood;
+    // ---- 캔버스 두 장: 지도 그림과 인물 사이 ----
+    const layer = G.el('div', 'layer mapfx', null); V.el.insertBefore(layer, V.fx);
+    // 밤 덧칠·구름은 판 하나씩(곱하기, 다시 그리지 않음), 빛은 캔버스(밝게, 30번/초)
+    const nightEl = G.el('div', 'mfx-night', layer), add = G.el('canvas', 'mfx-add', layer);
+    const ac = add.getContext('2d');
+    let cw = 0, ch = 0, vx0 = 0, vy0 = 0, sc = 1, vw = 1, vh = 1;
+    // ---- 풀밭 칸 ----
+    const gbits = Uint8Array.from(atob(D.grass), c => c.charCodeAt(0));
+    V.grassAt = (x, y) => { const i = Math.floor(x / D.cell), j = Math.floor(y / D.cell); if (i < 0 || j < 0 || i >= D.gw || j >= D.gh) return false; const n = j * D.gw + i; return !!(gbits[n >> 3] & (128 >> (n & 7))); };
+    // ---- 상태 ----
+    V.stage = 5; const sm0 = V.setMood; V.setMood = (s) => { V.stage = Math.max(0, Math.min(5, s)); return sm0(s); };
+    V.night = 0; V.fxN = 0; V.fxHero = null; V.fxLumi = null;
+    let T = 0, dawn = 0, ripT = 0, shootT = 3, litT = 0, sndT = 0, prevA = null;
+    const flies = [], petals = [], parts = [], burst = [], ripples = [], shoot = [], reveals = [];
+    const clouds = Array.from({ length: 4 }, (_, i) => ({ x: (i + 0.3) * V.W / 4, y: rnd(0.15, 0.85) * V.H, w: rnd(560, 760), el: G.el('div', 'mfx-cloud', layer) }));
+    for (const k of clouds) { k.el.style.width = k.w + 'px'; k.el.style.height = k.w / 2 + 'px'; }
+    let skip = 0;
+    const inView = (x, y, m) => x > vx0 - m && x < vx0 + vw + m && y > vy0 - m && y < vy0 + vh + m;
+    const greenIn = () => { const c = D.green.filter(p => inView(p[0], p[1], -20)); return c.length ? c[Math.floor(Math.random() * c.length)] : null; };
+    // A4: 색이 번지는 구역에서 반딧불이 퍼지고, 창문·가로등이 가운데부터 차례로 켜짐
+    const litF = (x, y) => { let f = 1; for (const r of reveals) { const d = Math.hypot(x - r.c[0], (y - r.c[1]) * 1.3); if (d > r.R + 90) continue; f = Math.min(f, Math.max(0, Math.min(1, (r.t / r.dur * r.R - d) / 90))); } return f; };
+    function lightAt(x, y) {
+      let L = 0;
+      for (const l of V.lamps) { if (!l.el.classList.contains('on')) continue; const d = Math.hypot(x - l.def.at[0], (y - l.def.at[1]) * 1.4); if (d < 260) L += (1 - d / 260) ** 2; }
+      const lu = V.fxLumi && V.fxLumi(); if (lu) { const d = Math.hypot(x - lu.x, y - lu.y); if (d < 200) L += (1 - d / 200) ** 2 * 0.8; }
+      return Math.min(1, L);
+    }
+    V.fxSpark = (x, y) => { if (!G.reduced() && !off()) parts.push({ x: x + rnd(-7, 7), y: y + rnd(-7, 7), vx: rnd(-5, 5), vy: rnd(12, 24), g: 0, t: 0, life: rnd(0.9, 1.4), kind: 'spark' }); };
+
+    // ---- 인물: 빛 받기·테두리, 주민 끄덕 (A2) ----
+    const wk0 = V.walker;
+    V.walker = (sheet, cls) => {
+      const w = wk0(sheet, cls);
+      w.tint = G.el('div', 'tint', null); w.el.insertBefore(w.tint, w.occ);
+      const c0 = w.col;
+      w.col = () => { if (w.greet && w.live && w.frame === 8 && !G.reduced()) { const d = performance.now() - w.greet; if (d > 0 && d < 800 && d % 400 < 190) return 20; } return c0(); };
+      const d0 = w.draw;
+      w.draw = () => {
+        d0();
+        if (w.tsrc !== w.src) { w.tsrc = w.src; const u = `url("${G.asset(w.src)}")`, sz = w.live ? '2100px 520px' : '900px 520px'; const s = w.tint.style; s.webkitMaskImage = s.maskImage = u; s.webkitMaskSize = s.maskSize = sz; }
+        if (w.tbp !== w.bp) { w.tbp = w.bp; w.tint.style.webkitMaskPosition = w.tint.style.maskPosition = w.bp; }
+      };
+      w.draw(); w.lit = -1;
+      return w;
+    };
+    function relight(w) {
+      if (off()) { if (w.lit !== -2) { w.lit = -2; w.spr.style.filter = ''; w.tint.style.backgroundColor = 'transparent'; } return; }
+      const L = Math.round(lightAt(w.x, w.y - 40) * 10) / 10; if (L === w.lit) return; w.lit = L;
+      const rc = L > 0.35 ? 'rgba(255,226,170,.5)' : 'rgba(190,214,255,.5)';
+      w.spr.style.filter = `drop-shadow(1.5px 0 0 ${rc}) drop-shadow(-1.5px 0 0 ${rc}) drop-shadow(0 -1.5px 0 ${rc})`;
+      w.tint.style.backgroundColor = L < 0.25 ? `rgba(40,48,110,${((0.25 - L) * 0.7).toFixed(3)})` : `rgba(255,196,120,${(0.38 * L).toFixed(3)})`;
+    }
+
+    // ---- 가려지는 곳(나무·집을 인물 위에 다시 그린 조각)에도 같은 밤 덧칠 ----
+    V.fxPatch = (c) => {
+      if (!V.night) return;
+      c.globalCompositeOperation = 'multiply'; c.globalAlpha = V.night; c.fillStyle = 'rgb(120,128,190)'; c.fillRect(0, 0, 100, 130); c.globalAlpha = 1;
+    };
+
+    // ---- A1 루미: 주인공 둘레를 돌고, 가끔 갈 곳 쪽으로 날아가 알려 줌. 지나간 자리에 별가루 ----
+    const LU = { guide: null, next: 3, trail: 0, px: null, py: null };
+    V.lumiTarget = (hero, dt) => {
+      if (off() || G.reduced()) { LU.guide = null; return null; }
+      LU.next -= dt;
+      if (!LU.guide && LU.next < 0) {
+        LU.next = 7;
+        const np = hero.frame === 8 && G.hud.nextPlace && G.st && G.st.done.includes('meet_lumi') ? G.hud.nextPlace() : null;
+        if (np) { const d = Math.hypot(np.marker[0] - hero.x, np.marker[1] - hero.y); if (d > 90 && d < 420) LU.guide = { p: np.marker, t: 0 }; }
+      }
+      if (LU.guide) { LU.guide.t += dt; const p = LU.guide.p; if (LU.guide.t > 2.2 || hero.frame !== 8) LU.guide = null; else return [p[0] + Math.cos(T * 4) * 16, p[1] - 90 + Math.sin(T * 4) * 10, 2.2]; }
+      return [hero.x + 10 + Math.cos(T * 1.7) * 56, hero.y - 140 + Math.sin(T * 1.7) * 22 + Math.sin(T * 3.1) * 5, 3.5];
+    };
+    // A3: 걸음 소리는 화면 왼쪽·오른쪽 위치대로, 풀밭이면 부드럽게
+    V.stepFx = (w) => ({ pan: Math.max(-1, Math.min(1, (w.x - V.cam.x) / (vw / 2 || 1))), lp: V.grassAt(w.x, w.y + 2) ? 700 : 0, vol: V.grassAt(w.x, w.y + 2) ? 0.6 : 1 });
+
+    function dust(w) {
+      const g = V.grassAt(w.x, w.y + 2);
+      for (let i = 0; i < (g ? 4 : 5); i++) {
+        const a = Math.PI + Math.random() * Math.PI;
+        parts.push(g ? { x: w.x + rnd(-7, 7), y: w.y, vx: Math.cos(a) * 30, vy: rnd(-80, -40), g: 160, t: 0, life: 0.5, kind: 'leaf', c: Math.random() < 0.5 ? '#7fb069' : '#a7c96f' }
+          : { x: w.x + rnd(-6, 6), y: w.y, vx: rnd(-20, 20), vy: rnd(-26, -10), g: 0, t: 0, life: 0.6, kind: 'dust' });
+      }
+    }
+
+    // ---- 매 장면 ----
+    const stop = G.every((dt) => {
+      if (!V.el.isConnected) { if (V.fxSeen) stop(); return; }
+      V.fxSeen = true;
+      const { W, H, ws } = G.stage; if (!W) return;
+      if (off()) { if (layer.style.display !== 'none') { layer.style.display = 'none'; V.night = 0; for (const w of V.walkers) relight(w); } return; }
+      layer.style.display = '';
+      T += dt; const rm = G.reduced(), stg = V.stage;
+      // 구름 그림자 (판을 옮기기만)
+      for (const k of clouds) { if (!rm) { k.x += dt * 14; if (k.x > V.W + 500) { k.x = -500; k.y = rnd(0.15, 0.85) * V.H; } } k.el.style.transform = `translate(${(k.x - k.w / 2).toFixed(0)}px,${(k.y - k.w / 4).toFixed(0)}px)`; }
+      // 빛 캔버스는 두 번에 한 번 그림 (그 사이 시간은 다음에 합침)
+      skip += dt; if (++V.fxN % 2) return; dt = skip; skip = 0;
+      // 보이는 곳
+      const s = ws * V.cam.z; vw = W / s; vh = H / s; vx0 = V.cam.x - vw / 2; vy0 = V.cam.y - vh / 2;
+      const q = Math.min(0.75, 700 / W), nw = Math.round(W * q), nh = Math.round(H * q);
+      if (nw !== cw || nh !== ch) { cw = add.width = nw; ch = add.height = nh; }
+      sc = cw / vw;
+      add.style.transform = `translate(${vx0.toFixed(1)}px,${vy0.toFixed(1)}px) scale(${(vw / cw).toFixed(5)})`;
+      // A6 별을 되찾을수록 별똥별이 자주, 8개면 새벽빛
+      const stars = (G.st && G.st.stars) || 0;
+      dawn += ((stars >= 8 ? 1 : 0) - dawn) * Math.min(1, dt * 1.5);
+      const nn = V.el.closest('.light') ? 0 : NIGHT * (1 - dawn * 0.6);
+      if (Math.abs(nn - V.night) > 0.002 || nightEl.style.opacity === '') { V.night = nn; nightEl.style.opacity = nn.toFixed(3); }
+      // A4 구역 색 번짐 알아채기
+      const cur = {}; for (const z of MOOD.zones) cur[z.id] = (V.alpha[z.id] || 0) * Math.min(1, V.grow[z.id] ?? 1);
+      if (prevA) for (const z of MOOD.zones) { const d = cur[z.id] - prevA[z.id]; if (d > 0.0005 && d < 0.2 && !(z.fxT > T - 8)) { z.fxT = T; reveals.push({ c: z.center, R: Math.max(z.r[0], z.r[1]) * 1.2, t: 0, dur: 3.2 }); if (!rm) for (let i = 0; i < 46; i++) { const a = Math.random() * 6.28, v = rnd(60, 220); burst.push({ x: z.center[0], y: z.center[1] - 40, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6, t: 0, life: rnd(4, 6), ph: rnd(0, 6) }); } } }
+      prevA = cur;
+      for (let i = reveals.length - 1; i >= 0; i--) { reveals[i].t += dt; if (reveals[i].t > reveals[i].dur + 1) reveals.splice(i, 1); }
+
+      // ---- 빛 ----
+      ac.setTransform(1, 0, 0, 1, 0, 0); ac.globalAlpha = 1; ac.globalCompositeOperation = 'source-over'; ac.clearRect(0, 0, cw, ch);
+      ac.setTransform(sc, 0, 0, sc, -vx0 * sc, -vy0 * sc); ac.globalCompositeOperation = 'lighter';
+      const dark = V.night > 0;
+      if (dark) {
+        // 가로등 바닥빛 (살짝 흔들림)
+        const gl = glow(255, 190, 110), gb = glow(255, 236, 190);
+        for (const l of V.lamps) {
+          if (!l.el.classList.contains('on')) continue; const [x, y] = l.def.at; if (!inView(x, y, 260)) continue;
+          const lf = litF(x, y); if (lf <= 0) continue;
+          const fl = rm ? 0.92 : 0.9 + Math.sin(T * 3 + x) * 0.05 + Math.sin(T * 7.3 + y) * 0.03, R = 230 * fl;
+          ac.globalAlpha = 0.32 * lf; ac.drawImage(gl, x - R, y + 60 - R * 0.62, R * 2, R * 1.24);
+          ac.globalAlpha = 0.7 * lf; ac.drawImage(gb, x - 46 * fl, y - 4 - 46 * fl, 92 * fl, 92 * fl);
+        }
+        // 창문 불빛: 색이 돌아온 곳만
+        const gw = glow(255, 190, 100);
+        D.windows.forEach(([x, y], i) => {
+          if (!inView(x, y, 30)) return;
+          const on = V.colorAlphaAt(x, y) * litF(x, y) * (rm ? 0.85 : 0.75 + 0.25 * Math.sin(T * 0.7 + i * 1.7)); if (on < 0.02) return;
+          ac.globalAlpha = 0.8 * on; ac.drawImage(gw, x - 26, y - 26, 52, 52);
+        });
+        // 루미 빛
+        const lu = V.fxLumi && V.fxLumi();
+        if (lu && inView(lu.x, lu.y, 190)) { ac.globalAlpha = 0.45; ac.drawImage(glow(255, 236, 160), lu.x - 190, lu.y - 190, 380, 380); }
+      }
+      if (!rm) {
+        // 물 반짝임
+        ac.fillStyle = 'rgb(220,235,255)';
+        D.water.forEach(([x, y], i) => { if (!inView(x, y, 10)) return; const a = Math.max(0, Math.sin(T * 2.2 + i * 2.39)) ** 8; if (a < 0.02) return; ac.globalAlpha = a * 0.9; ac.fillRect(x - 3, y, 7, 2); ac.fillRect(x, y - 2, 1, 6); });
+        // A5 강물 물결 (오른쪽으로 흘러감)
+        if (D.water.length) {
+          ripT -= dt; let n = 0;
+          while (ripT < 0 && n++ < 6) { ripT += 0.06; const p = D.water[Math.floor(Math.random() * D.water.length)]; if (inView(p[0], p[1], 40)) ripples.push({ x: p[0], y: p[1], t: 0, life: rnd(2.6, 4.1), w: rnd(10, 26) }); }
+          if (ripT < 0) ripT = 0;
+          ac.lineCap = 'round'; ac.lineWidth = 2; ac.strokeStyle = 'rgb(205,226,255)';
+          for (let i = ripples.length - 1; i >= 0; i--) { const r = ripples[i]; r.t += dt; r.x += dt * 16; r.y += dt * 2.5; if (r.t > r.life) { ripples.splice(i, 1); continue; } ac.globalAlpha = Math.sin(r.t / r.life * Math.PI) * 0.55; ac.beginPath(); ac.moveTo(r.x - r.w / 2, r.y); ac.quadraticCurveTo(r.x, r.y - 3, r.x + r.w / 2, r.y); ac.stroke(); }
+        }
+        // 반딧불 (마을이 살아날수록 많이), 보이는 곳 풀밭에서
+        const nf = 6 + stg * 4;
+        while (flies.length < nf) { const p = greenIn(); if (!p) break; flies.push({ x: p[0], y: p[1] - 30, a: rnd(0, 6.28), s: rnd(0.3, 0.8), ph: rnd(0, 6) }); }
+        if (flies.length > nf) flies.length = nf;
+        const gf = glow(230, 255, 140);
+        for (const f of flies) {
+          if (!inView(f.x, f.y, 120)) { const p = greenIn(); if (p) { f.x = p[0]; f.y = p[1] - 30; } }
+          f.a += (Math.random() - 0.5) * dt * 3; f.x += Math.cos(f.a) * f.s * 20 * dt; f.y += Math.sin(f.a) * f.s * 14 * dt;
+          ac.globalAlpha = 0.9 * (0.5 + 0.5 * Math.sin(T * 2.5 + f.ph)); ac.drawImage(gf, f.x - 14, f.y - 14, 28, 28);
+        }
+        // A4 퍼지는 반딧불
+        for (let i = burst.length - 1; i >= 0; i--) {
+          const f = burst[i]; f.t += dt; if (f.t > f.life) { burst.splice(i, 1); continue; }
+          const k = Math.exp(-f.t * 1.2); f.x += f.vx * dt * k + Math.sin(T * 2 + f.ph) * 8 * dt; f.y += f.vy * dt * k - 6 * dt;
+          ac.globalAlpha = (1 - f.t / f.life) * (0.6 + 0.4 * Math.sin(T * 5 + f.ph)); ac.drawImage(gf, f.x - 16, f.y - 16, 32, 32);
+        }
+        // 발밑 먼지·풀잎, 루미 별가루
+        for (const w of V.walkers) { if (w.frame !== 8 && w.frame !== w.pf && (w.frame === 0 || w.frame === 4) && w.el.style.display !== 'none' && inView(w.x, w.y, 40)) dust(w); w.pf = w.frame; }
+        const lu = V.fxLumi && V.fxLumi();
+        if (lu) { LU.trail -= dt; const sp = LU.px == null ? 0 : Math.hypot(lu.x - LU.px, lu.y - LU.py) / Math.max(dt, 1e-3); LU.px = lu.x; LU.py = lu.y; if (LU.trail < 0) { LU.trail = sp > 40 ? 0.03 : 0.12; V.fxSpark(lu.x, lu.y + 10); } }
+        for (let i = parts.length - 1; i >= 0; i--) {
+          const p = parts[i]; p.t += dt; if (p.t > p.life) { parts.splice(i, 1); continue; }
+          p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.g * dt; const a = 1 - p.t / p.life;
+          if (p.kind === 'dust') { ac.globalAlpha = a * 0.4; ac.drawImage(glow(225, 210, 185), p.x - 4 - p.t * 14, p.y - 4 - p.t * 14, 8 + p.t * 28, 8 + p.t * 28); }
+          else if (p.kind === 'leaf') { ac.globalAlpha = a; ac.fillStyle = p.c; ac.fillRect(p.x - 2, p.y - 2, 4, 3); }
+          else { ac.globalAlpha = a * 0.9; ac.fillStyle = 'rgb(255,226,140)'; ac.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); if (a > 0.6) { ac.globalAlpha = (a - 0.6) * 2; ac.fillStyle = 'rgb(255,250,220)'; ac.fillRect(p.x - 0.5, p.y - 3, 1, 7); ac.fillRect(p.x - 3, p.y - 0.5, 7, 1); } }
+        }
+        // 꽃잎 (마을이 꽤 살아난 뒤)
+        const np = stg >= 3 ? (stg - 2) * 6 : 0;
+        while (petals.length < np) petals.push({ x: rnd(vx0, vx0 + vw), y: rnd(vy0, vy0 + vh), r: rnd(0, 6.28), v: rnd(0.6, 1.2), c: Math.random() < 0.5 ? 'rgb(246,193,207)' : 'rgb(251,224,230)' });
+        if (petals.length > np) petals.length = np;
+        ac.globalCompositeOperation = 'source-over';
+        for (const p of petals) {
+          p.x += dt * 38 * p.v; p.y += dt * 22 * p.v + Math.sin(T * 2 + p.r) * 0.4; p.r += dt * 2;
+          if (!inView(p.x, p.y, 40)) { if (Math.random() < 0.5) { p.x = vx0 - 20; p.y = rnd(vy0, vy0 + vh); } else { p.x = rnd(vx0, vx0 + vw); p.y = vy0 - 20; } }
+          ac.save(); ac.translate(p.x, p.y); ac.rotate(p.r); ac.scale(1, Math.abs(Math.cos(p.r * 1.3)) * 0.8 + 0.2); ac.globalAlpha = 0.9; ac.fillStyle = p.c; ac.beginPath(); ac.ellipse(0, 0, 5, 3, 0, 0, 7); ac.fill(); ac.restore();
+        }
+        ac.globalCompositeOperation = 'lighter';
+      }
+      // ---- 화면 기준: 별똥별, 새벽빛 ----
+      ac.setTransform(q, 0, 0, q, 0, 0);
+      if (!rm && stars > 0 && dark) {
+        shootT -= dt;
+        if (shootT < 0) { shootT = Math.max(1.6, 12 - stars * 1.3) * rnd(0.7, 1.3); shoot.push({ x: rnd(0.3, 1.1) * W, y: rnd(-0.03, 0.2) * H, t: 0, life: 1.1 }); }
+      }
+      for (let i = shoot.length - 1; i >= 0; i--) {
+        const p = shoot[i]; p.t += dt; if (p.t > p.life) { shoot.splice(i, 1); continue; }
+        const k = p.t / p.life, L = W * 0.32, hx = p.x - k * L, hy = p.y + k * L * 0.58, a = Math.sin(k * Math.PI), tl = W * 0.1;
+        const g = ac.createLinearGradient(hx, hy, hx + tl, hy - tl * 0.58); g.addColorStop(0, `rgba(255,250,225,${a.toFixed(3)})`); g.addColorStop(1, 'rgba(255,250,225,0)');
+        ac.globalAlpha = 1; ac.strokeStyle = g; ac.lineWidth = 3; ac.beginPath(); ac.moveTo(hx, hy); ac.lineTo(hx + tl, hy - tl * 0.58); ac.stroke();
+        ac.fillStyle = `rgba(255,255,240,${a.toFixed(3)})`; ac.beginPath(); ac.arc(hx, hy, 3, 0, 7); ac.fill();
+      }
+      if (dawn > 0.01) { const g = ac.createLinearGradient(0, 0, W * 0.62, H); g.addColorStop(0, `rgba(255,170,130,${(0.3 * dawn).toFixed(3)})`); g.addColorStop(0.5, `rgba(255,150,170,${(0.12 * dawn).toFixed(3)})`); g.addColorStop(1, 'rgba(255,150,170,0)'); ac.globalAlpha = 1; ac.fillStyle = g; ac.fillRect(0, 0, W, H); }
+      ac.globalAlpha = 1; ac.globalCompositeOperation = 'source-over';
+
+      // ---- 인물 빛 받기 (0.2초마다), 가려진 조각은 구름이 지나가니 가끔 다시 ----
+      litT -= dt; if (litT < 0) { litT = 0.2; for (const w of V.walkers) relight(w); }
+      // A3 물소리: 주인공이 물가에 가까울수록 크게
+      sndT -= dt;
+      if (sndT < 0 && V.fxHero && G.audio.ambientLevel) {
+        sndT = 0.25; const h = V.fxHero; let m = 1e9;
+        for (const [x, y] of D.water) { const d = Math.hypot(x - h.x, y - h.y); if (d < m) m = d; }
+        G.audio.ambientLevel('amb_fountain', Math.max(0, Math.min(1, 1 - (m - 80) / 420)) * 0.7);
+      }
+    });
+  }
 })();
 
 /* ---- teacher.js ---- */
@@ -9161,7 +9425,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-10)';
-G.BUILT = '2026-10-10 13:53';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-10 15:12';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
