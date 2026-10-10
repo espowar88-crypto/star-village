@@ -252,6 +252,7 @@ img { -webkit-user-drag: none; user-select: none; pointer-events: none; }
 .pgroup .pmain { height: calc(100% * var(--ps, 1)); width: auto; }   /* --ps: 인물 크기 (주인공은 어린이라 0.9) */
 .pgroup .pmain { position: relative; z-index: 1; }
 .pgroup .pmain { height: calc(100% * var(--ps, 1) * var(--ext, 1)); translate: 0 calc(100% * var(--exd, 0)); transform-origin: 50% calc(100% * (1 - var(--exd, 0))); }   /* 10/4: 길게 자른 그림은 늘어난 아래쪽(--exd)만큼 내려 대화창 뒤에 숨김. 말할 때 커지는 기준도 원래 아래 끝 */
+@media (max-height: 520px) { .pgroup .pmain { translate: 0 calc(100% * (var(--exd, 0) - max(0, 0.75 - var(--ps, 1)) * 1.8 / (var(--ps, 1) * var(--ext, 1)))); } }   /* 10/10 선생님: 휴대폰에서 키 작은 인물(크기 0.75 아래, 채이)은 얼굴이 대화창에 가려 조금 올림. 다른 인물·큰 화면은 그대로 */
 .pgroup .plumi { position: absolute; z-index: 0; height: 34%; width: auto; left: -16%; top: -8%; transform-origin: 50% 50%; animation: pbob 2.4s ease-in-out infinite; }   /* 상대가 있을 때: 주인공 뒤통수 쪽 위 (9/29 밤 선생님 요청: 앞쪽이 아니라 머리 뒤, 9/30: 머리에 가리지 않게 조금 위로, 겹치지 않게) */
 .pgroup.solo .plumi { position: static; margin-bottom: calc(var(--sab) + var(--u) * 54 + var(--dlgH));   /* 상대가 없을 때: 오른쪽에서 주인공과 마주 봄. 대화창 위에 떠 있음 */
   height: min(56%, calc(100% - var(--sab) - var(--u) * 54 - var(--dlgH) - 3%)); }
