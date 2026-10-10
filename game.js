@@ -997,17 +997,25 @@ G.mapView = (parent, o = {}) => {
   //  인물 발보다 땅이 앞(아래)인 점만 지도 그림 그대로 인물 위에 다시 그림. 다 가려져도 놓치지 않게 흐리게 비춤
   V.monoImg = mono;
   const dsrc = /map2?_color(_s)?\.jpg$/.test(M.color) ? M.color.replace(/_color(_s)?\.jpg$/, '_depth.png') : null;   // _s = 휴대폰용 작은 지도 그림(깊이는 같은 것)
-  if (dsrc) {
+  // 10/10 소리의 별에서 놀다 처음 화면(이어서 하기)으로 튕김: 지도를 열 때마다 깊이 그림을 큰 캔버스(넓은 지도 2880x1620)에 새로 풀어
+  //  휴대폰 메모리가 쌓여 페이지가 다시 켜짐 → 한 번만 풀어 두고 같이 쓰며, 다 쓴 캔버스는 바로 비움
+  const DC = G.depthCache || (G.depthCache = {});
+  const useDepth = (d) => { V.depth = { w: d.w, h: d.h, k: V.W / d.w, gy: d.gy }; for (const w of V.walkers) V.occDirty(w); };
+  if (dsrc && DC[dsrc]) { if (DC[dsrc].gy) useDepth(DC[dsrc]); else DC[dsrc].wait.push(useDepth); }
+  else if (dsrc) {
+    const ent = DC[dsrc] = { wait: [useDepth] };
     const im = new Image();
+    im.onerror = () => { delete DC[dsrc]; };
     im.onload = () => {
       try {
-        const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+        const w = im.width, h = im.height;
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
         const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
-        const d = x.getImageData(0, 0, im.width, im.height).data, gy = new Uint16Array(im.width * im.height);
+        const d = x.getImageData(0, 0, w, h).data, gy = new Uint16Array(w * h);
         for (let i = 0; i < gy.length; i++) if (d[i * 4 + 3] > 128) gy[i] = d[i * 4] * 256 + d[i * 4 + 1] || 1;
-        V.depth = { w: im.width, h: im.height, k: V.W / im.width, gy };
-        for (const w of V.walkers) V.occDirty(w);
-      } catch (e) { }
+        c.width = c.height = 0;   // iOS는 다 쓴 캔버스 메모리를 늦게 돌려줌
+        Object.assign(ent, { w, h, gy }); const ws = ent.wait; ent.wait = []; for (const f of ws) f(ent);
+      } catch (e) { delete DC[dsrc]; }
     };
     const src = G.asset(dsrc);
     if (location.protocol === 'file:' && !/^data:/.test(src)) {   // 폴더 판: 파일로 연 그림은 점을 못 읽음 → <이름>.js 글자판으로 받음
@@ -8921,7 +8929,7 @@ G.s4 = (() => {
 
     // ---- 매 장면 ----
     const stop = G.every((dt) => {
-      if (!V.el.isConnected) { if (V.fxSeen) stop(); return; }
+      if (!V.el.isConnected) { if (V.fxSeen) { stop(); add.width = add.height = 0; } return; }   // 10/10: 지도를 떠나면 빛 캔버스를 비움(휴대폰 메모리)
       V.fxSeen = true;
       const { W, H, ws } = G.stage; if (!W) return;
       if (off()) { if (layer.style.display !== 'none') { layer.style.display = 'none'; V.night = 0; for (const w of V.walkers) relight(w); } return; }
@@ -9425,7 +9433,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-10)';
-G.BUILT = '2026-10-10 15:12';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-10 15:38';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
