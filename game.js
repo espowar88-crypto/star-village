@@ -7939,6 +7939,17 @@ G.s4 = (() => {
 .s4-crate.v { flex-direction: column; }
 .s4-arr { position: absolute; width: 96px; height: 96px; border-radius: 50%; border: 0; background: #FFD66B; box-shadow: 0 6px 0 #c98f14; cursor: pointer; z-index: 5; display: flex; align-items: center; justify-content: center; }
 .s4-arr svg { width: 56px; height: 56px; }
+.s4-arr.art { background: none; box-shadow: none; }
+.s4-arr img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.s4-plate.art { background: none; border: 0; padding: 0; }
+.s4-plate.art img, .s4-hookimg img, .s4-wheel img { width: 100%; height: 100%; object-fit: fill; display: block; pointer-events: none; }
+.s4-hookimg { position: absolute; transition: height .6s ease-out; }
+.s4-wheel { position: absolute; }
+.s4-plank.art { background: center / 100% 100% no-repeat; border: 0; border-radius: 0; height: 46px; }
+.s4-ring { position: absolute; pointer-events: none; z-index: 2; }
+.s4-tile.art { background: none; box-shadow: none; }
+.s4-tile img { width: 100%; height: 100%; display: block; transition: transform .2s; pointer-events: none; }
+.s4-tile.ok img { filter: drop-shadow(0 0 10px #FFF1B8); }
 .s4-mark { position: absolute; font-family: var(--f-title); font-size: 38px; color: #FFF4E0; background: rgba(59, 42, 38, .75); border-radius: 18px; padding: 4px 16px; white-space: nowrap; }
 .s4-cart { position: absolute; width: 150px; height: 150px; transition: left 1.6s ease-in-out; z-index: 4; }
 .s4-cart img { width: 100%; height: 100%; object-fit: contain; }
@@ -8116,10 +8127,13 @@ G.s4 = (() => {
       const hasBg = !!ART('td_door_bg');
       const door = S.at(G.el('div', 's4-door', S.B), 470, 110, 560, 640); if (hasBg) door.style.background = 'transparent', door.style.borderColor = 'transparent';
       if (!hasBg) S.at(G.el('div', 's4-sill', S.B), 440, 740, 620, 50);
-      const plate = S.at(G.el('div', 's4-plate', S.B, dotsHtml(P.need)), 640, 230, 220, 220);
-      const rope = S.at(G.el('div', 's4-rope', S.B), 1236, 60, 0, 330);
-      G.el('div', 's4-plate', S.B).style.cssText = 'left:1190px;top:30px;width:100px;height:100px;padding:0';
-      const hook = S.at(G.el('div', 's4-hook', S.B), 1205, 380);
+      const PL = ART('td_plate_' + P.need), plate = S.at(G.el('div', 's4-plate' + (PL ? ' art' : ''), S.B, PL ? `<img src="${PL}" alt="">` : dotsHtml(P.need)), 640, 230, 220, 220);
+      // 10/10 선생님: 코드 그림 빼기. 배경 그림에 도르래·밧줄·고리가 있으면 그 고리에 걸고, 없으면 선생님 그림(td_pulley·td_hook), 그것도 없으면 코드 그림
+      const HK = !hasBg && ART('td_hook') && ART('td_pulley'), HY = hasBg ? 470 : 380;
+      const rope = hasBg || HK ? null : S.at(G.el('div', 's4-rope', S.B), 1236, 60, 0, 330);
+      if (!hasBg && !HK) G.el('div', 's4-plate', S.B).style.cssText = 'left:1190px;top:30px;width:100px;height:100px;padding:0';
+      const hook = hasBg ? S.at(G.el('div', 's4-hookimg', S.B), 1180, HY, 100, 100) : HK ? S.at(G.el('div', 's4-hookimg', S.B, `<img src="${ART('td_hook')}" alt="">`), 1200, 90, 72, 365) : S.at(G.el('div', 's4-hook', S.B), 1205, 380);
+      if (HK) S.at(G.el('div', 's4-wheel', S.B, `<img src="${ART('td_pulley')}" alt="">`), 1176, 0, 110, 162);
       const WP = [[260, 730], [440, 730], [1100, 730]];
       let on = [], fin = false;
       const ws = P.weights.map((n, i) => {
@@ -8130,7 +8144,7 @@ G.s4 = (() => {
         return b;
       });
       const sum = () => on.reduce((a, b) => a + +b.dataset.n, 0);
-      const hang = () => { const lift = Math.min(1, sum() / P.need); on.forEach((b, i) => S.at(b, 1170, 450 + i * 120 + lift * 0)); hook.style.top = (380 + on.length * 20) + 'px'; rope.style.height = (330 + on.length * 20) + 'px'; door.style.transform = `translateY(${-lift * 30}px)`; };
+      const hang = () => { const lift = Math.min(1, sum() / P.need); on.forEach((b, i) => S.at(b, hasBg ? 1155 : 1170, (hasBg ? 545 : 450) + i * 120 + lift * 0)); if (hasBg) { } else if (rope) { hook.style.top = (380 + on.length * 20) + 'px'; rope.style.height = (330 + on.length * 20) + 'px'; } else hook.style.height = (365 + on.length * 20) + 'px'; door.style.transform = `translateY(${-lift * 30}px)`; };
       async function tap(b) {
         if (fin || G.dialog.active || on.includes(b)) return;
         G.help.poke(); G.audio.sfx('sfx_tap', 0.5); on.push(b); hang();
@@ -8160,17 +8174,18 @@ G.s4 = (() => {
       const S = screen('s4z-ramp', 1600, 900); bgOf(S, 'td_ramp_bg', 'linear-gradient(#8a6a4e,#5E4A3A)');
       const TOP = [1150, 360], BASE = 660, LEN = { short: 330, mid: 470, long: 760 }, ART4 = { short: 'td_plank_s', mid: 'td_plank_m', long: 'td_plank_l' }, NAME = { short: '짧은 판자', mid: '중간 판자', long: '긴 판자' };
       if (!ART('td_ramp_bg')) { S.at(G.el('div', 's4-sill', S.B), 120, BASE, 1360, 40); [0, 1, 2].forEach(i => S.at(G.el('div', 's4-step', S.B), TOP[0] + i * 90, TOP[1] + (2 - i) * 0 - i * 0, 300 - i * 90, BASE - TOP[1])); }
-      const plank = G.el('div', 's4-plank', S.B); plank.style.display = 'none';
+      const plank = G.el('div', 's4-plank', S.B); plank.style.display = 'none';   // 10/10: 선생님 판자 그림 td_plank_s/m/l이 있으면 그림으로
       const car = S.at(G.el('div', 's4-car', S.B, ART('td_car') ? `<img src="${ART('td_car')}" alt="" style="width:100%;height:100%;object-fit:contain">` : '<div class="b"></div><i class="w" style="left:10px"></i><i class="w" style="right:10px"></i>'), 160, BASE - 80);
       let fin = false, busy = false;
       const ch = KS.map((k, i) => {
-        const b = G.btn('s4-choice', `<div style="width:${LEN[k] * 0.32}px;height:24px;background:#C9A27A;border:4px solid #8B5E3C;border-radius:6px"></div>` + `<span>${NAME[k]}</span>`, S.B, () => pick(k, b), NAME[k]);
+        const b = G.btn('s4-choice', (ART(ART4[k]) ? `<img src="${ART(ART4[k])}" alt="" style="width:${LEN[k] * 0.36}px;height:34px;object-fit:fill">` : `<div style="width:${LEN[k] * 0.32}px;height:24px;background:#C9A27A;border:4px solid #8B5E3C;border-radius:6px"></div>`) + `<span>${NAME[k]}</span>`, S.B, () => pick(k, b), NAME[k]);
         S.at(b, 260 + i * 380, 730, 330, 140); return b;
       });
       async function pick(k, b) {
         if (fin || busy || G.dialog.active) return; busy = true; G.help.poke(); G.audio.sfx('sfx_tap', 0.5);
         const L = LEN[k], dy = BASE - TOP[1], dx = Math.sqrt(Math.max(1, L * L - dy * dy)), x0 = TOP[0] - dx, ang = Math.atan2(-dy, dx);
         Object.assign(plank.style, { display: '', left: x0 + 'px', top: (BASE - 17) + 'px', width: L + 'px', transform: `rotate(${ang}rad)` });
+        if (ART(ART4[k])) { plank.classList.add('art'); plank.style.backgroundImage = `url("${ART(ART4[k])}")`; plank.style.top = (BASE - 23) + 'px'; }
         S.at(car, x0 - 130, BASE - 80); car.style.transform = '';
         await G.wait(0.5);
         const good = k === 'long', far = good ? 1 : 0.45, rm = G.reduced();
@@ -8399,7 +8414,8 @@ G.s4 = (() => {
   };
 
   // ---- 퍼즐: 화분 상자 밀기 (위에서 본 바닥 6칸 x 4줄). 상자를 누르면 길게 놓인 쪽 양 끝에 화살표 → 한 칸씩 밂. 둘째 줄(문 → 계산대)이 비면 성공 ----
-  const ARR = (r) => `<svg viewBox="0 0 60 60" style="transform:rotate(${r}deg)"><path d="M30 6 L54 40 H38 V56 H22 V40 H6 Z" fill="#8a5a0a"/></svg>`;
+  const ARR = (r) => ART('td_arrow') ? `<img src="${ART('td_arrow')}" alt="" style="transform:rotate(${r}deg)">` : `<svg viewBox="0 0 60 60" style="transform:rotate(${r}deg)"><path d="M30 6 L54 40 H38 V56 H22 V40 H6 Z" fill="#8a5a0a"/></svg>`;
+  const ARRC = () => 's4-arr' + (ART('td_arrow') ? ' art' : '');   // 10/10 선생님 화살표 단추 그림
   function crates() {
     return new Promise((res) => {
       const g = G.gen, ok = () => g === G.gen, C = 6, R = 4, P = 1, CS = 160, X0 = 320, Y0 = 130;
@@ -8427,7 +8443,7 @@ G.s4 = (() => {
           if (!canMove(b, d)) continue;
           const end = d < 0 ? [b.r, b.c] : cellsOf(b)[1], ar = b.o === 'v' ? (d < 0 ? 0 : 180) : (d < 0 ? 270 : 90);
           const x = X0 + end[1] * CS + CS / 2 + (b.o === 'h' ? d * (CS / 2 + 10) : 0) - 48, y = Y0 + end[0] * CS + CS / 2 + (b.o === 'v' ? d * (CS / 2 + 10) : 0) - 48;
-          const a = G.btn('s4-arr', ARR(ar), S.B, () => move(b, d), '상자 밀기'); S.at(a, x, y); arrs.push(a);
+          const a = G.btn(ARRC(), ARR(ar), S.B, () => move(b, d), '상자 밀기'); S.at(a, x, y); arrs.push(a);
         }
         if (!arrs.length) wob(b.e);
       }
@@ -8552,6 +8568,7 @@ G.s4 = (() => {
   // ---- 퍼즐: 길 조각 돌리기. 누리 지도 위 조각을 눌러 돌려 집 → 전망대 길을 이음. 계단 칸에는 가방의 경사판을 놓음 ----
   // 방향 0 위, 1 오른쪽, 2 아래, 3 왼쪽. 곧은 조각 = 왼-오(돌림 0), 꺾인 조각 = 위-오(돌림 0)
   function tileSvg(kind, stair, plank, yel) {
+    if (ART('td_tile_I')) return `<img src="${ART(stair ? (plank ? 'td_tile_ramp' : 'td_tile_stair') : (kind === 'I' ? 'td_tile_I' : 'td_tile_L') + (yel ? '' : '_gap'))}" alt="">`;   // 10/10 선생님 길 조각 그림 td_tiles
     const p = kind === 'I' ? 'M0 50 H100' : 'M50 0 V50 H100';
     let s = `<svg viewBox="0 0 100 100"><path d="${p}" stroke="#A0764F" stroke-width="30" fill="none" stroke-linecap="butt"/><path d="${p}" stroke="#d9b98a" stroke-width="18" fill="none"/>`;
     if (yel) s += `<path d="${p}" stroke="#FFD66B" stroke-width="7" stroke-dasharray="6 3" fill="none"/>`;   // 노란 길 (점자블록)
@@ -8577,12 +8594,12 @@ G.s4 = (() => {
       const fixed = (q) => q.rots.includes(q.rot) && (!q.stair || q.plank) && q.yel;
       cells.forEach(c => { if (c.stair) c.rot = c.rots[0]; else { const bad = [0, 1, 2, 3].filter(r => !c.rots.includes(r)); c.rot = bad[Math.floor(Math.random() * bad.length)]; } });
       const inRoute = (x, y) => cells.some(c => c.p[0] === x && c.p[1] === y);
-      for (let y = 0; y < NR; y++) for (let x = 0; x < NC; x++) if (!inRoute(x, y)) S.at(G.el('div', 's4-tile grass', S.B), X0 + x * CS + 5, Y0 + y * CS + 5);
+      for (let y = 0; y < NR; y++) for (let x = 0; x < NC; x++) if (!inRoute(x, y)) S.at(G.el('div', 's4-tile grass' + (ART('td_tile_grass') ? ' art' : ''), S.B, ART('td_tile_grass') ? `<img src="${ART('td_tile_grass')}" alt="">` : ''), X0 + x * CS + 5, Y0 + y * CS + 5);
       const st = route[0], en = route[route.length - 1];
       S.at(G.el('div', 's4-mark', S.B, '누리 집'), X0 - 170, Y0 + st[1] * CS + 60); S.at(G.el('div', 's4-mark', S.B, '전망대'), X0 + NC * CS + 14, Y0 + en[1] * CS + 60);
       let fin = false, sayStair = false, sayYel = false;
       const draw = (c) => { c.e.innerHTML = tileSvg(c.kind, c.stair, c.plank, c.yel); c.e.firstChild.style.transform = `rotate(${c.rot * 90}deg)`; c.e.classList.toggle('ok', fixed(c)); };
-      cells.forEach(c => { c.e = G.btn('s4-tile', '', S.B, () => tap(c), c.stair ? '계단 조각' : '길 조각'); S.at(c.e, X0 + c.p[0] * CS + 5, Y0 + c.p[1] * CS + 5); draw(c); });
+      cells.forEach(c => { c.e = G.btn('s4-tile' + (ART('td_tile_I') ? ' art' : ''), '', S.B, () => tap(c), c.stair ? '계단 조각' : '길 조각'); S.at(c.e, X0 + c.p[0] * CS + 5, Y0 + c.p[1] * CS + 5); draw(c); });
       const okAll = () => cells.every(fixed);
       const yelNext = () => { if (!sayYel && cells.every(c => c.rots.includes(c.rot) && (!c.stair || c.plank)) && !okAll()) { sayYel = true; S.say('TD04_rumi_09'); const c = cells.find(q => !q.yel); if (c) wob(c.e); } };
       async function tap(c) {
@@ -8612,6 +8629,7 @@ G.s4 = (() => {
       const S = screen('s4z-scope', 1600, 900); bgOf(S, 'td_view_bg', 'linear-gradient(#2a2f52,#151a33)');
       const LW = 2400, LH = 1350, CX = 800, CY = 430;
       const box = S.at(G.el('div', 's4-scope', S.B), CX - R, CY - R, R * 2, R * 2);
+      if (ART('td_scope_ring')) { box.style.borderColor = 'transparent'; const RR = R / 0.7; S.at(G.el('img', 's4-ring', S.B), CX - RR, CY - RR, RR * 2, RR * 2).src = ART('td_scope_ring'); }   // 10/10 선생님 망원경 테두리 그림
       const land = G.el('div', 's4-land', box); Object.assign(land.style, { width: LW + 'px', height: LH + 'px', backgroundImage: `url("${ART('td_view_land') || G.asset('assets/map/map2_color_s.jpg')}")` });
       const gl = G.btn('s4-glint', '', land, () => win(), '초록빛'); Object.assign(gl.style, { left: SP.glint[0] * LW + 'px', top: SP.glint[1] * LH + 'px' });
       let vx = LW * 0.2, vy = LH * 0.2, fin = false;   // 시야 가운데가 보는 풍경 자리
@@ -8622,7 +8640,7 @@ G.s4 = (() => {
       box.addEventListener('pointermove', (e) => { if (!drag) return; const k = S.k || 1; vx = drag[2] - (e.clientX - drag[0]) / k; vy = drag[3] - (e.clientY - drag[1]) / k; set(); });
       const up = () => { drag = null; }; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
       [[0, 0, -1, CX - 48, CY - R - 120], [180, 0, 1, CX - 48, CY + R + 24], [270, -1, 0, CX - R - 130, CY - 48], [90, 1, 0, CX + R + 34, CY - 48]].forEach(([r, dx, dy, x, y]) => {
-        const a = G.btn('s4-arr', ARR(r), S.B, () => { if (fin) return; G.help.poke(); G.audio.sfx('sfx_tap', 0.3); const x0 = vx, y0 = vy; G.tween(0, 1, 0.3, k => { vx = x0 + dx * 160 * k; vy = y0 + dy * 160 * k; set(); }, 'out'); }, '망원경 돌리기'); S.at(a, x, y);
+        const a = G.btn(ARRC(), ARR(r), S.B, () => { if (fin) return; G.help.poke(); G.audio.sfx('sfx_tap', 0.3); const x0 = vx, y0 = vy; G.tween(0, 1, 0.3, k => { vx = x0 + dx * 160 * k; vy = y0 + dy * 160 * k; set(); }, 'out'); }, '망원경 돌리기'); S.at(a, x, y);
       });
       if (ART('td_nuri_draw')) S.at(G.el('div', 's3-panel', S.B, `<img src="${ART('td_nuri_draw')}" alt="" style="width:100%;height:100%;object-fit:contain">`), 1240, 560, 300, 260);
       async function win() { if (fin || G.dialog.active) return; fin = true; cur = null; G.help.off(); S.hush(); G.audio.sfx('sfx_sparkle', 0.9); spark(gl, 14); await G.wait(1.3); S.end(); res(ok()); }
@@ -9463,7 +9481,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-10)';
-G.BUILT = '2026-10-10 22:24';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-10 23:41';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
