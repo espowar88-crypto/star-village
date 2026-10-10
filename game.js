@@ -1012,7 +1012,7 @@ G.mapView = (parent, o = {}) => {
         const c = document.createElement('canvas'); c.width = w; c.height = h;
         const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
         const d = x.getImageData(0, 0, w, h).data, gy = new Uint16Array(w * h);
-        for (let i = 0; i < gy.length; i++) if (d[i * 4 + 3] > 128) gy[i] = d[i * 4] * 256 + d[i * 4 + 1] || 1;
+        for (let i = 0; i < gy.length; i++) if (d[i * 4 + 3] > 128) gy[i] = (d[i * 4] * 256 + d[i * 4 + 1] || 1) | (d[i * 4 + 3] < 255 ? 0x8000 : 0);   // 10/10 알파 254 = 올라설 수 있는 땅(전망대 언덕 윗면·계단, fix_plateau.py)
         c.width = c.height = 0;   // iOS는 다 쓴 캔버스 메모리를 늦게 돌려줌
         Object.assign(ent, { w, h, gy }); const ws = ent.wait; ent.wait = []; for (const f of ws) f(ent);
       } catch (e) { delete DC[dsrc]; }
@@ -1042,14 +1042,17 @@ G.mapView = (parent, o = {}) => {
   function occlude(w) {
     const D = V.depth, cv = w.occ;
     if (!D || !w.el.isConnected || w.el.style.display === 'none') { cv.style.display = 'none'; w.hid = false; return; }
-    const fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50, y0 = fy - 104, lim = fy + 4, px = mdat.data;
+    const fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50, y0 = fy - 104, px = mdat.data;
+    // 10/10 선생님(전망대): 발밑이 언덕 윗면이면 언덕 아래 땅 높이를 발 높이로 (위에 선 인물을 언덕·언덕 위 집이 가리지 않게)
+    const fsx = Math.floor(fx / D.k), fsy = Math.floor((fy - 3) / D.k), gf = fsy >= 0 && fsy < D.h && fsx >= 0 && fsx < D.w ? D.gy[fsy * D.w + fsx] : 0;
+    const up = !!(gf & 0x8000), lim = (up ? Math.max(fy, gf & 0x7fff) : fy) + 4, jmax = up ? 104 : 130;   // 언덕 위면 발 아래(그림자)는 안 덮음
     let any = false;
     for (let j = 0; j < 130; j++) {
       const sy = Math.floor((y0 + j) / D.k);
       for (let i = 0; i < 100; i++) {
         const sx = Math.floor((x0 + i) / D.k), o = (j * 100 + i) * 4;
         const g = sy >= 0 && sy < D.h && sx >= 0 && sx < D.w ? D.gy[sy * D.w + sx] : 0;
-        const f = g > lim; px[o + 3] = f ? 255 : 0; if (f) any = true;
+        const f = j < jmax && (g & 0x7fff) > lim; px[o + 3] = f ? 255 : 0; if (f) any = true;
       }
     }
     if (!any) { cv.style.display = 'none'; w.hid = false; return; }
@@ -9446,7 +9449,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-10)';
-G.BUILT = '2026-10-10 15:59';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-10 19:11';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
