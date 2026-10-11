@@ -360,6 +360,7 @@ G.audio = (() => {
     if (musicEl && !musicNode) musicEl.volume = Math.min(1, (ducked ? VOL.duck : VOL.music) * k * (S().volume ?? 0.9));
   };
   A.holdMusic = (name, k = 1) => { hold = null; if (name) A.music(name); hold = name || null; A.musicLevel(k, name ? 0.6 : 1.5); };
+  A.musicNow = () => musicName;   // 10/11 지금 음악 이름 (루미 꾸미기 스튜디오가 닫을 때 되돌림)
   A.music = async (name) => {
     if (hold && name !== hold) { if (name !== 'music_title') return; hold = null; A.musicLevel(1, 0.5); }
     if (!A.ready || name === musicName) return; A.wake();
@@ -10264,6 +10265,7 @@ G.deco = (() => {
     const act = G.el('div', 'ld-act', left);
     const grid = G.el('div', 'ld-grid', m);
     let pick = st().wear || '';
+    const prevMusic = G.audio.musicNow && G.audio.musicNow(); G.audio.music('music_studio');   // 10/11 선생님이 고른 스튜디오 음악 (Pixabay, tomomi_kato "Sugar Star Candy")
     const show = (id) => { pv.querySelectorAll('.ld-deco').forEach(e => e.remove()); if (id) pv.insertAdjacentHTML('beforeend', decoHtml(id)); };
     function render() {
       const s = st(), L = D.left();
@@ -10305,7 +10307,7 @@ G.deco = (() => {
     }
     render();
     if (done('ld_all')) G.el('div', 'ld-stamp still', m, '다 모았어요!');
-    const close = () => { if (!m.isConnected) return; m.remove(); G.busy = Math.max(0, G.busy - 1); G.audio.stopVoice(); onClose && onClose(); };
+    const close = () => { if (!m.isConnected) return; m.remove(); G.busy = Math.max(0, G.busy - 1); G.audio.stopVoice(); if (prevMusic) G.audio.music(prevMusic); onClose && onClose(); };
     G.btn('pill sky-close', '닫기', m, close, '닫기');
     if (!done('ld_studio')) { mark('ld_studio'); D.say(m, 'LD_tut_03'); document.querySelectorAll('.ld-open.glow').forEach(e => e.classList.remove('glow')); }
   };
@@ -10702,7 +10704,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-11)';
-G.BUILT = '2026-10-11 22:37';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-11 22:41';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
