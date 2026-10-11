@@ -3670,7 +3670,7 @@ G.cut.add({
     big.remove(); me.classList.add('lit'); c.sfx('sfx_chime', 0.7); U.burst(c, root, POS[0][0] * W, POS[0][1] * H, 14);
     await c.wait(1.6);
     if (c.rm) pan(0); else await c.tween(1, 0, 2.0, pan, 'io');
-    wl.style.transform = ''; sky.remove(); pillar.remove();
+    if (wl) wl.style.transform = ''; sky.remove(); pillar.remove();   // 10/11 장면이 이미 바뀌어 wl이 없으면 연출이 멈추던 오류 막음
     // (마) 광장으로 돌아와 가로등이 차례로 켜지고 완전한 색
     const col = V.colorImg; col.style.visibility = '';
     for (const l of V.lamps) { if (!l.el.classList.contains('on')) { l.el.classList.add('on'); c.sfx('sfx_chime', 0.35); await c.wait(0.3); } }
@@ -6013,7 +6013,7 @@ G.s2 = (() => {
     big.remove(); slots[si].classList.add('lit'); G.audio.sfx('sfx_chime', 0.7);
     await G.wait(1.6);
     if (rm) pan(0); else await G.tween(1, 0, 2.0, pan, 'io');
-    wl.style.transform = ''; sky.remove(); pillar.remove();
+    if (wl) wl.style.transform = ''; sky.remove(); pillar.remove();   // 10/11 장면이 이미 바뀌어 wl이 없으면 연출이 멈추던 오류 막음
     // (마) 가로등이 차례로 켜지고 광장이 완전한 색, 불꽃놀이, 모두 기뻐함
     for (const l of V.lamps) if (!l.el.classList.contains('on')) { l.el.classList.add('on'); G.audio.sfx('sfx_chime', 0.35); await G.wait(0.3); }
     const col = V.colorImg; col.style.visibility = ''; col.style.opacity = 1;
@@ -7594,7 +7594,7 @@ G.s3 = (() => {
     big.remove(); slots[si].classList.add('lit'); G.audio.sfx('sfx_chime', 0.7);
     await G.wait(1.6);
     if (rm) pan(0); else await G.tween(1, 0, 2.0, pan, 'io');
-    wl.style.transform = ''; sky.remove(); pillar.remove();
+    if (wl) wl.style.transform = ''; sky.remove(); pillar.remove();   // 10/11 장면이 이미 바뀌어 wl이 없으면 연출이 멈추던 오류 막음
     for (const l of V.lamps) if (!l.el.classList.contains('on')) { l.el.classList.add('on'); G.audio.sfx('sfx_chime', 0.35); await G.wait(0.3); }
     const col = V.colorImg; col.style.visibility = ''; col.style.opacity = 1;
     G.fireworkShow(layer, 5);
@@ -8744,7 +8744,7 @@ G.s4 = (() => {
     big.remove(); slots[si].classList.add('lit'); G.audio.sfx('sfx_chime', 0.7);
     await G.wait(1.6);
     if (rm) pan(0); else await G.tween(1, 0, 2.0, pan, 'io');
-    wl.style.transform = ''; sky.remove(); pillar.remove();
+    if (wl) wl.style.transform = ''; sky.remove(); pillar.remove();   // 10/11 장면이 이미 바뀌어 wl이 없으면 연출이 멈추던 오류 막음
     for (const l of V.lamps) if (!l.el.classList.contains('on')) { l.el.classList.add('on'); G.audio.sfx('sfx_chime', 0.35); await G.wait(0.3); }
     const col = V.colorImg; col.style.visibility = ''; col.style.opacity = 1;
     G.fireworkShow(layer, 5);
@@ -9661,7 +9661,7 @@ G.s5 = (() => {
     big.remove(); slots[si].classList.add('lit'); G.audio.sfx('sfx_chime', 0.7);
     await G.wait(1.6);
     if (rm) pan(0); else await G.tween(1, 0, 2.0, pan, 'io');
-    wl.style.transform = ''; sky.remove(); pillar.remove();
+    if (wl) wl.style.transform = ''; sky.remove(); pillar.remove();   // 10/11 장면이 이미 바뀌어 wl이 없으면 연출이 멈추던 오류 막음
     for (const l of V.lamps) if (!l.el.classList.contains('on')) { l.el.classList.add('on'); G.audio.sfx('sfx_chime', 0.35); await G.wait(0.3); }
     const col = V.colorImg; col.style.visibility = ''; col.style.opacity = 1;
     G.fireworkShow(layer, 5);
@@ -10677,7 +10677,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-11)';
-G.BUILT = '2026-10-11 16:01';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-11 18:33';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
