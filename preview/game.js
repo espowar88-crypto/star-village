@@ -10082,7 +10082,7 @@ G.deco = (() => {
   D.unlocked = () => done('plaza2_star');
   const raised = () => STARS.filter(r => done(r[1]));
   D.earned = () => raised().reduce((a, r) => a + Math.max(0, (G.st[r[0]] || []).length - NEED), 0);
-  D.spent = () => { const s = st(); return s.owned.reduce((a, id) => a + ((D.ITEMS.find(i => i.id === id) || {}).cost || 0), 0) + s.sky.length; };
+  D.spent = () => { const s = st(); return s.owned.reduce((a, id) => a + ((D.ITEMS.find(i => i.id === id) || {}).cost || 0), 0) + s.sky.filter(q => !q[2]).length; };
   D.left = () => Math.max(0, D.earned() - D.spent());
   const allOwned = () => D.ITEMS.every(i => st().owned.includes(i.id));
   // 별 배지: 다 모으면 받는 덤 (올린 별의 색 중에서 고름, 다시 누르면 다음 색)
@@ -10114,15 +10114,47 @@ G.deco = (() => {
   // ---- 밤하늘 화면에 붙는 것: 남은 별가루, 「루미 꾸미기」, 「내 별자리」 ----
   D.skyExtras = (m) => {
     if (!D.unlocked()) return;
-    const W = 1000, H = 560, ns = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('class', 'ld-sky'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('preserveAspectRatio', 'none'); m.appendChild(svg);
-    const pl = document.createElementNS(ns, 'polyline'); pl.setAttribute('class', 'ld-line'); svg.appendChild(pl);
-    const dots = G.el('div', 'ld-dots', m);
-    const draw = () => {
-      const s = st().sky; pl.setAttribute('points', s.map(p => (p[0] * W).toFixed(1) + ',' + (p[1] * H).toFixed(1)).join(' '));
-      dots.innerHTML = s.map(p => `<i style="left:${p[0] * 100}%;top:${p[1] * 100}%"></i>`).join('');
+    // 10/11 선생님: 별과 선이 딱 붙게(한 svg 안에 화면 크기 그대로 그림), 선이 그어지는 효과, 이은 뒤에도 반짝임. 열기만 해도 별자리가 다시 그려짐
+    const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg'); svg.setAttribute('class', 'ld-sky'); m.insertBefore(svg, m.querySelector('.c11-slot'));   // 되찾은 큰 별 그림 아래에 선
+    const mk = (tag, at, par) => { const e = document.createElementNS(ns, tag); for (const k in at) e.setAttribute(k, at[k]); (par || svg).appendChild(e); return e; };
+    const lit = () => [...m.querySelectorAll('.c11-slot.lit')].map(e => [parseFloat(e.style.left) / 100, parseFloat(e.style.top) / 100]);
+    let gLine, gStar, Wd = 1, Ht = 1;
+    const P = (q) => [q[0] * Wd, q[1] * Ht];
+    const starPath = (r) => { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; d += (i ? 'L' : 'M') + (Math.cos(a) * rr).toFixed(1) + ' ' + (Math.sin(a) * rr).toFixed(1); } return d + 'Z'; };
+    const addSeg = (q0, q1, delay, dur) => {
+      const [x0, y0] = P(q0), [x1, y1] = P(q1), L = Math.hypot(x1 - x0, y1 - y0);
+      const at = { x1: x0, y1: y0, x2: x1, y2: y1 };
+      const glow = mk('line', { ...at, class: 'ld-seg-glow' }, gLine), ln = mk('line', { ...at, class: 'ld-seg' }, gLine);
+      for (const e of [glow, ln]) { e.style.strokeDasharray = L; e.style.strokeDashoffset = L; e.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: dur, delay, easing: 'ease-out', fill: 'forwards' }); }
+      const sp = mk('circle', { r: Math.max(3, G.stage.u * 7), class: 'ld-spark', cx: x0, cy: y0 }, gLine);   // 선 끝을 따라가는 빛
+      sp.animate([{ transform: 'translate(0,0)', opacity: 1 }, { transform: `translate(${x1 - x0}px,${y1 - y0}px)`, opacity: 1 }, { transform: `translate(${x1 - x0}px,${y1 - y0}px)`, opacity: 0 }], { duration: dur + 250, delay, fill: 'forwards', easing: 'ease-out' }).onfinish = () => sp.remove();
     };
-    draw();
+    const addStar = (q, i, delay) => {
+      const [x, y] = P(q), r = Math.max(9, G.stage.u * 24);
+      const g = mk('g', { transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` }, gStar);
+      mk('circle', { r: r * 2.2, class: 'ld-halo' }, g);
+      const s = mk('path', { d: starPath(r), class: 'ld-star' }, g);
+      s.style.animationDelay = (-(i * 0.73) % 3).toFixed(2) + 's';   // 별마다 다르게 반짝임
+      g.animate([{ opacity: 0, transform: `translate(${x}px,${y}px) scale(.2)` }, { opacity: 1, transform: `translate(${x}px,${y}px) scale(1.35)` }, { opacity: 1, transform: `translate(${x}px,${y}px) scale(1)` }], { duration: 450, delay, fill: 'backwards', easing: 'ease-out' });
+    };
+    // all = 처음부터 차례로 그리기(열 때), 아니면 마지막 한 칸만 새로
+    const draw = (all) => {
+      const r = m.getBoundingClientRect(); Wd = r.width || 1; Ht = r.height || 1;
+      svg.setAttribute('viewBox', `0 0 ${Wd} ${Ht}`);
+      const sk = st().sky;
+      if (all) { svg.innerHTML = '<defs><radialGradient id="ldHalo"><stop offset="0" stop-color="#FFF1B8" stop-opacity=".75"/><stop offset=".45" stop-color="#FFD66B" stop-opacity=".3"/><stop offset="1" stop-color="#FFD66B" stop-opacity="0"/></radialGradient></defs>'; gLine = mk('g', {}); gStar = mk('g', {}); }
+      if (all) {
+        const step = Math.min(260, 2200 / Math.max(1, sk.length));
+        sk.forEach((q, i) => { const t = 250 + i * step; if (i) addSeg(sk[i - 1], q, t - step * 0.9, step * 0.9); if (!q[2]) addStar(q, i, t); });
+      } else if (sk.length) {
+        const i = sk.length - 1, q = sk[i];
+        if (i) addSeg(sk[i - 1], q, 0, 420);
+        if (!q[2]) addStar(q, i, i ? 300 : 0);
+      }
+    };
+    const redraw = () => { if (!m.isConnected) return G.resizers.delete(redraw); draw(true); };
+    G.resizers.add(redraw);
+    requestAnimationFrame(() => draw(true));
     const bar = G.el('div', 'ld-skybar', m);
     const cnt = G.el('div', 'star-count ld-left', bar);
     const upd = () => { cnt.innerHTML = G.icon('icon_star') + ' 남은 별가루 ' + D.left() + '개'; };
@@ -10130,7 +10162,7 @@ G.deco = (() => {
     const deco = G.btn('pill gold ld-open' + (done('ld_studio') ? '' : ' glow'), '루미 꾸미기', bar, () => { G.audio.voice('LD_btn_deco'); D.studio(() => { upd(); }); }, '루미 꾸미기');
     let drawing = false, tapOff = null;
     const sky = G.btn('pill ld-draw', '내 별자리', bar, () => { G.audio.voice(drawing ? 'LD_btn_done' : 'LD_btn_sky'); setDraw(!drawing); }, '내 별자리');
-    const undo = G.btn('pill ld-undo', '하나 지우기', bar, () => { const s = st().sky; if (!s.length) return; s.pop(); G.save.write(); G.audio.sfx('sfx_page', 0.4); draw(); upd(); }, '하나 지우기');
+    const undo = G.btn('pill ld-undo', '하나 지우기', bar, () => { const s = st().sky; if (!s.length) return; s.pop(); G.save.write(); G.audio.sfx('sfx_page', 0.4); draw(true); upd(); }, '하나 지우기');
     undo.style.display = 'none';
     function setDraw(on) {
       drawing = on; m.classList.toggle('ld-drawing', on);
@@ -10144,6 +10176,13 @@ G.deco = (() => {
         if (y < 0.14 || y > 0.8) return;   // 위쪽 글자·아래 단추 자리는 비움
         const s = st().sky;
         if (s.length >= SKY_MAX) { D.say(m, 'LD_sky_full'); return; }
+        // 가까운 별(내가 놓은 별·되찾은 큰 별)을 누르면 그 별에 딱 이어짐 (새 별가루 안 씀)
+        const near = s.filter(q => !q[2]).concat(lit()).map(q => [q, Math.hypot((q[0] - x) * r.width, (q[1] - y) * r.height)]).sort((a, b) => a[1] - b[1])[0];
+        const last = s[s.length - 1];
+        if (near && near[1] < G.stage.u * 70) {
+          const q = near[0]; if (last && Math.abs(last[0] - q[0]) < 1e-3 && Math.abs(last[1] - q[1]) < 1e-3) return;
+          s.push([q[0], q[1], 1]); G.save.write(); G.audio.sfx('sfx_sparkle', 0.35); draw(); return;
+        }
         if (D.left() < 1) { D.say(m, 'LD_need'); return; }
         s.push([+x.toFixed(3), +y.toFixed(3)]); G.save.write(); G.audio.sfx('sfx_sparkle', 0.5); draw(); upd();
       };
@@ -10601,7 +10640,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-11)';
-G.BUILT = '2026-10-11 13:05';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-11 15:21';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
