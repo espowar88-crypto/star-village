@@ -10116,12 +10116,64 @@ G.deco = (() => {
   const badgeColor = () => { const r = raised(), s = st(); return G.STARS[(r[(s.badge || 0) % Math.max(1, r.length)] || STARS[0])[2]].color; };
   const STAR = 'M0 -26 L7 -8 L26 -8 L11 4 L16 23 L0 12 L-16 23 L-11 4 L-26 -8 L-7 -8 Z';
   const badgeSvg = (cls) => `<svg class="${cls}" viewBox="0 0 256 256"><g transform="translate(98 168) scale(.78)"><path d="M-9 14 L-16 44 L0 34 L16 44 L9 14 Z" fill="#E8606A" stroke="#7a2e35" stroke-width="3" stroke-linejoin="round"/><circle r="28" fill="#FFF6D6" stroke="#b08a4a" stroke-width="4"/><path d="${STAR}" transform="scale(.82)" fill="${badgeColor()}" stroke="#6b5230" stroke-width="3" stroke-linejoin="round"/></g></svg>`;
-  const decoHtml = (id) => !id ? '' : id === 'badge' ? badgeSvg('ld-deco') : `<img class="ld-deco" src="${G.asset('assets/ui/lumi_deco/d_' + id + '.webp')}" alt="">`;
-  // 루미 그림이 든 요소(왼쪽 아래 단추·지도 루미·꾸미기 미리보기)에 장식을 얹음
+  const decoHtml = (id) => !id ? '' : id === 'badge' ? badgeSvg('ld-deco') : codeSvg(id, 'front');
+  // 10/11 선생님 시안 2: 작은 루미(왼쪽 아래 단추·지도 루미)는 코드로 그린 장식(lumi.png 256 좌표). back 겹은 루미 뒤, front 겹은 루미 앞이라 목도리·꽃 화관이 두른 것처럼 보임
+  const OL = '#8a6a4e';   // 10/11 선생님 '조금 흐릿해도': 선은 연갈색, 그리고 SOFT 필터(살짝 번짐·채도 낮춤·노란 빛)
+  const CODE = {
+   wizard: { back: '',
+    front: `<ellipse cx="128" cy="112" rx="51" ry="12" fill="#7a5cb5" stroke="${OL}" stroke-width="2.5"/>
+     <ellipse cx="128" cy="110" rx="40" ry="7" fill="#5b4296"/>
+     <path d="M100 110 Q112 72 122 50 Q132 32 152 30 Q142 38 144 54 Q150 82 156 110 Q128 116 100 110Z" fill="#6b4fa0" stroke="${OL}" stroke-width="2.5" stroke-linejoin="round"/>
+     <path d="M102 102 Q128 108 155 102 L156 110 Q128 116 100 110 Z" fill="#a593d6" stroke="${OL}" stroke-width="2"/>
+     <path d="M134 64 a10 10 0 1 0 8 15 a8 8 0 1 1 -8 -15z" fill="#ffd86b"/>
+     <circle cx="117" cy="84" r="2.6" fill="#ffd86b"/><circle cx="146" cy="90" r="2.2" fill="#ffd86b"/>
+     <circle cx="152" cy="31" r="5" fill="#ffd86b" stroke="${OL}" stroke-width="2"/>` },
+   crown: { back: `<path d="M104 100 L106 80 L117 90 L128 74 L139 90 L150 80 L152 100 Z" fill="#c9952e" stroke="${OL}" stroke-width="2" stroke-linejoin="round"/>`,
+    front: `<path d="M100 104 L99 84 L112 95 L120 82 L128 96 L136 82 L144 95 L157 84 L156 104 Q128 110 100 104Z" fill="#f2c14e" stroke="${OL}" stroke-width="2.5" stroke-linejoin="round"/>
+     <path d="M100 98 Q128 104 156 98" fill="none" stroke="#c9952e" stroke-width="3"/>
+     <circle cx="128" cy="101" r="4.5" fill="#e0505e" stroke="${OL}" stroke-width="1.6"/><circle cx="112" cy="100" r="2.5" fill="#6fb3e0"/><circle cx="144" cy="100" r="2.5" fill="#6fb3e0"/>` },
+   leaf: { back: '',
+    front: `<path d="M86 112 Q84 78 118 70 Q150 64 170 92 Q174 108 166 114 Q150 102 128 106 Q104 108 86 112Z" fill="#6aa84f" stroke="${OL}" stroke-width="2.5" stroke-linejoin="round"/>
+     <path d="M92 108 Q124 86 164 104 M118 92 L110 80 M134 92 L142 78 M148 97 L158 88" fill="none" stroke="#3f7a32" stroke-width="2" stroke-linecap="round"/>
+     <path d="M128 72 Q126 60 136 54" fill="none" stroke="#7a5230" stroke-width="3.5" stroke-linecap="round"/>` },
+   ribbon: { back: '',
+    front: `<g transform="translate(152 104) rotate(18)"><path d="M0 0 L-20 -12 Q-24 0 -20 12 Z M0 0 L20 -12 Q24 0 20 12 Z" fill="#d9434f" stroke="${OL}" stroke-width="2" stroke-linejoin="round"/>
+     <path d="M-2 4 L-8 20 L-3 17 L0 22 L2 4Z M2 4 L8 20 L3 17 L0 22Z" fill="#b8323e" stroke="${OL}" stroke-width="1.5" stroke-linejoin="round"/><circle r="5" fill="#ef6b74" stroke="${OL}" stroke-width="2"/></g>` },
+   pin: { back: '',
+    front: `<g transform="translate(106 104) rotate(-20)"><rect x="-14" y="-3" width="30" height="6" rx="3" fill="#e9b8d0" stroke="${OL}" stroke-width="1.6"/>
+     <path d="M0 -12 L3.5 -4 L12 -3.5 L5.5 2 L7.5 10 L0 5.5 L-7.5 10 L-5.5 2 L-12 -3.5 L-3.5 -4Z" fill="#f2a7c8" stroke="${OL}" stroke-width="2" stroke-linejoin="round"/></g>` },
+   crownf: { back: [0, 1, 2, 3].map(i => { const a = Math.PI * (1.1 + i * 0.27), x = 127 + 40 * Math.cos(a), y = 104 + 10 * Math.sin(a); return flower(x, y, 8, ['#c9a8e0', '#a8d0e8', '#f0b8c8', '#b8e0c8'][i], .75); }).join(''),
+    front: [0, 1, 2, 3, 4, 5].map(i => { const a = Math.PI * (0.02 + i * 0.19), x = 127 + 42 * Math.cos(a), y = 104 + 11 * Math.sin(a); return flower(x, y, 10, ['#c9a8e0', '#a8d0e8', '#f0b8c8', '#b8e0c8', '#f4d58a', '#c9a8e0'][i], 1); }).join('') },
+   bowtie: { back: '',
+    front: `<path d="M127 166 L104 154 Q100 166 104 178 Z M127 166 L150 154 Q154 166 150 178 Z" fill="#3f63b5" stroke="${OL}" stroke-width="2.2" stroke-linejoin="round"/>
+     <path d="M108 160 L120 164 M108 172 L120 168 M146 160 L134 164 M146 172 L134 168" stroke="#2c4a8c" stroke-width="1.6"/>
+     <rect x="121" y="160" width="12" height="12" rx="4" fill="#5c80cf" stroke="${OL}" stroke-width="2"/>` },
+   scarf: { back: `<path d="M90 152 Q127 138 164 152 L164 160 Q127 147 90 160Z" fill="#5f8a4e" stroke="${OL}" stroke-width="2"/>`,
+    front: `<defs><pattern id="sst" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(20)"><rect width="14" height="14" fill="#7fae63"/><rect width="7" height="14" fill="#eef0d8"/></pattern></defs>
+     <path d="M88 154 Q127 172 166 154 Q168 164 164 170 Q127 186 90 170 Q86 164 88 154Z" fill="url(#sst)" stroke="${OL}" stroke-width="2.5" stroke-linejoin="round"/>
+     <path d="M140 172 Q146 190 142 206 L156 208 Q160 190 154 168Z" fill="url(#sst)" stroke="${OL}" stroke-width="2.5" stroke-linejoin="round"/>
+     <path d="M142 206 l2 6 M148 207 l1 6 M154 208 l0 6" stroke="#6b8f52" stroke-width="2" stroke-linecap="round"/>` },
+  };
+  function flower(x, y, r, c, o) {
+    let s = `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})" opacity="${o}">`;
+    for (let i = 0; i < 5; i++) { const a = i * 72 * Math.PI / 180; s += `<circle cx="${(Math.cos(a) * r * .55).toFixed(1)}" cy="${(Math.sin(a) * r * .55).toFixed(1)}" r="${(r * .5).toFixed(1)}" fill="${c}" stroke="${OL}" stroke-width="1.2"/>`; }
+    return s + `<circle r="${(r * .32).toFixed(1)}" fill="#f6dc7a"/></g>`;
+  }
+
+  // 루미 그림처럼 부드럽게: 0.7px 번짐 + 채도 0.85 + 둘레에 옅은 노란 빛
+  const SOFT = `<filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="0.7" result="b"/><feColorMatrix in="b" type="saturate" values="0.85" result="c"/><feGaussianBlur in="SourceAlpha" stdDeviation="3" result="g"/><feFlood flood-color="#ffe9a8" flood-opacity=".55"/><feComposite in2="g" operator="in" result="gl"/><feMerge><feMergeNode in="gl"/><feMergeNode in="c"/></feMerge></filter>`;
+  let uid = 0;
+  const codeSvg = (id, part) => { const d = CODE[id]; if (!d || !d[part]) return ''; const n = ++uid; return `<svg class="ld-deco ld-${part}" viewBox="0 0 256 256"><defs>${SOFT.replace('id="soft"', `id="lds${n}"`)}</defs><g filter="url(#lds${n})">${d[part].replace(/sst/g, 'sst' + n)}</g></svg>`; };
+  // 루미 그림이 든 요소(왼쪽 아래 단추·지도 루미)에 장식을 씌움
   D.dress = (el) => {
     if (!el || !G.st) return;
     el.querySelectorAll('.ld-deco').forEach(e => e.remove());
-    const w = st().wear; if (w) el.insertAdjacentHTML('beforeend', decoHtml(w));
+    const w = st().wear, im = el.querySelector('img:not(.ld-deco)');
+    if (w === 'badge') el.insertAdjacentHTML('beforeend', badgeSvg('ld-deco'));
+    else if (CODE[w]) { if (im) im.insertAdjacentHTML('beforebegin', codeSvg(w, 'back')); el.insertAdjacentHTML('beforeend', codeSvg(w, 'front')); }
+    // 루미와 장식이 같은 박자로 떠다니게 움직임을 함께 다시 시작 (따로 시작하면 장식이 떨어져 보임)
+    const all = [im, ...el.querySelectorAll('.ld-deco')].filter(Boolean);
+    all.forEach(e => { e.style.animation = 'none'; }); void el.offsetWidth; all.forEach(e => { e.style.animation = ''; });
   };
   const redressAll = () => document.querySelectorAll('.lumi-btn, .lumi-f').forEach(D.dress);
 
@@ -10253,45 +10305,54 @@ G.deco = (() => {
   };
 
   // ---- 루미 꾸미기 스튜디오 ----
+  // 10/11 선생님 시안 2: 큰 루미는 장식을 그린 루미 그림(chars/pt/lumi_<id>_01), 고르는 창은 아래 회전판, 바꾸기·쓰기 단추는 루미 옆
   D.studio = (onClose) => {
     sayTok++; document.querySelectorAll('.ld-say').forEach(e => e.remove());
     const ov = G.$('#overlay'), m = G.el('div', 'modal ld-studio', ov); G.busy++;
     m.style.backgroundImage = `url("${G.asset('assets/ui/lumi_deco/bg.webp')}")`;
     G.el('h3', 'ld-title', m, '루미 꾸미기');
-    const left = G.el('div', 'ld-left-col', m);
-    const pv = G.el('div', 'ld-preview', left);
-    const pim = G.el('img', 'ld-lumi', pv); pim.src = G.asset('assets/chars/lumi.png'); pim.alt = '';
-    const cnt = G.el('div', 'star-count', left);
-    const act = G.el('div', 'ld-act', left);
-    const grid = G.el('div', 'ld-grid', m);
-    let pick = st().wear || '';
+    const cnt = G.el('div', 'star-count ld-count', m);
+    const pv = G.el('div', 'ld-preview', m);
+    const info = G.el('div', 'ld-info', m);
+    const wheel = G.el('div', 'ld-wheel', m);
+    let pick = st().wear || D.ITEMS[0].id;
     const prevMusic = G.audio.musicNow && G.audio.musicNow(); G.audio.music('music_studio');   // 10/11 선생님이 고른 스튜디오 음악 (Pixabay, tomomi_kato "Sugar Star Candy")
-    const show = (id) => { pv.querySelectorAll('.ld-deco').forEach(e => e.remove()); if (id) pv.insertAdjacentHTML('beforeend', decoHtml(id)); };
+    // 큰 루미: 루미와 장식이 한 상자(ld-bob) 안에서 같이 떠다님
+    const show = (id) => {
+      pv.innerHTML = '<div class="ld-bob"></div>'; const bob = pv.firstChild;
+      if (id === 'badge') bob.innerHTML = `<img src="${G.asset('assets/chars/lumi.png')}" alt="">` + badgeSvg('ld-deco');
+      else bob.innerHTML = `<img src="${G.asset('assets/chars/pt/lumi_' + (CODE[id] ? id + '_' : '') + '01.webp')}" alt="">`;
+    };
+    const CHEV = (d) => `<svg viewBox="0 0 24 24" width="55%" height="55%"><path d="${d < 0 ? 'M15 4 L7 12 L15 20' : 'M9 4 L17 12 L9 20'}" fill="none" stroke="#8a6a4e" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;   // 글꼴에 화살표 글자가 없어 코드로 그림
+    const list = () => D.ITEMS.concat(allOwned() ? [{ id: 'badge', name: '별 배지', cost: 0 }] : [{ id: 'lock', name: '다 모으면 덤 장식', cost: 0 }]);
+    const choose = (id) => { pick = id; G.audio.sfx('sfx_page', 0.4); if (id !== 'lock') G.audio.voice('LD_item_' + id, (list().find(i => i.id === id) || {}).name); const s = st(); if (id === 'badge' && s.wear === 'badge') { s.badge = (s.badge || 0) + 1; G.save.write(); redressAll(); } render(); };
     function render() {
-      const s = st(), L = D.left();
+      const s = st(), L = D.left(), ls = list(), n = ls.length;
+      let c = Math.max(0, ls.findIndex(i => i.id === pick)); pick = ls[c].id;
       cnt.innerHTML = G.icon('icon_star') + ' 남은 별가루 ' + L + '개';
-      grid.innerHTML = '';
-      const list = D.ITEMS.concat(allOwned() ? [{ id: 'badge', name: '별 배지', cost: 0 }] : []);
-      for (const it of list) {
-        const own = it.id === 'badge' || s.owned.includes(it.id), wear = s.wear === it.id;
-        const c = G.el('button', 'ld-cell' + (own ? ' own' : '') + (wear ? ' wear' : '') + (pick === it.id ? ' pick' : ''), grid); c.type = 'button'; c.setAttribute('aria-label', it.name);
-        c.innerHTML = (it.id === 'badge' ? badgeSvg('ld-ico') : `<img class="ld-ico" src="${G.asset('assets/ui/lumi_deco/i_' + it.id + '.webp')}" alt="">`) +
-          `<span class="ld-nm">${it.name}</span><span class="ld-cost">${wear ? '쓰는 중' : own ? '가지고 있어요' : G.icon('icon_star') + ' ' + it.cost + '개'}</span>`;
-        G.onTap(c, () => { pick = it.id; G.audio.sfx('sfx_page', 0.4); G.audio.voice('LD_item_' + it.id, it.name); if (it.id === 'badge' && s.wear === 'badge') { s.badge = (s.badge || 0) + 1; G.save.write(); redressAll(); } render(); });
+      // 회전판: 고른 장식이 가운데에서 크고, 양옆으로 3칸씩
+      wheel.innerHTML = '';
+      G.btn('ld-arrow', CHEV(-1), wheel, () => choose(ls[(c - 1 + n) % n].id), '앞 장식');
+      for (let o = -3; o <= 3; o++) {
+        const it = ls[(c + o + n * 2) % n], own = it.id === 'badge' || s.owned.includes(it.id);
+        const b = G.el('button', 'ld-wc d' + Math.abs(o) + (own ? ' own' : '') + (s.wear === it.id ? ' wear' : '') + (it.id === 'lock' ? ' ld-lock' : ''), wheel); b.type = 'button'; b.setAttribute('aria-label', it.name);
+        b.innerHTML = it.id === 'lock' ? '<span class="ld-q">?</span>' : it.id === 'badge' ? badgeSvg('ld-ico') : `<img class="ld-ico" src="${G.asset('assets/ui/lumi_deco/i_' + it.id + '.webp')}" alt="">`;
+        G.onTap(b, () => choose(it.id));
       }
-      if (!allOwned()) G.el('div', 'ld-cell ld-lock', grid, `<span class="ld-q">?</span><span class="ld-nm">다 모으면</span><span class="ld-cost">덤 장식</span>`);
-      show(pick);
-      // 아래 단추: 고른 장식에 따라 바꾸기 / 쓰기 / 벗기
-      act.innerHTML = '';
-      const it = list.find(i => i.id === pick);
-      if (it) {
-        const own = it.id === 'badge' || s.owned.includes(it.id);
-        if (!own) {
-          const b = G.btn('pill gold', G.icon('icon_star') + ' 별가루 ' + it.cost + '개로 바꾸기', act, () => buy(it), '별가루 ' + it.cost + '개로 바꾸기');
-          if (L < it.cost) { b.disabled = true; G.el('div', 'ld-more', act, '별가루 ' + (it.cost - L) + '개 더 모아요'); }
-        } else if (s.wear === it.id) G.btn('pill', '벗기', act, () => { s.wear = ''; G.save.write(); redressAll(); render(); }, '벗기');
-        else G.btn('pill gold', '쓰기', act, () => { s.wear = it.id; G.save.write(); G.audio.sfx('sfx_sparkle', 0.6); redressAll(); render(); }, '쓰기');
-      }
+      G.btn('ld-arrow', CHEV(1), wheel, () => choose(ls[(c + 1) % n].id), '다음 장식');
+      show(pick === 'lock' ? '' : pick);
+      // 루미 옆: 이름, 값, 바꾸기 / 쓰기 / 벗기
+      const it = ls[c], own = it.id === 'badge' || s.owned.includes(it.id);
+      info.innerHTML = '';
+      G.el('div', 'ld-nm', info, it.name);
+      if (it.id === 'lock') { G.el('div', 'ld-cost', info, '장식 8개를 다 모으면 생겨요'); return; }
+      G.el('div', 'ld-cost', info, s.wear === it.id ? '쓰는 중' : own ? '가지고 있어요' : G.icon('icon_star') + ' 별가루 ' + it.cost + '개');
+      const act = G.el('div', 'ld-act', info);
+      if (!own) {
+        const b = G.btn('pill gold', '별가루 ' + it.cost + '개로 바꾸기', act, () => buy(it), '별가루 ' + it.cost + '개로 바꾸기');
+        if (L < it.cost) { b.disabled = true; G.el('div', 'ld-more', act, '별가루 ' + (it.cost - L) + '개 더 모아요'); }
+      } else if (s.wear === it.id) G.btn('pill', '벗기', act, () => { s.wear = ''; G.save.write(); redressAll(); render(); }, '벗기');
+      else G.btn('pill gold', '쓰기', act, () => { s.wear = it.id; G.save.write(); G.audio.sfx('sfx_sparkle', 0.6); redressAll(); render(); }, '쓰기');
     }
     function buy(it) {
       const s = st(); if (D.left() < it.cost) { D.say(m, 'LD_need'); return; }
@@ -10704,7 +10765,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-11)';
-G.BUILT = '2026-10-11 22:41';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-11 23:22';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
