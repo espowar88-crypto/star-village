@@ -10125,10 +10125,38 @@ G.deco = (() => {
     let gLine, gStar, Wd = 1, Ht = 1;
     const P = (q) => [q[0] * Wd, q[1] * Ht];
     const starPath = (r) => { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; d += (i ? 'L' : 'M') + (Math.cos(a) * rr).toFixed(1) + ' ' + (Math.sin(a) * rr).toFixed(1); } return d + 'Z'; };
-    const addSeg = (q0, q1, delay, dur) => {
-      const [x0, y0] = P(q0), [x1, y1] = P(q1), L = Math.hypot(x1 - x0, y1 - y0);
+    // 10/11 선생님: 별 올리듯 별가루가 날리는 효과, 선은 여러 색으로 반짝임 (별 색을 차례로)
+    const PAL = ['#FFD66B', '#F29BB0', '#7DBBE3', '#B58BC4', '#7FB77E', '#F4A259', '#9ED0C8'];
+    const fx = G.el('div', 'ld-fx', m), segs = [];
+    const mote = (x, y, col, kf, dur, delay, size) => {
+      const e = G.el('i', 'ld-mote', fx); const z = (size || 14) * G.stage.u;
+      Object.assign(e.style, { left: x + 'px', top: y + 'px', width: z + 'px', height: z + 'px', background: col });
+      e.animate(kf, { duration: dur, delay: delay || 0, easing: 'ease-out', fill: 'both' }).onfinish = () => e.remove();
+    };
+    const burst = (x, y, delay) => { for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2 + Math.random() * 0.4, d = (50 + Math.random() * 60) * G.stage.u; mote(x, y, PAL[k % PAL.length], [{ transform: 'translate(-50%,-50%) scale(.4) rotate(0deg)', opacity: 1 }, { transform: `translate(calc(-50% + ${Math.cos(a) * d}px), calc(-50% + ${Math.sin(a) * d}px)) scale(1) rotate(160deg)`, opacity: 0 }], 800 + Math.random() * 300, delay, 20 + Math.random() * 10); } };
+    // 남은 별가루 칸에서 그 자리까지 별가루가 날아감
+    const flyTo = (x, y) => {
+      const rm = m.getBoundingClientRect(), rc = cnt.getBoundingClientRect(), sx = rc.left + rc.width * 0.15 - rm.left, sy = rc.top + rc.height / 2 - rm.top;
+      for (let k = 0; k < 18; k++) {
+        const dx = x - sx, dy = y - sy, bend = (Math.random() - 0.5) * 160 * G.stage.u, mx = dx / 2 + bend, my = dy / 2 - (60 + Math.random() * 80) * G.stage.u;
+        mote(sx, sy, PAL[k % PAL.length], [{ transform: 'translate(-50%,-50%) scale(.5)', opacity: 0 }, { transform: `translate(calc(-50% + ${mx}px), calc(-50% + ${my}px)) scale(1.1) rotate(120deg)`, opacity: 1, offset: 0.5 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.6) rotate(240deg)`, opacity: 0.9 }], 620 + Math.random() * 160, k * 18, 18 + Math.random() * 12);
+      }
+    };
+    // 늘 떠다니는 별가루: 별자리 선 위 아무 곳에서 반짝이며 떠오름
+    let floatT = 0; const offFloat = G.every(dt => {
+      if (!m.isConnected) return offFloat();
+      if (!segs.length || G.reduced()) return;
+      floatT += dt; if (floatT < 0.16) return; floatT = 0;
+      const sg = segs[Math.floor(Math.random() * segs.length)], t = Math.random(), x = sg[0] + (sg[2] - sg[0]) * t, y = sg[1] + (sg[3] - sg[1]) * t, d = (30 + Math.random() * 40) * G.stage.u;
+      mote(x, y, sg[4], [{ transform: 'translate(-50%,-50%) scale(.2)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1) rotate(90deg)', opacity: 1, offset: 0.3 }, { transform: `translate(calc(-50% + ${(Math.random() - 0.5) * 30 * G.stage.u}px), calc(-50% - ${d}px)) scale(.3) rotate(220deg)`, opacity: 0 }], 1600 + Math.random() * 800, 0, 12 + Math.random() * 10);
+    });
+    const addSeg = (q0, q1, delay, dur, i) => {
+      const [x0, y0] = P(q0), [x1, y1] = P(q1), L = Math.hypot(x1 - x0, y1 - y0), col = PAL[(i || 0) % PAL.length];
       const at = { x1: x0, y1: y0, x2: x1, y2: y1 };
       const glow = mk('line', { ...at, class: 'ld-seg-glow' }, gLine), ln = mk('line', { ...at, class: 'ld-seg' }, gLine);
+      glow.style.stroke = col; ln.style.stroke = `color-mix(in srgb, ${col} 45%, #fff)`;
+      glow.style.animationDelay = ln.style.animationDelay = (-(i || 0) * 0.55) + 's';
+      segs.push([x0, y0, x1, y1, col]);
       for (const e of [glow, ln]) { e.style.strokeDasharray = L; e.style.strokeDashoffset = L; e.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: dur, delay, easing: 'ease-out', fill: 'forwards' }); }
       const sp = mk('circle', { r: Math.max(3, G.stage.u * 7), class: 'ld-spark', cx: x0, cy: y0 }, gLine);   // 선 끝을 따라가는 빛
       sp.animate([{ transform: 'translate(0,0)', opacity: 1 }, { transform: `translate(${x1 - x0}px,${y1 - y0}px)`, opacity: 1 }, { transform: `translate(${x1 - x0}px,${y1 - y0}px)`, opacity: 0 }], { duration: dur + 250, delay, fill: 'forwards', easing: 'ease-out' }).onfinish = () => sp.remove();
@@ -10139,21 +10167,22 @@ G.deco = (() => {
       mk('circle', { r: r * 2.2, class: 'ld-halo' }, g);
       const s = mk('path', { d: starPath(r), class: 'ld-star' }, g);
       s.style.animationDelay = (-(i * 0.73) % 3).toFixed(2) + 's';   // 별마다 다르게 반짝임
+      burst(x, y, delay);
       g.animate([{ opacity: 0, transform: `translate(${x}px,${y}px) scale(.2)` }, { opacity: 1, transform: `translate(${x}px,${y}px) scale(1.35)` }, { opacity: 1, transform: `translate(${x}px,${y}px) scale(1)` }], { duration: 450, delay, fill: 'backwards', easing: 'ease-out' });
     };
     // all = 처음부터 차례로 그리기(열 때), 아니면 마지막 한 칸만 새로
-    const draw = (all) => {
+    const draw = (all, lag = 0) => {
       const r = m.getBoundingClientRect(); Wd = r.width || 1; Ht = r.height || 1;
       svg.setAttribute('viewBox', `0 0 ${Wd} ${Ht}`);
       const sk = st().sky;
-      if (all) { svg.innerHTML = '<defs><radialGradient id="ldHalo"><stop offset="0" stop-color="#FFF1B8" stop-opacity=".75"/><stop offset=".45" stop-color="#FFD66B" stop-opacity=".3"/><stop offset="1" stop-color="#FFD66B" stop-opacity="0"/></radialGradient></defs>'; gLine = mk('g', {}); gStar = mk('g', {}); }
+      if (all) { segs.length = 0; svg.innerHTML = '<defs><radialGradient id="ldHalo"><stop offset="0" stop-color="#FFF1B8" stop-opacity=".75"/><stop offset=".45" stop-color="#FFD66B" stop-opacity=".3"/><stop offset="1" stop-color="#FFD66B" stop-opacity="0"/></radialGradient></defs>'; gLine = mk('g', {}); gStar = mk('g', {}); }
       if (all) {
         const step = Math.min(260, 2200 / Math.max(1, sk.length));
-        sk.forEach((q, i) => { const t = 250 + i * step; if (i) addSeg(sk[i - 1], q, t - step * 0.9, step * 0.9); if (!q[2]) addStar(q, i, t); });
+        sk.forEach((q, i) => { const t = 250 + i * step; if (i) addSeg(sk[i - 1], q, t - step * 0.9, step * 0.9, i); if (!q[2]) addStar(q, i, t); });
       } else if (sk.length) {
         const i = sk.length - 1, q = sk[i];
-        if (i) addSeg(sk[i - 1], q, 0, 420);
-        if (!q[2]) addStar(q, i, i ? 300 : 0);
+        if (i) addSeg(sk[i - 1], q, lag * 0.6, 420, i);
+        if (!q[2]) addStar(q, i, lag + (i ? 300 : 0));
       }
     };
     const redraw = () => { if (!m.isConnected) return G.resizers.delete(redraw); draw(true); };
@@ -10192,7 +10221,7 @@ G.deco = (() => {
           s.push([q[0], q[1], 1]); G.save.write(); G.audio.sfx('sfx_sparkle', 0.35); draw(); return;
         }
         if (D.left() < 1) { D.say(m, 'LD_need'); return; }
-        s.push([q[0], q[1]]); G.save.write(); G.audio.sfx('sfx_sparkle', 0.5); draw(); upd(); spotsShow();
+        s.push([q[0], q[1]]); G.save.write(); G.audio.sfx('sfx_sparkle', 0.5); flyTo(q[0] * Wd, q[1] * Ht); draw(false, 380); upd(); spotsShow();
       };
       m.addEventListener('pointerdown', onDown); tapOff = () => m.removeEventListener('pointerdown', onDown);
     }
@@ -10648,7 +10677,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-11)';
-G.BUILT = '2026-10-11 15:27';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-11 16:01';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
