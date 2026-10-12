@@ -7843,7 +7843,7 @@ G.s3 = (() => {
       if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.hide(false); }
     }
   }
-  async function sky() {
+  async function sky(noNext) {
     const g = G.gen, m = G.el('div', 'modal sky-view', G.$('#closeup'));   // 10/4: 대사 창(#dialog)보다 아래 층에 둬야 대사를 넘길 수 있음 (#overlay는 대사 창을 덮어 화면이 멈춤)
     m.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
     const POS = [[.5, .42], [.3, .3], [.7, .3], [.2, .55], [.8, .55], [.38, .66], [.62, .66], [.5, .2], [.5, .8]], nx = G.STARS.findIndex(s => s.id === D3().next);
@@ -7851,7 +7851,7 @@ G.s3 = (() => {
     G.el('div', 'star-count sky-count', m, G.icon('icon_star') + ' 되찾은 별 3/8');
     G.pedestalRow(m, 3, D3().next || (G.STARS[3] && G.STARS[3].id));   // 10/6: 받침대 빈 자리가 깜박임
     G.audio.sfx('sfx_chime', 0.5);
-    await G.dialog.play(['WD06_nar_03']);
+    if (noNext) await G.wait(G.reduced() ? 0.5 : 1.8); else await G.dialog.play(['WD06_nar_03']);
     if (g === G.gen) { await G.wait(0.4); if (m.animate) await m.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }).finished.catch(() => { }); }
     m.remove();
   }
@@ -9930,7 +9930,7 @@ G.s5 = (() => {
       if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.hide(false); }
     }
   }
-  async function sky() {
+  async function sky(noNext) {
     const g = G.gen, m = G.el('div', 'modal sky-view', G.$('#closeup'));   // 10/4: 대사 창(#dialog)보다 아래 층에 둬야 대사를 넘길 수 있음 (#overlay는 대사 창을 덮어 화면이 멈춤)
     m.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
     const POS = [[.5, .42], [.3, .3], [.7, .3], [.2, .55], [.8, .55], [.38, .66], [.62, .66], [.5, .2], [.5, .8]], nx = G.STARS.findIndex(s => s.id === D5().next);
@@ -9938,7 +9938,7 @@ G.s5 = (() => {
     G.el('div', 'star-count sky-count', m, G.icon('icon_star') + ' 되찾은 별 5/8');
     G.pedestalRow(m, 5, D5().next || (G.STARS[5] && G.STARS[5].id));   // 10/6: 받침대 빈 자리가 깜박임
     G.audio.sfx('sfx_chime', 0.5);
-    await G.dialog.play(['HM06_nar_03']);
+    if (noNext) await G.wait(G.reduced() ? 0.5 : 1.8); else await G.dialog.play(['HM06_nar_03']);
     if (g === G.gen) { await G.wait(0.4); if (m.animate) await m.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }).finished.catch(() => { }); }
     m.remove();
   }
@@ -9959,7 +9959,7 @@ G.s5 = (() => {
   }
 
   const DONE12 = {
-    done: ['meet_lumi', 'plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'market_intro', 'market_bom', 'market_ask', 'market_map', 'library_intro', 'library_haesol', 'library_tactile', 'library_puzzle', 'plaza_post_ask', 'letter_1', 'letter_2', 'letter_3', 'market_jig', 'libdoor_seen', 'libdoor_open', 'note_got',
+    done: ['meet_lumi', 'plaza_intro', 'plaza_chief', 'plaza_board', 'plaza_post', 'library_intro', 'library_haesol', 'library_tactile', 'library_puzzle', 'plaza_post_ask', 'letter_1', 'letter_2', 'letter_3', 'market_jig', 'libdoor_seen', 'libdoor_open', 'note_got',
       'forest_intro', 'forest_wind', 'forest_star', 'forest_daon', 'plaza2_intro', 'plaza2_board', 'plaza2_road', 'plaza2_look', 'plaza2_star', 'road_tiles',
       's2_begin', 's2_fog', 's2school_intro', 's2s_talk', 's2n_chair', 's2n_window', 's2n_bell', 's2n_locker', 's2school_noise', 's2f_chair', 's2f_window', 's2f_bell', 's2f_locker', 's2school_fix', 's2school_ask', 's2school_card',
       's2door_open', 's2hall_intro', 's2hall_duri', 's2hall_seats', 's2hall_score', 's2rest_intro', 's2rest_miru', 's2rest_box', 's2rest_deco', 's2rest_star', 's2plaza_intro', 's2plaza_concert', 's2plaza_star', 's2_end'],
@@ -10968,7 +10968,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-12)';
-G.BUILT = '2026-10-12 17:18';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-12 18:11';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
