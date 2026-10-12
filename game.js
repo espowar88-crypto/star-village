@@ -2094,7 +2094,7 @@ G.walkEase = (t, rem) => G.reduced() ? 1 : Math.max(0.35, Math.min(1, 0.35 + t /
 G.map = (() => {
   const Mp = {};
   const NODE = { home: 'HOME', plaza: 'PLAZA', plaza2: 'PLAZA', market: 'MARKET', library: 'LIB', forest: 'FOREST' };
-  let V = null, hero = null, lumi = null, offs = [], walking = null, trailEl = null, arrowEl = null, vills = [];
+  let V = null, hero = null, lumi = null, offs = [], walking = null, trailEl = null, arrowEl = null, vills = [], anis = [];
   const lumiPos = { x: 0, y: 0 };
   Mp.node = (placeId) => NODE[placeId] || 'HOME';
   Mp.state = (p) => {
@@ -2110,7 +2110,7 @@ G.map = (() => {
   const hasMapItem = () => G.st.items.includes('map');
 
   Mp.hide = () => {
-    offs.forEach(f => f()); offs = []; vills = [];
+    offs.forEach(f => f()); offs = []; vills = []; anis = [];
     G.resizers.delete(onResize);
     if (V) { V.el.remove(); V = null; }
     walking = null; hero = null; lumi = null; trailEl = null; arrowEl = null; clearEnter();
@@ -2142,7 +2142,9 @@ G.map = (() => {
     placeLumi();
     // 배경 주민
     const stage = G.st.mood;
-    for (const d of G.D.mood.villagers) if (d.from <= stage && !(G.settings.light && vills.length >= 2)) vills.push(makeVillager(d, stage));
+    for (const d of G.D.mood.villagers) if (d.from <= stage && !(G.settings.light && vills.length >= 2)) vills.push(Object.assign(makeVillager(d, stage), { id: d.id }));
+    // 10/12 선생님(동물 5종 시안 통과): 지도 곳곳 동물 (data/animals.json 지도 그림 이름별, 그림 assets/chars/ani_<그림>.png = 검토/픽셀랩128_1012/원본/도구/anisheet.py). 가벼운 모드면 없음
+    if (!G.settings.light) for (const a of (G.D.animals || {})[(/([^/]+?)(_s)?\.jpg$/.exec(G.D.places.map.color) || [])[1]] || []) anis.push(makeAnimal(a));
     // 카메라는 주인공을 따라감 (갈 곳 쪽으로 조금 치우침)
     // 10/10 선생님(지도 생동감 1): 1.4배 가까이 보기 (V.zBase = 예전 보기, 휠·두 손가락으로 예전만큼 멀리까지 뺄 수 있음)
     const zm = V.zMin; V.zMin = 0; V.setCam(hero.x, hero.y - 40); V.zBase = V.cam.z; V.zMin = zm; V.setCam(hero.x, hero.y - 40, V.zBase * ZDEF);   // 처음 보기는 휴대폰 한계(V.zMin)와 상관없이 셈
@@ -2176,6 +2178,7 @@ G.map = (() => {
       lumiPos.x += (tx - lumiPos.x) * k; lumiPos.y += (ty - lumiPos.y) * k; placeLumi();
     }
     for (const v of vills) v.update(dt);
+    for (const a of anis) a(dt);
     // 카메라
     if (hero && !Mp.camFree && !Mp.userCam) {
       let fx = hero.x, fy = hero.y - 40;
@@ -2413,6 +2416,29 @@ G.map = (() => {
 
   // 10/10 A3: 발소리는 주인공이 있는 쪽(좌우)에서, 풀밭이면 부드럽게
   function stepSfx(n) { const f = V && V.stepFx ? V.stepFx(hero) : null; G.audio.sfx(n % 2 ? 'sfx_step2' : 'sfx_step1', 0.35 * (f ? f.vol : 1), f ? 0.92 + Math.random() * 0.16 : 1, f); }
+
+  // 10/12 동물: mv = loop(제자리 동작), hop(가끔 콩콩), swim·fly(타원으로 돎), follow(주민 who 옆에서 같이 걸음). sh = 그림자 [폭, 높이] (없으면 그림자 없음)
+  function makeAnimal(a) {
+    const w = V.walker(`assets/chars/ani_${a.img}.png`, 'animal'), s = a.sh, at = a.at || [0, 0];
+    if (s) Object.assign(w.sh.style, { width: s[0] + 'px', height: s[1] + 'px', margin: `${-s[1] / 2}px 0 0 ${-s[0] / 2}px` }); else w.sh.style.display = 'none';
+    w.dir = a.dir || 'SE'; w.set(at[0], at[1]); w.draw();
+    let t = Math.random() * 3, nx = 1 + Math.random() * 4, h = -1;
+    const BACK = { SE: [-1, -0.5], SW: [1, -0.5], NE: [-1, 0.5], NW: [1, 0.5] };
+    return (dt) => {
+      t += dt; const rm = G.reduced();
+      if (a.mv === 'follow') {
+        const v = vills.find(q => q.id === a.who); if (!v) { w.el.style.display = 'none'; return; }
+        const o = v.w, b = BACK[o.dir] || BACK.SE; w.set(o.x + b[0] * a.gap - b[1] * (a.side || 0), o.y + b[1] * a.gap + b[0] * (a.side || 0) * 0.5); w.dir = o.dir; w.frame = o.frame; w.draw(); return;
+      }
+      if (a.mv === 'hop') {
+        if (h < 0 && t > nx && !rm) h = 0;
+        if (h >= 0) { h += dt; if (h >= 0.8) { h = -1; t = 0; nx = 1.5 + Math.random() * 4; if (Math.random() < 0.4) w.dir = w.dir === 'SE' ? 'SW' : 'SE'; } }
+        w.frame = h >= 0 ? Math.floor(h * 10) : 8; w.draw(); return;
+      }
+      if ((a.mv === 'swim' || a.mv === 'fly') && !rm) { const k = t * (a.sp || 0.2) + (a.ph || 0); w.set(at[0] + Math.cos(k) * a.r[0], at[1] + Math.sin(k) * a.r[1]); w.face(-Math.sin(k) * a.r[0], Math.cos(k) * a.r[1]); }
+      w.frame = rm ? 8 : Math.floor(t * (a.fps || 8)) % 8; w.draw();
+    };
+  }
 
   // ---- 배경 주민 (GDD 8장): 단계마다 걷는 속도·멈춤·한숨 구름 ----
   function makeVillager(d, stage) {
@@ -10109,7 +10135,8 @@ G.s5 = (() => {
       // 10/12 선생님(픽셀랩 인물): 인사는 손 흔들기(칸 21~28), 밝은 표정 주민은 서 있다 가끔 기뻐 뜀(칸 29~36). 앞모습(SE·SW)일 때만
       w.col = () => { if (w.live && w.frame === 8 && !G.reduced() && (w.dir === 'SE' || w.dir === 'SW')) { const now = performance.now();
         if (w.greet) { const d = now - w.greet; if (d > 0 && d < 1600) return 21 + Math.floor(d / 100) % 8; }
-        if (cls !== 'hero' && G.asset(w.src).includes('_lit')) { if (!w.hop) w.hop = now + 6000 + Math.random() * 9000; const d = now - w.hop; if (d > 800) w.hop = now + 8000 + Math.random() * 10000; else if (d > 0) return 29 + Math.floor(d / 100); } }
+        if (cls !== 'hero' && /_lit|walk_chaei/.test(G.asset(w.src))) {   // 채이는 늘 밝은 얼굴
+          if (!w.hop) w.hop = now + 6000 + Math.random() * 9000; const d = now - w.hop; if (d > 800) w.hop = now + 8000 + Math.random() * 10000; else if (d > 0) return 29 + Math.floor(d / 100); } }
         return c0(); };
       const d0 = w.draw;
       w.draw = () => {
@@ -10991,7 +11018,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-12)';
-G.BUILT = '2026-10-12 20:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-12 22:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
