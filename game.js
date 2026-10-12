@@ -10131,6 +10131,8 @@ G.s5 = (() => {
     V.walker = (sheet, cls) => {
       const w = wk0(sheet, cls);
       w.tint = G.el('div', 'tint', null); w.el.insertBefore(w.tint, w.occ);
+      // 10/12 선생님(어우러지기 시안): 발밑 땅 색·둘레 색이 인물에 살짝 배게(gt), 가로등·나무 그림자처럼 비스듬히 눕는 그림자(cast)
+      w.gt = G.el('div', 'tint gt', null); w.el.insertBefore(w.gt, w.occ); w.cst = G.el('div', 'cast', null); w.el.insertBefore(w.cst, w.spr);
       const c0 = w.col;
       // 10/12 선생님(픽셀랩 인물): 인사는 손 흔들기(칸 21~28), 밝은 표정 주민은 서 있다 가끔 기뻐 뜀(칸 29~36). 앞모습(SE·SW)일 때만
       w.col = () => { if (w.live && w.frame === 8 && !G.reduced() && (w.dir === 'SE' || w.dir === 'SW')) { const now = performance.now();
@@ -10141,8 +10143,9 @@ G.s5 = (() => {
       const d0 = w.draw;
       w.draw = () => {
         d0();
-        if (w.tsrc !== w.src) { w.tsrc = w.src; const u = `url("${G.asset(w.src)}")`, sz = w.live ? '4300px 520px' : '900px 520px'; const s = w.tint.style; s.webkitMaskImage = s.maskImage = u; s.webkitMaskSize = s.maskSize = sz; }
-        if (w.tbp !== w.bp) { w.tbp = w.bp; w.tint.style.webkitMaskPosition = w.tint.style.maskPosition = w.bp; }
+        const u = w.spr.style.backgroundImage;   // 밝은 표정(G.asset _lit)·살아 있는 그림이 바뀌어도 그대로 따라감
+        if (w.tsrc !== u) { w.tsrc = u; const sz = w.spr.style.backgroundSize || '900px 520px'; for (const e of [w.tint, w.gt]) { const s = e.style; s.webkitMaskImage = s.maskImage = u; s.webkitMaskSize = s.maskSize = sz; } w.cst.style.backgroundImage = u; w.cst.style.backgroundSize = sz; }
+        if (w.tbp !== w.bp) { w.tbp = w.bp; for (const e of [w.tint, w.gt]) e.style.webkitMaskPosition = e.style.maskPosition = w.bp; w.cst.style.backgroundPosition = w.bp; }
       };
       w.draw(); w.lit = -1;
       return w;
@@ -10150,11 +10153,27 @@ G.s5 = (() => {
     // 10/11 선생님(인물 빛·그림자 결정판, 보통 세기): 덮는 색은 가로등 옆에서 인물이 바래 보여서 곱하기로 바꿈.
     //  가로등 옆은 밝고 따뜻한 노랑, 먼 곳은 옅은 파랑. 발밑 그림자는 가로등 옆에서 조금 옅게. 수채 약(살짝 바랜 색)은 css .walker .sprite
     const WC = 'sepia(.08) saturate(.92)';
+    // 10/12 땅·둘레 색: 지도 색 그림을 1/16로 줄인 캔버스에서 평균 색을 읽음(인물이 20 넘게 움직였을 때만)
+    let gcv = null, gcx = null;
+    function avgAt(x, y, w, h) {
+      if (!gcv) { const im = V.colorImg; if (!im || !im.complete || !im.naturalWidth) return null; gcv = document.createElement('canvas'); gcv.width = Math.ceil(V.W / 16); gcv.height = Math.ceil(V.H / 16); gcx = gcv.getContext('2d', { willReadFrequently: true }); gcx.drawImage(im, 0, 0, gcv.width, gcv.height);
+        if (!gcx.getImageData(gcv.width >> 1, gcv.height >> 1, 1, 1).data[3]) { gcv = null; return null; } }   // 그림이 아직 다 안 풀렸으면 다음에 다시
+      const x0 = Math.max(0, Math.floor((x - w / 2) / 16)), y0 = Math.max(0, Math.floor((y - h / 2) / 16)), d = gcx.getImageData(x0, y0, Math.max(1, Math.min(gcv.width - x0, Math.ceil(w / 16))), Math.max(1, Math.min(gcv.height - y0, Math.ceil(h / 16)))).data;
+      let r = 0, g = 0, b = 0, n = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 10) continue; r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+      return n ? [r / n, g / n, b / n].map(Math.round).join(',') : null;
+    }
+    function ground(w) {
+      if (w.gx != null && Math.hypot(w.x - w.gx, w.y - w.gy) < 20) return; w.gx = w.x; w.gy = w.y;
+      const f = avgAt(w.x, w.y + 4, 70, 26), e = avgAt(w.x, w.y - 60, 220, 200); if (!f || !e) { w.gx = null; return; }
+      w.gt.style.background = `linear-gradient(to top, rgba(${f},.6) 0%, rgba(${f},.25) 20%, rgba(${e},.28) 42%, rgba(${e},.28) 100%)`;
+    }
     function relight(w) {
-      if (off()) { if (w.lit !== -2) { w.lit = -2; w.spr.style.filter = ''; w.tint.style.backgroundColor = 'transparent'; w.sh.style.opacity = ''; } return; }
+      if (off()) { if (w.lit !== -2) { w.lit = -2; w.spr.style.filter = ''; w.tint.style.backgroundColor = 'transparent'; w.sh.style.opacity = ''; w.gt.style.display = w.cst.style.display = 'none'; } return; }
+      if (w.lit === -2) w.gt.style.display = w.cst.style.display = '';
+      ground(w);
       const L = Math.round(lightAt(w.x, w.y - 40) * 10) / 10; if (L === w.lit) return; w.lit = L;
-      const rc = L > 0.35 ? 'rgba(255,226,170,.5)' : 'rgba(190,214,255,.5)', b = 1 + 0.15 * L, c = 1 - L;
-      w.spr.style.filter = `${WC} brightness(${b.toFixed(3)}) drop-shadow(1.5px 0 0 ${rc}) drop-shadow(-1.5px 0 0 ${rc}) drop-shadow(0 -1.5px 0 ${rc})`;
+      const b = 1 + 0.15 * L, c = 1 - L;
+      w.spr.style.filter = `${WC} brightness(${b.toFixed(3)})`;   // 10/12 선생님(어우러지기 시안 review/blend1012): 둘레 빛 테두리(rc)는 스티커처럼 떠 보여 뺌
       const m = [1 - 0.144 * c, (1 + 0.02 * L) * (1 - 0.096 * c) / b, (1 - 0.227 * L) / b].map(v => Math.round(Math.min(1, v) * 255));
       w.tint.style.backgroundColor = `rgb(${m.join(',')})`;
       w.sh.style.opacity = (1 - 0.25 * L).toFixed(2);
@@ -10195,12 +10214,32 @@ G.s5 = (() => {
       }
     }
 
-    // ---- 매 장면 ----
+    // ---- 10/12 선생님(어우러지기 시안 review/blend1012): 주인공 발자국(흙길, 3초 뒤 사라짐)과 바람에 날리는 잎(주인공 곁에서 맴돌다 감) ----
+    //  어둡게 찍혀야 해서 빛 캔버스(밝게 더하기)가 아니라 인물 판(V.fx)에 작은 조각으로. 달리기 흙먼지는 선생님이 빼기로 함(걸음 먼지는 그대로)
+    const hp = []; let gust = 4, hside = 1, hpf = -1;
+    const hpAdd = (cls, o) => { o.e = G.el('div', 'hfx ' + cls, V.fx); if (o.bg) o.e.style.background = o.bg; o.t = 0; hp.push(o); };
+    const hpClear = () => { for (const p of hp) p.e.remove(); hp.length = 0; };
+    function heroFx(dt, rm) {
+      const H = V.fxHero; if (!H) return;
+      if (H.frame !== 8 && H.frame !== hpf && H.frame % 4 === 0 && !V.grassAt(H.x, H.y + 2) && H.el.style.display !== 'none') {
+        hside = -hside; const d = { SE: [1, 1], SW: [-1, 1], NE: [1, -1], NW: [-1, -1] }[H.dir] || [1, 1];
+        hpAdd('step', { x: H.x + hside * 4 * d[1], y: H.y + 1 - hside * 2 * d[0], life: 3 }); }
+      hpf = H.frame;
+      if (!rm) { gust -= dt; if (gust < 0) { gust = rnd(6, 10);
+        for (let i = 0; i < 9; i++) hpAdd('leaf', { x: H.x - rnd(260, 420), y: H.y - rnd(-20, 200), vx: rnd(200, 280), vy: rnd(20, 50), life: 3.4, rot: rnd(0, 360), wob: rnd(0, 6), wind: 1, bg: ['#c9a35a', '#b8c96a', '#e8b4b8', '#a7c96f'][i % 4] }); } }
+      for (let i = hp.length - 1; i >= 0; i--) { const p = hp[i]; p.t += dt; const a = p.t / p.life;
+        if (a >= 1) { p.e.remove(); hp.splice(i, 1); continue; }
+        if (p.wind) { const dx = p.x - H.x, dy = p.y - (H.y - 50), d = Math.hypot(dx, dy); if (d < 90 && d > 1) { p.vx += (-dy / d * 260 + dx / d * 60) * dt; p.vy += (dx / d * 260 - 80) * dt; } p.vy += Math.sin(p.t * 4 + p.wob) * 60 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += 220 * dt; }
+        p.e.style.transform = `translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px)` + (p.wind ? ` rotate(${p.rot.toFixed(0)}deg)` : '');
+        p.e.style.opacity = (p.wind ? (a > 0.8 ? (1 - a) * 5 : 1) : (a < 0.7 ? 1 : (1 - a) / 0.3)).toFixed(2);
+        if (p.z == null) { p.z = 1; p.e.style.zIndex = p.wind ? 9999 : 1; } }
+    }
+
     const stop = G.every((dt) => {
-      if (!V.el.isConnected) { if (V.fxSeen) { stop(); add.width = add.height = lc.width = lc.height = 0; } return; }   // 10/10: 지도를 떠나면 빛 캔버스를 비움(휴대폰 메모리)
+      if (!V.el.isConnected) { if (V.fxSeen) { stop(); hpClear(); add.width = add.height = lc.width = lc.height = 0; } return; }   // 10/10: 지도를 떠나면 빛 캔버스를 비움(휴대폰 메모리)
       V.fxSeen = true;
       const { W, H, ws } = G.stage; if (!W) return;
-      if (off()) { if (layer.style.display !== 'none') { layer.style.display = 'none'; V.night = 0; for (const w of V.walkers) relight(w); } return; }
+      if (off()) { if (layer.style.display !== 'none') { layer.style.display = 'none'; V.night = 0; for (const w of V.walkers) relight(w); hpClear(); } return; }
       layer.style.display = '';
       T += dt; const rm = G.reduced(), stg = V.stage;
       // 구름 그림자 (판을 옮기기만)
@@ -10320,6 +10359,7 @@ G.s5 = (() => {
       ac.globalAlpha = 1; ac.globalCompositeOperation = 'source-over';
 
       // ---- 인물 빛 받기 (0.2초마다), 가려진 조각은 구름이 지나가니 가끔 다시 ----
+      heroFx(dt, G.reduced());
       litT -= dt; if (litT < 0) { litT = 0.2; for (const w of V.walkers) { relight(w); if (w.hid) V.occDirty(w); } }   // 가려진 조각도 빛·구름이 바뀌니 다시
       // A3 물소리: 주인공이 물가에 가까울수록 크게
       sndT -= dt;
@@ -11018,7 +11058,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-12)';
-G.BUILT = '2026-10-12 22:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-12 23:16';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
