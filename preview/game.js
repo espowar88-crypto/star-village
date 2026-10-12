@@ -1447,8 +1447,8 @@ G.story = (() => {
     if (sst().lumiGone) return true;
     await G.cut.play('CH:s4_7', { key: 's4_7' }); if (!ok()) return false;
     G.hud.hide(true); const m = G.el('div', 'modal st-night', under());
-    m.style.backgroundImage = `url("${G.asset('assets/ui/sky.jpg')}")`;
-    const ped = G.el('div', 'st-night-ped', m); S.pieceRow(ped);
+    const night = G.art('window_night') || G.asset('assets/ui/sky.jpg');   // 10/12 선생님: 밤·아침 모두 아이 방 배경 (조각 자리는 여기서 보이지 않음)
+    m.style.backgroundImage = `url("${night}")`;
     await G.dialog.play(['TD08_nar_01'], { noPortraits: true }); if (!ok()) return false;
     await G.dialog.play(['TD08_rumi_01'], { partner: null }); if (!ok()) return false;
     m.classList.add('dim');
@@ -1457,6 +1457,7 @@ G.story = (() => {
     // 아침: 머리맡 그림 쪽지
     const note = G.art('note_lumi');
     m.classList.remove('dim'); m.classList.add('morning');
+    if (G.art('room_morning')) { m.style.backgroundImage = `url("${G.art('room_morning')}")`; m.classList.add('pic'); }
     if (note) G.el('div', 'st-note', m, `<img src="${note}" alt="루미의 그림 쪽지">`);
     G.audio.sfx('sfx_page', 0.6);
     await G.dialog.play(['TD08_nar_03', 'TD08_nar_04'], { noPortraits: true }); if (!ok()) return false;
@@ -1465,7 +1466,13 @@ G.story = (() => {
     m.querySelectorAll('.st-note').forEach(e => e.remove()); m.classList.remove('morning'); m.classList.add('gil');
     sst().lumiGone = true; G.save.write(); S.swapAll();   // 이제부터 루미 자리에 길별
     G.audio.sfx('sfx_sparkle', 0.7);
-    await G.dialog.play(['TD08_nar_05'], { noPortraits: true }); if (!ok()) return false;
+    // 10/12 선생님: 길별이 하늘에서 반짝이며 내려오는 연출 (이야기꾼 줄과 함께)
+    const gd = G.el('div', 'st-gildown', m), gi = G.el('img', '', gd); gi.src = G.asset('assets/chars/pt/gil_02.webp'); gi.alt = '';
+    for (let k = 0; k < 10; k++) { const sp = G.el('i', 'st-spark', gd); sp.style.setProperty('--d', (k * 0.12) + 's'); sp.style.setProperty('--x', ((k % 2 ? 1 : -1) * (10 + k * 6)) + '%'); }
+    const fall = gd.animate ? gd.animate([{ transform: 'translate(-50%, -120vh) scale(.35) rotate(-25deg)', opacity: 0 }, { opacity: 1, offset: .2 }, { transform: 'translate(-50%, 0) scale(1.08) rotate(6deg)', offset: .85 }, { transform: 'translate(-50%, 0) scale(1) rotate(0)', opacity: 1 }], { duration: G.reduced() ? 300 : 2400, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }).finished.catch(() => { }) : null;
+    await Promise.all([G.dialog.play(['TD08_nar_05'], { noPortraits: true }), fall]); if (!ok()) return false;
+    if (gd.animate) await gd.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' }).finished.catch(() => { });
+    gd.remove();
     await G.dialog.play(['TD08_gil_01', 'TD08_gil_02', 'TD08_ply_02'], { partner: null }); if (!ok()) return false;
     if (m.animate) await m.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }).finished.catch(() => { });
     m.remove(); G.hud.hide(false);
@@ -2235,8 +2242,13 @@ G.map = (() => {
     Mp.userCam = false;   // 장소를 누르면 시점이 다시 주인공을 따라감
     clearHint(); clearEnter();
     const from = Mp.node(G.st.place), to = p.node, g = G.gen;
-    const names = G.mapPath(from, to), pts = names.map(nm => G.D.places.nodes[nm]);
-    if (offNode()) pts.unshift([hero.x, hero.y]);   // 10/9 선생님: 주민 앞에 가 있던 자리에서 출발
+    let pts = G.mapPath(from, to).map(nm => G.D.places.nodes[nm]);
+    if (offNode()) {   // 10/9 선생님: 주민 앞에 가 있던 자리에서 출발. 10/12: 그 자리에서 가까운 길로 바로 감(광장에 들르지 않음)
+      const N = G.D.places.nodes, H = [hero.x, hero.y], hp = projEdge(H);
+      const cands = [[H, ...pts]];
+      if (hp) for (const nm of [hp.a, hp.c]) cands.push([H, hp.p, ...G.mapPath(nm, to).map(k => N[k])]);
+      pts = cands.reduce((b, c) => (!b || pathLen(c) < pathLen(b)) ? c : b, null);
+    }
     if (pts.length > 1) {
       let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
       const W = G.D.places.walk, dur = Math.max(W.minSec, Math.min(W.maxSec, len / W.speed)), speed = len / dur;
@@ -2335,6 +2347,8 @@ G.map = (() => {
   };
 
   // ---- 10/9 선생님: 주민을 누르면 주인공이 지도 길을 따라 그 앞까지 걸어감 (걸음 빠르기는 장소 걷기와 같음, 빠르게 모드·움직임 줄이기면 바로 옆에 섬) ----
+  function pathLen(q) { let s = 0; for (let i = 1; i < q.length; i++) s += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]); return s; }
+  function projEdge(pt) { const N = G.D.places.nodes; let b = null; for (const [a, c] of G.D.places.edges) { const A = N[a], C = N[c]; if (!A || !C) continue; const dx = C[0] - A[0], dy = C[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((pt[0] - A[0]) * dx + (pt[1] - A[1]) * dy) / L2)), p = [A[0] + dx * t, A[1] + dy * t], dd = Math.hypot(pt[0] - p[0], pt[1] - p[1]); if (!b || dd < b.dd) b = { a, c, p, dd }; } return b; }
   function offNode() { const n = G.D.places.nodes[Mp.node(G.st.place)]; return !!(hero && n && Math.hypot(hero.x - n[0], hero.y - n[1]) > 3); }
   function walkToVillager(w) {
     if (!hero || !V) return Promise.resolve();
@@ -2653,7 +2667,7 @@ G.scene = (() => {
       if (h.cls) glow.classList.add(h.cls);   // 10/1: 물건 그림 자체를 보여 주는 누를 곳 (편지)
       let star = null;
       if (h.mission && !h.noStar) {
-        star = G.el('div', 'mstar', V.fx); star.style.left = (hr[0] + hr[2] / 2) + 'px'; star.style.top = (hr[1] - 6) + 'px';
+        star = G.el('div', 'mstar', V.fx); star.style.left = (hr[0] + hr[2] / 2) + 'px'; star.style.top = Math.max(hr[1] - 6, 130) + 'px';   // 10/12: 키 큰 누를 곳(그네)은 표시가 화면 위로 나가지 않게
         setStar(star, allDone(h));
       }
       const btn = G.el('button', 'hot', V.fx); btn.type = 'button'; btn.setAttribute('aria-label', h.label);
@@ -9806,7 +9820,7 @@ G.s5 = (() => {
       if (!await G.starCard('heart', [{ text: '왜?', label: '물어보기' }, { art: 'guide_turnboard', label: '보이는 순서' }, { art: 'card_hourglass', label: '기다리는 시간' }, { art: 'card_rest', label: '쉬는 자리' }])) return;
       await play(['HM04_gil_02']); if (!ok()) return;
       await play(['HM04_nuri_01'], no); if (!ok()) return;
-      { const pm = G.el('div', 'modal st-pieceview', G.$('#closeup')); G.story.pieceRow(pm);   // 10/12 받침대 별 모양 자리 다섯 (가운데는 루미 자리)
+      { const pm = G.el('div', 'modal st-pieceview', G.$('#closeup')); G.el('div', 'st-pieces-t', pm, '받침대의 별 조각 자리 (가운데는 루미 자리)'); G.story.pieceRow(pm);   // 10/12 받침대 별 모양 자리 다섯 (가운데는 루미 자리)
         await play(['HM04_gil_10']); if (ok()) await play(['HM04_nar_10'], { noPortraits: true }); pm.remove(); if (!ok()) return; }
       if (!await G.p4.beforeAfter('s5play_before', 's5play_after', 'HM04_gil_04')) return;   // 셋째 교훈은 말 대신 마을 변화 (전과 후 그림)
       complete('s5plaza_card'); return;
@@ -10954,7 +10968,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-12)';
-G.BUILT = '2026-10-12 12:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-12 14:01';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
