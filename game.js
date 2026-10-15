@@ -327,7 +327,8 @@ G.audio = (() => {
     if (!S().voiceOn) { await G.wait(Math.max(1.2, text.length * 0.09)); return fin(); }
     if (!A.ready) { await G.wait(1.5); return fin(); }
     try {
-      const buf = await loadBuf(G.voiceUrl(id));
+      // 10/15: 음성 파일이 오지 않고 멈춰 있으면(느린 망) 다음으로 못 넘어가던 것 → 8초 넘으면 아래 catch(글 읽기 → 3초)로
+      const buf = await Promise.race([loadBuf(G.voiceUrl(id)), G.wait(8).then(() => { throw new Error('음성 파일이 8초 넘게 안 옴 ' + id); })]);
       if (my !== vseq) return fin();
       if (!(await awake())) {   // 소리 엔진이 깨지 않으면 <audio>로 (폴더 판은 mp3 파일이 없어 길이만큼 기다림)
         if (my !== vseq) return fin();
@@ -513,6 +514,8 @@ G.save = (() => {
       card('new', 'icon_star', '새로 하기', '처음부터 시작해요', 'S92_btn_new', '새로 하기', 'new');
       const c = card('cont', 'icon_next', '이어 하기', saved ? '하던 곳부터 해요' : '아직 저장된 게임이 없어요', 'S92_btn_continue', '이어 하기', 'cont');
       if (!saved) { c.disabled = true; c.classList.add('off'); }
+      // 10/15 키보드: [시작하기]가 사라지면 초점이 문서 처음으로 가 Enter 가 아무것도 안 했음 → 고를 수 있는 첫 카드에 초점 (제목 화면 [책 펴기]·[시작하기]와 같이)
+      setTimeout(() => { const f = row.querySelector('button:not([disabled])'); if (f && f.isConnected) try { f.focus({ preventScroll: true }); } catch (e) { } }, 50);
       say('S92_mode', '새로 할까요, 이어 할까요?');
     });
   }
@@ -697,6 +700,8 @@ G.save = (() => {
     G.btn('pill gold', G.icon('icon_skip') + ' 건너뛰기', br, () => { G.audio.voice('S92_btn_skip'); finish(''); }).style.minWidth = 'calc(var(--u)*360)';
     G.btn('pill', G.icon('icon_ok') + ' 다 썼어요', br, () => finish(inp.value.trim().slice(0, 8)));
     inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') finish(inp.value.trim().slice(0, 8)); if (e.key === 'Escape') G.teacher.toggle(); });
+    inp.setAttribute('aria-label', '이름 (안 써도 돼요)');
+    if (!G.isTouch) setTimeout(() => { if (inp.isConnected) try { inp.focus({ preventScroll: true }); } catch (e) { } }, 50);   // 10/15 키보드: 이름 칸에 바로 초점 (휴대폰은 화면 자판이 갑자기 뜨지 않게 그대로)
     G.audio.voice('S92_name');
   });
   return S;
@@ -4270,9 +4275,10 @@ G.p4 = (() => {
   // 10/9 개선 4: 끝까지 끈 뒤 바뀐 곳을 테두리 빛으로 하나씩 짚음 (그림 비율 [x, y, w, h], 새 그림 없음)
   const BASPOT = {
     board_after: [[.044, .782, .92, .124], [.375, .216, .25, .38], [.437, .639, .125, .073], [.587, .553, .063, .136]],
-    s2hall_after: [[.025, .42, .225, .52], [.27, .42, .27, .36], [.6875, .19, .056, .15]],
+    s2hall_after: [[.008, .0, .25, .93], [.27, .42, .27, .36], [.6875, .19, .056, .15]],   // 10/15 퀴즈 QA: 첫 곳(조용한 쉼터 천막)은 그림에서 위 끝부터 내려오므로 천막 전체를 짚음 (예전 [.025, .42, .225, .52]는 아래 방석만)
     s3cafe_after: [[.6, .083, .1, .28], [.4375, .556, .0875, .139]],
-    s4flower_after: [[.6, .667, .125, .167], [.7375, .222, .05, .444], [.827, .426, .03, .074]],
+    s4flower_after: [[.465, .655, .31, .28],   // 10/15 새 그림(s4flower_after2): 경사로가 더 길고 왼쪽으로 내려옴
+                      [.7375, .222, .05, .444], [.827, .426, .03, .074]],
     s5play_after: [[.135, .545, .18, .25], [.318, .51, .05, .25], [.88, .57, .07, .13]],   // 10/10 마음의 별: 그림 차례판, 작은 풍경 소리, 쉼터 깃발
   };
   P.beforeAfter = (before, after, done) => new Promise(async (res) => {
@@ -4870,7 +4876,7 @@ G.p4 = (() => {
       if (G.deco) await G.deco.tutorial();   // 10/11 선생님: 길의 별이 끝나면 루미가 밤하늘 보기 → 루미 꾸미기 가는 길을 알려 줌
     },
   });
-  P.libPole = libPole; P.tiles = tiles;   // 점검용
+  P.libPole = libPole; P.tiles = tiles; P.wipe = wipe; P.fireflies = fireflies; P.door = door;   // 점검용 (퀴즈 QA 모드도 씀)
   return P;
 })();
 
@@ -6447,6 +6453,7 @@ G.s2 = (() => {
   })();
 
   T.begin = begin; T.ending = ending; T.chapter = chapter; T.state = () => ({ isExp, dust: G.st && G.st.s2dust });
+  T.fixOne = fixOne; T.hallDoor = hallDoor; T.seats = seats; T.picLock = picLock;   // 점검용 (퀴즈 QA 모드)
   return T;
 })();
 
@@ -9192,7 +9199,7 @@ G.s4 = (() => {
   })();
 
   T.begin = begin; T.ending = ending; T.chapter = chapter; T.state = () => ({ dust: G.st && G.st.s4dust });
-  T.pulley = pulley; T.planks = planks; T.crates = crates; T.shopDoor = shopDoor; T.tiles = tiles; T.scope = scope;   // 점검용
+  T.pulley = pulley; T.planks = planks; T.crates = crates; T.shopDoor = shopDoor; T.tiles = tiles; T.scope = scope; T.hillPath = hillPath; T.aislePots = aislePots;   // 점검용 (퀴즈 QA 모드도 씀)
   return T;
 })();
 
@@ -9405,6 +9412,8 @@ G.s5 = (() => {
 .s5z-rw.past .s5-over { opacity: 1; }
 .s5z-rw .s4-bg { transition: filter .8s; }
 .s5z-rw.past .s4-bg { filter: sepia(.55) saturate(.8) brightness(1.05); }
+.s5z-rw .s4-bg.s5-pastbg { opacity: 0; transition: opacity .6s, filter .8s; }
+.s5z-rw.past .s4-bg.s5-pastbg { opacity: 1; filter: sepia(.25); }
 .s5-tag { position: absolute; font-family: var(--f-title); font-size: 46px; color: #FFF4E0; background: rgba(59, 42, 38, .78); border-radius: 22px; padding: 6px 24px; opacity: 0; transition: opacity .6s; pointer-events: none; }
 .s5z-rw.past .s5-tag:not(.now), .s5z-rw.cmp:not(.past) .s5-tag.now { opacity: 1; }
 .s5-guide { position: absolute; text-align: center; font-family: var(--f-title); font-size: 34px; line-height: 1.35; color: #FFF4E0; background: rgba(59, 42, 38, .78); border-radius: 22px; padding: 10px 26px; box-sizing: border-box; pointer-events: none; }
@@ -9582,7 +9591,7 @@ G.s5 = (() => {
       G.audio.sfx('sfx_chime', 0.2, 0.7);   // 큰 종: 그림으로 크게, 소리는 작게
       await play(['HM01_gureum_10'], gu); if (!ok()) return;
       await play(['HM01_gil_02', 'HM01_gil_03']); if (!ok()) return;
-      const w = await rewind({ bg: 'hm_play_bg', spots: D5().rewindPlay, over: [['hm_linekids', 690, 255, 186, 129]], hint: 'HM01_gil_03', guide: '시간을 되돌려 아까의 놀이터를 살펴보세요.<br>과거와 현재를 번갈아 보며 달라진 부분을 찾아보세요!' }); if (!ok() || !w) return;
+      const w = await rewind({ bg: 'hm_play_bg', pastBg: 'hm_play_past', spots: D5().rewindPlay, over: [['hm_linekids', 690, 255, 186, 129]], hint: 'HM01_gil_03', guide: '시간을 되돌려 아까의 놀이터를 살펴보세요.<br>과거와 현재를 번갈아 보며 달라진 부분을 찾아보세요!' }); if (!ok() || !w) return;
       await play(['HM01_gil_05']); if (!ok()) return;
       await play(['HM01_soyul_03'], so); if (!ok()) return;
       complete('s5play_rewind'); say('HM01_gil_06'); return;
@@ -9626,6 +9635,9 @@ G.s5 = (() => {
     return new Promise((res) => {
       const g = G.gen, ok = () => g === G.gen, W = 1600, H = 679, easy = !G.lv('normal');
       const S = screen('s5z-rw', W, H); bgOf(S, o.bg, 'linear-gradient(#3B4A6B,#2a3350)', true);
+      // 10/15 퀴즈 QA: '과거' 그림(pastBg)이 story.json art 에 들어오면 과거에는 그 그림을 보여 줌 (같은 구도에서 단서만 다른 그림, 인물은 그리지 않음).
+      // 그림이 아직 없으면 예전처럼 같은 배경 + 세피아. 겹친 그림(over: 픽셀 아이들 줄·종이별)은 두 경우 모두 과거에만
+      if (o.pastBg && G.art(o.pastBg)) bgOf(S, o.pastBg, '', true).classList.add('s5-pastbg');
       (o.over || []).forEach(([a, x, y, w, h]) => { const e = S.at(G.el('img', 's5-over', S.B), x, y, w, h); e.src = ART(a); e.alt = ''; });
       S.at(G.el('div', 's5-tag', S.B, '아까'), 40, 30); S.at(G.el('div', 's5-tag now', S.B, '지금'), 40, 30);
       // 10/14 QA(선생님 지시서): 과거를 본 뒤에도 [현재로 돌아가기]·[과거 다시 보기]로 정답 전까지 몇 번이든 번갈아 봄 (찾은 곳은 그대로)
@@ -9865,7 +9877,7 @@ G.s5 = (() => {
         await fade(V.spr.soyul, 0); mark('s5s_hide');
       }
       await play(['HM03_gil_01', 'HM03_gil_04']); if (!ok()) return;
-      const w = await rewind({ bg: 'hm_stage_bg', spots: D5().rewindStage, over: [['item_paperstar', 204, 498, 60, 60]], hint: 'HM03_gil_04' }); if (!ok() || !w) return;
+      const w = await rewind({ bg: 'hm_stage_bg', pastBg: 'hm_stage_past', spots: D5().rewindStage, over: [['item_paperstar', 204, 498, 60, 60]], hint: 'HM03_gil_04' }); if (!ok() || !w) return;
       await play(['HM03_gil_02']); if (!ok()) return;
       complete('s5stage_rewind'); say('HM03_gil_03'); return;
     }
@@ -10954,7 +10966,12 @@ G.teacher = (() => {
 G.titleBook = (ov, onStart) => {
   const gen = G.gen; let run = 0; const alive = (r) => gen === G.gen && r === run;
   const A = (p) => G.asset('assets/ui/title/' + p);
-  const img = (src) => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(i); i.src = src; });
+  // 10/15 시작 멈춤 고침: 그림을 못 읽으면(404·끊김) 깨진 그림을 캔버스에 그리다 InvalidStateError 로 연출이 멈추고 [시작하기]가 안 나왔음.
+  // 그림은 다 읽혔을 때만 그림(usable). 못 읽거나 10초 넘게 안 오면 G.assetErrors 에 기록하고 그 그림 연출만 건너뜀
+  const usable = (i) => !!(i && i.complete && i.naturalWidth > 0);
+  const fail = (src, why) => { (G.assetErrors || (G.assetErrors = [])).push({ where: 'title', src, why }); console.warn('[제목 화면] 그림을 못 읽어 그 연출을 건너뜀:', why, src); };
+  const img = (src) => new Promise(res => { const i = new Image(); let to = null; const end = (ok) => { clearTimeout(to); if (!ok) fail(src, i.complete ? '읽기 실패' : '10초 넘게 안 옴'); res(i); };
+    i.onload = () => end(usable(i)); i.onerror = () => end(false); to = setTimeout(() => end(false), 10000); i.src = src; });
   const wait = (s) => new Promise(res => setTimeout(res, s * 1000));
   let seen = false; try { seen = !!localStorage.getItem('starvillage.titleSeen2'); } catch (e) { }
   const k = seen ? 0.5 : 1;
@@ -10972,27 +10989,20 @@ G.titleBook = (ov, onStart) => {
   const CW = 1180, CH = 787; [co, sk].forEach(c => { c.width = CW; c.height = CH; });
   const full = G.el('img', 'tb-full', stage); full.src = A('illust.jpg'); full.alt = '';
   const shade = G.el('div', 'tb-shade', stage); // 10/2 선생님: 제목이 잘 보이게 제목 뒤 하늘을 살짝 어둡게
-  // 제목·글귀 (10/2 선생님 붓글씨 그림, 단색·테두리 없음): 순서 지도 값이 작은 곳부터 붓이 지나가듯 드러남
+  // 제목·글귀 (10/2 선생님 붓글씨 그림, 단색·테두리 없음). 10/6부터 제목은 한 글자씩(letterIn), 부제목은 왼쪽부터(wipeIn) 드러남
+  // 10/15 시작 멈춤 고침: 예전 '순서 지도'(<이름>_order.png)는 10/6 뒤 화면에 쓰이지 않는데 계속 불러 캔버스에 그렸음.
+  //   10/11 정리 때 그 파일을 안 쓰는 그림으로 보관 폴더로 옮겨, 불러오기가 실패한 깨진 그림을 drawImage 하다 InvalidStateError → 책을 편 뒤 [시작하기]가 안 나옴.
+  //   이제 글씨 그림만 불러옴 (b.ready = 준비 끝)
   const brush = (cls, name, x, y, w, h) => { const cv = G.el('canvas', 'tb-brush ' + cls, stage); cv.width = w; cv.height = h;
-    Object.assign(cv.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); return { cv, y, src: [A(name + '.png'), A(name + '_order.png')] }; };
+    Object.assign(cv.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); return { cv, y, src: A(name + '.png') }; };
   const T1 = brush('tb-t1', 'title_brush', 400, 70, 1120, 304), T2 = brush('tb-t2', 'motto_brush', 680, 411, 560, 58);   // 10/4 선생님: 부제목 20% 작게 (가운데는 그대로)
-  const prep = async (b) => { if (b.o) return b;
-    const [ink, ord] = await Promise.all(b.src.map(img)); const w = b.cv.width, h = b.cv.height, c = b.cv.getContext('2d');
-    b.c = c; b.ink = ink;
-    try { c.drawImage(ink, 0, 0, w, h); b.full = c.getImageData(0, 0, w, h); } catch (e) { b.o = 1; c.clearRect(0, 0, w, h); return b; } // 그림을 읽을 수 없으면 왼쪽부터 쓸어 보이기
-    c.clearRect(0, 0, w, h);
-    const tc = document.createElement('canvas'); tc.width = w; tc.height = h; const x = tc.getContext('2d'); x.drawImage(ord, 0, 0, w, h);
-    // 순서 지도: 빨강·초록 두 칸으로 16비트. 글씨가 있는 칸만 모아 두고 그 칸만 다시 그림
-    const od = x.getImageData(0, 0, w, h).data, idx = [], ov = [];
-    for (let i = 0; i < w * h; i++) { const v = od[i * 4] * 256 + od[i * 4 + 1]; if (v) { idx.push(i); ov.push(v); } }
-    b.idx = Uint32Array.from(idx); b.o = Uint16Array.from(ov);
-    b.out = c.createImageData(w, h); return b; };
-  const reveal = (b, T) => { if (!b.full) { const w = b.cv.width, h = b.cv.height; b.c.clearRect(0, 0, w, h); b.c.save(); b.c.beginPath(); b.c.rect(0, 0, w * Math.min(1, T), h); b.c.clip(); b.c.drawImage(b.ink, 0, 0, w, h); b.c.restore(); return; }
-    // 붓끝 부근은 넓게(전체의 약 4%) 서서히 짙어짐
-    const f = b.full.data, d = b.out.data, o = b.o, ix = b.idx, t = T * 65535, SW = 2600;
-    for (let n = 0; n < o.length; n++) { let q = (t - o[n]) / SW + 1; q = q < 0 ? 0 : q > 1 ? 1 : q * q * (3 - 2 * q); const j = ix[n] * 4;
-      d[j] = f[j]; d[j + 1] = f[j + 1]; d[j + 2] = f[j + 2]; d[j + 3] = f[j + 3] * q; }
-    b.c.putImageData(b.out, 0, 0); };
+  const prep = async (b) => { if (b.ready) return b;
+    const ink = await img(b.src); const w = b.cv.width, h = b.cv.height, c = b.cv.getContext('2d');
+    b.c = c; b.ink = ink; b.ready = true;
+    if (!usable(ink)) { b.broken = true; c.clearRect(0, 0, w, h); return b; }   // 글씨 그림이 없으면 그 글씨 연출만 건너뜀 (다음 단계는 그대로)
+    try { c.drawImage(ink, 0, 0, w, h); b.full = c.getImageData(0, 0, w, h); } catch (e) { console.warn('[제목 화면] 글씨 그림 픽셀을 읽지 못해 왼쪽부터 쓸어 보임:', e); } // 그림을 읽을 수 없으면(교차 출처 등) 왼쪽부터 쓸어 보이기
+    c.clearRect(0, 0, w, h); return b; };
+  const reveal = (b, T) => { if (b.broken) return; const w = b.cv.width, h = b.cv.height; b.c.clearRect(0, 0, w, h); b.c.save(); b.c.beginPath(); b.c.rect(0, 0, w * Math.min(1, T), h); b.c.clip(); b.c.drawImage(b.ink, 0, 0, w, h); b.c.restore(); };
   const showAll = (b) => prep(b).then(() => b.full ? b.c.putImageData(b.full, 0, 0) : reveal(b, 1));
   const openB = G.btn('pill gold tb-open', G.icon('icon_star') + ' 책 펴기', t, () => open(), '책 펴기');
   const startB = G.btn('pill gold t-start', G.icon('icon_star') + ' 시작하기', t, () => { if (t.classList.contains('done')) onStart(); }, '시작하기');
@@ -11022,6 +11032,7 @@ G.titleBook = (ov, onStart) => {
 
   // 연필 선: 굵은 붓질이 왼쪽 위부터 지그재그로 지나간 자리만 선이 드러남
   const sketchIn = async (r, sketch, dur) => {
+    if (!usable(sketch)) return;
     const m = document.createElement('canvas'); m.width = CW; m.height = CH; const mc = m.getContext('2d'), c = sk.getContext('2d');
     const S = [];
     for (let y = -20, row = 0; y < CH + 60; y += 74, row++) for (let x = -40; x < CW; x += 210) {
@@ -11043,6 +11054,7 @@ G.titleBook = (ov, onStart) => {
   };
   // 물감: 여기저기서 둥근 물감 번짐이 커지며 색이 참
   const colorIn = async (r, pic, dur) => {
+    if (!usable(pic)) return;
     const m = document.createElement('canvas'); m.width = CW; m.height = CH; const mc = m.getContext('2d'), c = co.getContext('2d');
     const B = []; for (let gy = 0; gy < 4; gy++) for (let gx = 0; gx < 6; gx++) B.push({ x: (gx + 0.5) * CW / 6 + (Math.random() - 0.5) * 120, y: (gy + 0.5) * CH / 4 + (Math.random() - 0.5) * 100, R: 280 + Math.random() * 120, o: Math.random() });
     B.sort((p, q) => p.o - q.o);
@@ -11065,7 +11077,7 @@ G.titleBook = (ov, onStart) => {
     const dx = (Math.random() - .5) * 40, dy = 25 + Math.random() * 55;
     e.animate([{ opacity: 1, transform: 'translate(0,0) scale(1.2)' }, { opacity: 0, transform: `translate(${dx}px,${dy}px) scale(.4)` }], { duration: (900 + Math.random() * 600) * k, easing: 'linear', fill: 'both' }).finished.then(() => e.remove(), () => e.remove()); };
   const letterIn = async (r, b, gap, each) => {
-    await prep(b); if (!alive(r)) return;
+    await prep(b); if (!alive(r) || b.broken) return;
     const w = b.cv.width, h = b.cv.height, c = b.c, f = b.full && b.full.data;
     const L = CUTS.slice(0, -1).map((x0, i) => { const x1 = Math.min(w, CUTS[i + 1]); let y0 = 0, y1 = h;
       if (f) { y0 = h; y1 = 0; for (let y = 0; y < h; y++) for (let x = x0; x < x1; x++) if (f[(y * w + x) * 4 + 3] > 20) { if (y < y0) y0 = y; y1 = y + 1; break; } if (y1 <= y0) { y0 = 0; y1 = h; } }
@@ -11095,7 +11107,7 @@ G.titleBook = (ov, onStart) => {
 
   // 부제목: 왼쪽에서 오른쪽으로 부드럽게 (10/6 시안 2번과 같이)
   const wipeIn = async (r, b, dur) => {
-    await prep(b); if (!alive(r)) return; const w = b.cv.width, h = b.cv.height, c = b.c, t0 = performance.now();
+    await prep(b); if (!alive(r) || b.broken) return; const w = b.cv.width, h = b.cv.height, c = b.c, t0 = performance.now();
     await new Promise(res => { const step = () => {
       if (!alive(r)) return res(); const u = Math.min(1, (performance.now() - t0) / 1000 / (dur * k)), e = (u < .5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u)) * 1.25;
       c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, w, h); c.drawImage(b.ink, 0, 0, w, h);
@@ -11105,7 +11117,15 @@ G.titleBook = (ov, onStart) => {
     }; requestAnimationFrame(step); });
   };
 
-  const open = async () => {
+  // 연출 중 예상 못 한 오류가 나도 [시작하기]까지는 가게: 오류는 그대로 콘솔에 남기고(진단용) 끝 모습으로
+  // 그림 그리기는 requestAnimationFrame 안에서 일어나 그 안의 오류는 위 catch 로 오지 않음 → 40초 안에 끝나지 않으면 끝 모습으로 (첫 연출은 약 15초)
+  const stuck = (why) => { console.error('[제목 화면] 연출이 멈춰 끝 모습으로 넘어감:', why); (G.assetErrors || (G.assetErrors = [])).push({ where: 'title', why: String(why && why.message || why) }); finish(); };
+  const open = () => {
+    if (t.classList.contains('open')) return;
+    const r0 = run; setTimeout(() => { if (gen === G.gen && run === r0 && t.isConnected && !t.classList.contains('done')) stuck('40초 안에 끝나지 않음'); }, 40000);
+    return openAnim().catch(stuck);
+  };
+  const openAnim = async () => {
     if (t.classList.contains('open')) return;
     if (matchMedia('(pointer: coarse)').matches) G.teacher.fs(true);
     G.audio.unlock(); t.classList.add('open');
@@ -11148,7 +11168,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-15)';
-G.BUILT = '2026-10-15 11:21';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-15 14:42';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
