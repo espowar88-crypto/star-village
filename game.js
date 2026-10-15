@@ -17,7 +17,22 @@ const G = window.G = {
 // 10/12 선생님(픽셀랩 인물 결정판 review/pixellab1012): 별을 찾기 전엔 모두 무표정, 그 별 이야기 인물부터 밝은 표정으로 바뀌고 별이 늘수록 밝은 주민이 늘어남.
 //  밝은 그림은 walk_<id>_lit.png(_live), 장면 인물 그림은 <그림>_lit.png(_b·_k·_bk). 숫자 = 그 인물이 밝아지는 별 수 (없으면 늘 무표정)
 G.LIT = { hero: 1, chief: 1, post: 1, haesol: 1, daon: 1, duri: 2, miru: 2, v1: 2, moa: 3, bau: 3, harang: 3, v3: 3, v4: 3, v8: 3, seoyeon: 3, nuri: 4, maru: 4, yunseul: 4, v2: 4, suhyeon: 5, soyul: 5, gureum: 5 };
-G.lit = (id) => ((G.st && G.st.stars) || 0) >= (G.LIT[id] || 99);
+// 10/15 선생님(인물 연령별 키): 어른 키는 그대로(1), 청소년·초등 아이 0.85, 유아 0.65. 그림 파일은 그대로 두고 그릴 때만 발 기준으로 줄임
+//  지도(mapview.js 걷는 사람), 장면(scene.js 서 있는 그림·걷기·빛 테두리·표식·그림자) 모두 G.ageScale 하나를 씀. 누를 곳(단추) 크기는 그대로
+//  나이는 픽셀랩 그림을 만들 때 적은 설명(검토/픽셀랩128_1012/원본/도구/descs.py)을 따름. 여기 없는 인물은 어른 크기(1)
+G.CHARACTER_AGE_SCALE = { adult: 1, teen: 0.85, toddler: 0.65 };
+G.CHAR_AGE = {
+  hero: 'teen', daon: 'teen', suhyeon: 'teen', miru: 'teen', harang: 'teen', nuri: 'teen', v5: 'teen',   // 주인공 14살, 다온 10살, 수현 11살, 미루·하랑·누리는 초등 아이, 이든(v5)은 '마을 학생'(names.py)
+  chaei: 'toddler', soyul: 'toddler',                                                        // 채이(아기), 소율 5살
+  chief: 'adult', post: 'adult', haesol: 'adult', duri: 'adult', bau: 'adult', moa: 'adult', maru: 'adult', yunseul: 'adult', seoyeon: 'adult', gureum: 'adult',
+  v1: 'adult', v2: 'adult', v3: 'adult', v4: 'adult', v6: 'adult', v8: 'adult',
+};
+//  그림 자체가 다른 인물보다 작게 그려진 것(채이: 점 하나=시트 한 칸, 다른 인물 키 238px의 117px) → 연령 배율을 낼 때 나눠서 맞춤
+G.CHAR_ART_HEIGHT = { chaei: 117 / 238 };
+//  id 또는 그림 주소(walk_<id>.png, 장면 인물 id 'g_v4'·'bauFar'·'suhyeon2')로 배율을 냄
+G.charId = (s) => { if (!s) return ''; const m = /walk_([a-z0-9]+)/.exec(s); if (m) return m[1]; const id = String(s).replace(/^g_/, ''); return G.CHAR_AGE[id] ? id : id.replace(/(Far|\d)$/, ''); };
+G.ageScale = (s) => { const id = G.charId(s), a = G.CHAR_AGE[id]; return a ? G.CHARACTER_AGE_SCALE[a] / (G.CHAR_ART_HEIGHT[id] || 1) : 1; };
+G.lit = (id) =>((G.st && G.st.stars) || 0) >= (G.LIT[id] || 99);
 G.litPath = (p) => {
   if (typeof p !== 'string' || !G.st || !G.st.stars) return p;
   let m = /^(.*\/walk_)([a-z0-9]+)((?:_live)?\.png)$/.exec(p); if (m) return G.lit(m[2]) ? m[1] + m[2] + '_lit' + m[3] : p;
@@ -982,6 +997,8 @@ G.mapView = (parent, o = {}) => {
     const live = LIVE.test(sheet), src = live ? sheet.replace(/\.png$/, '_live.png') : sheet;
     const w = { x: 0, y: 0, dir: 'SE', frame: 8, rc: -1, live, src, ph: Math.random() * 2600, nb: 1500 + Math.random() * 3000, nl: 5000 + Math.random() * 5000, bu: 0, lu: 0, st: 0, ws: -1e9, lf: -1, lt: 0 };
     w.el = G.el('div', 'walker' + (cls ? ' ' + cls : ''), V.fx);
+    // 10/15 선생님(연령별 키): 그림·그림자·가림 캔버스만 발(이 칸의 0,0)을 기준으로 줄임 (css .walker > * scale). 누르는 단추(walker-hit)는 그대로
+    w.age = G.ageScale(sheet); if (w.age !== 1) w.el.style.setProperty('--age', w.age);
     w.sh = G.el('div', 'shadow', w.el);
     // 10/11 선생님(인물 빛·그림자 결정판): 그림자를 그림마다 잰 두 발(바퀴) 자리에 맞춤 (data/feet.json, 도구/그림만들기/gen_feet.py)
     const fm = /\/walk_([^/]+)\.png$/.exec(sheet), FT = fm && ((G.D.feet || {}).walk || {})[fm[1]];
@@ -1015,7 +1032,7 @@ G.mapView = (parent, o = {}) => {
       if (w.lu && now > w.lu) w.lu = 0;
       return ROW[w.lu ? LOOK[w.dir] : w.dir];
     };
-    w.draw = () => { const c = w.col(), r = w.row(); const bp = `${-c * 100}px ${-r * 130}px`; if (bp !== w.bp) { w.bp = bp; w.c = c; if (FT && r !== w.r && FT[r]) { const f = FT[r]; Object.assign(w.sh.style, { left: (f[0] - 50 - f[2] / 2) + 'px', top: (f[1] - 125 - f[3] / 2) + 'px', width: f[2] + 'px', height: f[3] + 'px' }); } w.r = r; w.spr.style.backgroundPosition = bp; if (w.hid) V.occDirty(w); } };
+    w.draw = () => { const c = w.col(), r = w.row(); const bp = `${-c * 100}px ${-r * 130}px`; if (bp !== w.bp) { w.bp = bp; w.c = c; if (FT && r !== w.r && FT[r]) { const f = FT[r]; const l = f[0] - 50 - f[2] / 2, t = f[1] - 125 - f[3] / 2; Object.assign(w.sh.style, { left: l + 'px', top: t + 'px', width: f[2] + 'px', height: f[3] + 'px', transformOrigin: `${-l}px ${-t}px` }); } w.r = r; w.spr.style.backgroundPosition = bp; if (w.hid) V.occDirty(w); } };
     w.face = (dx, dy) => { w.dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW'); };
     w.draw();
     V.walkers.push(w);
@@ -1085,22 +1102,23 @@ G.mapView = (parent, o = {}) => {
   function occlude(w) {
     const D = V.depth, cv = w.occ;
     if (!D || !w.el.isConnected || w.el.style.display === 'none') { cv.style.display = 'none'; w.hid = false; return; }
-    const fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50, y0 = fy - 125, px = mdat.data;
+    const a = w.age || 1, fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50 * a, y0 = fy - 125 * a, px = mdat.data;   // 10/15: 줄어든 인물은 발 둘레의 더 좁은 땅을 봄
     // 10/10 선생님(전망대): 발밑이 언덕 윗면이면 언덕 아래 땅 높이를 발 높이로 (위에 선 인물을 언덕·언덕 위 집이 가리지 않게)
     const fsx = Math.floor(fx / D.k), fsy = Math.floor((fy - 3) / D.k), gf = fsy >= 0 && fsy < D.h && fsx >= 0 && fsx < D.w ? D.gy[fsy * D.w + fsx] : 0;
     const up = !!(gf & 0x8000), lim = (up ? Math.max(fy, gf & 0x7fff) : fy) + 4, jmax = up ? 104 : 130;   // 언덕 위면 발 아래(그림자)는 안 덮음
     let any = false;
     for (let j = 0; j < 130; j++) {
-      const sy = Math.floor((y0 + j) / D.k);
+      const sy = Math.floor((y0 + j * a) / D.k);
       for (let i = 0; i < 100; i++) {
-        const sx = Math.floor((x0 + i) / D.k), o = (j * 100 + i) * 4;
+        const sx = Math.floor((x0 + i * a) / D.k), o = (j * 100 + i) * 4;
         const g = sy >= 0 && sy < D.h && sx >= 0 && sx < D.w ? D.gy[sy * D.w + sx] : 0;
         const f = j < jmax && (g & 0x7fff) > lim; px[o + 3] = f ? 255 : 0; if (f) any = true;
       }
     }
     if (!any) { cv.style.display = 'none'; w.hid = false; return; }
     mctx.putImageData(mdat, 0, 0);
-    const c = cv.getContext('2d'); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; c.clearRect(0, 0, 100, 130);
+    const c = cv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; c.clearRect(0, 0, 100, 130);
+    c.setTransform(1 / a, 0, 0, 1 / a, 0, 0);   // 아래 땅·밤 덧칠·불빛은 지도 단위로 그림 (캔버스는 인물과 같이 a배로 보임)
     const draw = (img, a) => { if (!img || !img.naturalWidth || a <= 0.003) return; const s = img.naturalWidth / V.W; c.globalAlpha = a; c.drawImage(img, x0 * s, y0 * s, 100 * s, 130 * s, 0, 0, 100, 130); };
     draw(mono, 1); draw(col, V.colorAlphaAt(fx, fy) * (+(col.style.opacity || 1)));
     if (V.s2 && V.s2.fog) draw(V.s2.fog, +(V.s2.fog.style.opacity || 1));
@@ -1115,7 +1133,7 @@ G.mapView = (parent, o = {}) => {
       g.addColorStop(0, 'rgba(255,246,214,1)'); g.addColorStop(0.05, 'rgba(255,246,214,1)'); g.addColorStop(0.14, 'rgba(255,214,120,.65)'); g.addColorStop(0.38, 'rgba(244,162,89,.25)'); g.addColorStop(0.68, 'rgba(244,162,89,0)');
       c.globalCompositeOperation = light ? 'source-over' : 'screen'; c.globalAlpha = light ? 0.55 : 1; c.fillStyle = g; c.fillRect(0, 0, 100, 130);
     }
-    c.globalAlpha = 1; c.globalCompositeOperation = 'destination-in'; c.drawImage(mask, 0, 0);
+    c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'destination-in'; c.drawImage(mask, 0, 0);
     // 가려진 부분에 인물을 흐리게
     const sh = sheets[w.src] || (sheets[w.src] = Object.assign(new Image(), { src: G.asset(w.src) }));
     if (sh.complete && sh.naturalWidth) { const k = sh.naturalWidth / (w.live ? 43 : 9) / 100; c.globalCompositeOperation = 'source-atop'; c.globalAlpha = 0.35; c.imageSmoothingEnabled = false; c.drawImage(sh, (w.c ?? w.frame) * 100 * k, (w.r ?? ROW[w.dir]) * 130 * k, 100 * k, 130 * k, 0, 0, 100, 130); }
@@ -2558,14 +2576,19 @@ G.sceneView = (parent, id, o = {}) => {
   V.ready = Promise.all([mono, col].map(i => i.decode ? i.decode().catch(() => { }) : Promise.resolve()));
   V.lamps = (S.lamps || []).map((p, i) => { const g = G.el('div', 'lamp-glow', el); g.style.left = p[0] + 'px'; g.style.top = p[1] + 'px'; g.style.transform = 'scale(1.5)'; return { el: g, from: (S.lampFrom || [])[i] ?? 5 }; });
   V.fx = G.el('div', 'layer', el);
-  const addImg = (src, r) => { const i = G.el('img', 'scene-sprite idle', V.fx); i.src = G.asset(src); i.alt = ''; Object.assign(i.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px', animationDelay: (-Math.random() * 3).toFixed(2) + 's' }); G.fitTall(i, r); return i; };
+  const addImg = (src, r, who) => { const i = G.el('img', 'scene-sprite idle', V.fx); i.src = G.asset(src); i.alt = ''; Object.assign(i.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px', animationDelay: (-Math.random() * 3).toFixed(2) + 's' }); G.fitTall(i, r);
+    // 10/15 선생님(연령별 키): 발(그림 아래 가운데)을 기준으로 줄임. 자리(rect)·누를 곳은 그대로
+    const a = G.ageScale(who); if (a !== 1) { i.dataset.age = a; i.style.scale = a; i.style.transformOrigin = '50% 100%'; }
+    return i; };
+  V.ageOf = (k) => G.ageScale(k);
   for (const sp of S.sprites) {
-    const r0 = V.rectOf(sp), v = V.spr[sp.id] = { img: addImg(sp.img, r0), def: sp, rect: r0 };
+    const r0 = V.rectOf(sp), v = V.spr[sp.id] = { img: addImg(sp.img, r0, sp.id), def: sp, rect: r0 };
     if (sp.flat) v.img.classList.remove('idle');
-    if (sp.back) { v.back = addImg(sp.back.img, sp.back.rect); v.back.style.transition = v.img.style.transition = 'opacity .5s'; }
+    if (sp.back) { v.back = addImg(sp.back.img, sp.back.rect, sp.id); v.back.style.transition = v.img.style.transition = 'opacity .5s'; }
     if (sp.lumi) {
       const l = V.lumi = G.el('div', 'scene-sprite', V.fx); const li = G.el('img', '', l); li.src = G.asset('assets/chars/lumi.png'); li.alt = '';
-      V.lumiOff = [sp.lumi[0] - sp.rect[0], sp.lumi[1] - sp.rect[1]]; V.lumiAt = [r0[0] + V.lumiOff[0], r0[1] + V.lumiOff[1]];
+      const la = G.ageScale(sp.id), r = sp.rect;   // 10/15: 주인공이 작아진 만큼 루미도 발 쪽으로
+      V.lumiOff = [r[2] / 2 + (sp.lumi[0] - r[0] - r[2] / 2) * la, r[3] - (r[1] + r[3] - sp.lumi[1]) * la]; V.lumiAt = [r0[0] + V.lumiOff[0], r0[1] + V.lumiOff[1]];
       Object.assign(l.style, { left: (V.lumiAt[0] - 55) + 'px', top: (V.lumiAt[1] - 55) + 'px', width: '110px', height: '110px' });
       li.style.cssText = 'width:100%;height:100%;animation:bob 2.4s ease-in-out infinite';
     }
@@ -2583,7 +2606,8 @@ G.sceneView = (parent, id, o = {}) => {
     const sync = () => { const s = img.style, W = parseFloat(s.width), H = parseFloat(s.height); if (!W || !H) return;
       const by = img.naturalWidth ? H * img.naturalWidth / img.naturalHeight : W;   // 그림이 늘어나 있어도 발 높이는 맞게
       Object.assign(sh.style, { display: s.display === 'none' || s.visibility === 'hidden' ? 'none' : '', left: (parseFloat(s.left) + W * (f[0] - f[2] / 2)) + 'px', top: (parseFloat(s.top) + H - by * f[1] - W * f[3] / 2) + 'px',
-        width: W * f[2] + 'px', height: W * f[3] + 'px', opacity: s.opacity, transition: s.transition }); };
+        width: W * f[2] + 'px', height: W * f[3] + 'px', opacity: s.opacity, transition: s.transition });
+      const a = +img.dataset.age || 1; if (a !== 1) Object.assign(sh.style, { scale: a, transformOrigin: `${parseFloat(s.left) + W / 2 - parseFloat(sh.style.left)}px ${parseFloat(s.top) + H - parseFloat(sh.style.top)}px` }); };
     sync(); img.addEventListener('load', sync, { once: true }); new MutationObserver(sync).observe(img, { attributes: true, attributeFilter: ['style'] }); };
   for (const k in V.spr) { const v = V.spr[k]; footOf(v.img, v.def.img); liveOf(v.img, v.def.img); if (v.back) { footOf(v.back, v.def.back.img); liveOf(v.back, v.def.back.img); } }
   if (lives.length) { let seen = false; const tick = setInterval(() => {
@@ -2638,7 +2662,7 @@ G.sceneView = (parent, id, o = {}) => {
     if (G.reduced() || !d) return V.walk(k, rect, 0);
     d = Math.max(w.minD ?? 3, d - (w.delay || 0));   // 늦게 출발한 사람은 조금 빨리 걸어 다 같이 자리 잡음
     const r0 = v.rect, c0 = [r0[0] + r0[2] / 2, r0[1] + r0[3] - 18], P = Math.hypot(c0[0] - w.path[0][0], c0[1] - w.path[0][1]) > 30 ? [c0, ...w.path] : w.path;   // 10/9: 인물 옆에 가 있던 주인공은 지금 자리에서 출발
-    const kk = w.k, cw = 200 * kk, ch = 260 * kk, lu = k === 'hero' && V.lumi ? V.lumi : null;
+    const kk = w.k * G.ageScale(k), cw = 200 * kk, ch = 260 * kk, lu = k === 'hero' && V.lumi ? V.lumi : null;
     const sheet = liveSheet(w.sheet), lv = sheet !== w.sheet;
     const seg = []; let L = 0; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); seg.push(l); L += l; }
     const wm = /\/walk_([^/]+)\.png$/.exec(w.sheet), wf = wm && ((G.D.feet || {}).walk || {})[wm[1]], ws = wf ? G.el('div', 'foot-shadow', V.fx) : null;   // 10/11: 걷는 동안도 두 발 그림자
@@ -2708,7 +2732,7 @@ G.scene = (() => {
     for (const h of def.hotspots) {
       const glow = G.el('img', 'hot-glow', V.fx); glow.src = G.asset(h.img); glow.alt = '';
       const moved = h.at2 && G.st.done.includes(h.at2.after), hr = moved ? h.at2.rect : h.rect, hg = moved ? h.at2.glow : h.glow;
-      Object.assign(glow.style, { left: hg[0] + 'px', top: hg[1] + 'px', width: hg[2] + 'px', height: hg[3] + 'px' }); G.fitTall(glow, hg);
+      Object.assign(glow.style, { left: hg[0] + 'px', top: hg[1] + 'px', width: hg[2] + 'px', height: hg[3] + 'px' }); G.fitTall(glow, hg); ageGlow(glow, h, hg);
       if (G.st.seen.includes(id + ':' + h.id)) glow.classList.add('seen');
       if (h.cls) glow.classList.add(h.cls);   // 10/1: 물건 그림 자체를 보여 주는 누를 곳 (편지)
       let star = null;
@@ -2770,6 +2794,12 @@ G.scene = (() => {
   function showHot(H, on) { for (const e of [H.glow, H.star, H.btn, H.tw]) if (e) e.style.display = on ? '' : 'none'; }
   // ---- 10/14 QA 공통: 누를 곳과 그 인물 그림을 한 몸으로 ----
   //  할 일 표시(동그라미): 할 일(mission) + 먼저 말을 걸어야 하는 인물(seek) + 장면이 정한 dot(그 기록이 생기면 채움, dotLv 난이도부터)
+  // 10/15 선생님(연령별 키): 인물의 빛 테두리도 인물 그림과 같은 배율·같은 발 자리로 (테두리 아래쪽이 늘어나도 발 기준은 아래에서 잼)
+  function ageGlow(glow, h, hg) {
+    const sp = V && V.spr[h.sprite || h.id]; if (!sp) return; const a = +sp.img.dataset.age || 1; if (a === 1) return;
+    const r = V.rectOf(sp.def), fx = r[0] + r[2] / 2, fb = r[1] + r[3];
+    Object.assign(glow.style, { scale: a, transformOrigin: `${fx - hg[0]}px calc(100% - ${hg[1] + hg[3] - fb}px)` });
+  }
   function hasStar(h) { if (h.noStar && !h.dot) return false; return !!(h.mission || h.seek || (h.dot && (!h.dotLv || G.lv(h.dotLv)))); }
   function starDone(h) { return h.dot ? G.st.done.includes(h.dot) : h.seek ? !!(h.until && G.st.done.includes(h.until)) : allDone(h); }
   //  인물 그림이 숨으면(떠남·배를 타고 건넘) 그 인물의 빛 테두리·표시·누를 곳도 같이 숨김 → 옛 자리에 노란 테두리가 남지 않음
@@ -2779,7 +2809,7 @@ G.scene = (() => {
   //  표시는 인물 그림의 실제 머리 위(위로 키운 그림 포함)에. 인물이 움직이면 따라감
   function placeStar(H) {
     const sp = sprOf(H); if (!H.star || !sp || sprHidden(sp)) return;
-    const s = sp.img.style, x = parseFloat(s.left), y = parseFloat(s.top), w = parseFloat(s.width);
+    const s = sp.img.style, x = parseFloat(s.left), w = parseFloat(s.width), y = parseFloat(s.top) + (parseFloat(s.height) || 0) * (1 - (+sp.img.dataset.age || 1));   // 10/15: 줄어든 머리 위
     if (!isFinite(x) || !isFinite(y) || !isFinite(w)) return;
     Object.assign(H.star.style, { left: (x + w / 2) + 'px', top: Math.max(y - 6, 130) + 'px' });
   }
@@ -2825,7 +2855,7 @@ G.scene = (() => {
     if (V !== v0) return;
     for (const H of hs) {
       const r = H.def.at2.rect, gl = H.def.at2.glow; H.rect = r;
-      Object.assign(H.glow.style, { left: gl[0] + 'px', top: gl[1] + 'px', width: gl[2] + 'px', height: gl[3] + 'px', visibility: '' }); G.fitTall(H.glow, gl);
+      Object.assign(H.glow.style, { left: gl[0] + 'px', top: gl[1] + 'px', width: gl[2] + 'px', height: gl[3] + 'px', visibility: '' }); G.fitTall(H.glow, gl); ageGlow(H.glow, H.def, gl);
       if (H.star) Object.assign(H.star.style, { left: (r[0] + r[2] / 2) + 'px', top: (r[1] - 6) + 'px', visibility: '' });
     }
     sizeHots();
@@ -8825,10 +8855,10 @@ G.s4 = (() => {
       if (done('s4view_path')) { await play(['TD04_nuri_02'], no); return; }
       await play(['TD04_nuri_01', 'TD04_nuri_10'], no); if (!ok()) return;
       // 10/7 수석 디렉터 규칙: 마음이 닫히는 순간 (누리가 돌아섬) → 고르기로 엶. 어떤 답도 받아 주고 원래 답으로
-      const nb = V.spr.nuri && V.spr.nuri.img; if (nb) { nb.style.scale = '-1 1'; nb.style.opacity = 0.6; }
+      const nb = V.spr.nuri && V.spr.nuri.img; const na = +(nb && nb.dataset.age) || 1; if (nb) { nb.style.scale = `${-na} ${na}`; nb.style.opacity = 0.6; }   // 10/15: 연령별 키 배율은 그대로 두고 좌우만 뒤집음
       const i = await G.dialog.choose(['TD04_ply_04', 'TD04_ply_05', 'TD04_ply_06'].map(v => ({ label: G.txt(v), icon: 'icon_good', voice: v })), true); if (!ok()) return;
       if (i !== 0) { await play(['TD04_rumi_08']); if (!ok()) return; }
-      if (nb) { nb.style.scale = ''; nb.style.opacity = ''; }
+      if (nb) { nb.style.scale = na === 1 ? '' : na; nb.style.opacity = ''; }
       await play(['TD04_nuri_11'], no); if (!ok()) return;
       // 지난 별 인물: 길의 별 해솔. 노란 길(점자블록)이 이 퍼즐의 둘째 열쇠
       await play(['TD04_haesol_01', 'TD04_haesol_02'], { partner: 'haesol' }); if (!ok()) return;
@@ -10257,7 +10287,7 @@ G.s5 = (() => {
         if (np) { const d = Math.hypot(np.marker[0] - hero.x, np.marker[1] - hero.y); if (d > 90 && d < 420) LU.guide = { p: np.marker, t: 0 }; }
       }
       if (LU.guide) { LU.guide.t += dt; const p = LU.guide.p; if (LU.guide.t > 2.2 || hero.frame !== 8) LU.guide = null; else return [p[0] + Math.cos(T * 4) * 16, p[1] - 90 + Math.sin(T * 4) * 10, 2.2]; }
-      return [hero.x + 10 + Math.cos(T * 1.7) * 56, hero.y - 140 + Math.sin(T * 1.7) * 22 + Math.sin(T * 3.1) * 5, 3.5];
+      return [hero.x + 10 + Math.cos(T * 1.7) * 56, hero.y - 140 * (hero.age || 1) + Math.sin(T * 1.7) * 22 + Math.sin(T * 3.1) * 5, 3.5];
     };
     // A3: 걸음 소리는 화면 왼쪽·오른쪽 위치대로, 풀밭이면 부드럽게
     V.stepFx = (w) => ({ pan: Math.max(-1, Math.min(1, (w.x - V.cam.x) / (vw / 2 || 1))), lp: V.grassAt(w.x, w.y + 2) ? 700 : 0, vol: V.grassAt(w.x, w.y + 2) ? 0.6 : 1 });
@@ -11118,7 +11148,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-15)';
-G.BUILT = '2026-10-15 08:52';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-15 11:21';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
