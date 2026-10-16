@@ -2299,7 +2299,7 @@ G.map = (() => {
   //  초당 60~90칸이 필요해 다리가 흐려짐 → 한 주기 거리를 걷기 110px(초당 약 26칸)·달리기 135px(초당 약 30칸)로 둠.
   //  남는 미끄러짐 비율은 걷기 약 2.3배·달리기 약 3배(전에는 5.6배·6배 넘음, 주민은 1.3~2.2배). 그림을 바꾸지 않고 줄일 수 있는 한계(검토/가림_길_걷기_1016/수정/걷기)
   //  발소리·발자국은 앞발이 땅에 닿는 칸(걷기 1·5칸, 달리기 1·4칸)을 지날 때마다. 멈출 때는 마지막 60px 안에서 위상을 살짝 당기거나 늦춰 두 발이 모이는 칸(0·4)에서 서게 함
-  const GAIT = Mp.GAIT = { walk: 110, run: 135, runMax: 1.9, end: 60 };
+  const GAIT = Mp.GAIT = { walk: 100, run: 108, runMax: 1.8, end: 60 };   // 10/16 선생님 "너무 빨라": 걷기 360→300, 달리기 최대 1.9→1.8배(684→540px/초), 한 주기 거리도 함께 줄여 미끄러짐 걷기 약 2.1배·달리기 약 2.4배
   function gait(w) {
     const g = { u: 0, lock: null, n: 0 };
     // dist = 이번에 간 거리, rem = 남은 거리, a = 달리기 정도(0~1), (ux, uy) = 가는 방향
@@ -11315,7 +11315,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-16)';
-G.BUILT = '2026-10-16 15:57';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-16 16:56';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
