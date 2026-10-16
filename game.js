@@ -200,7 +200,9 @@ G.tween = (a, b, dur, fn, ease = 'io') => new Promise(res => {
 G.level = () => (G.settings && G.settings.level) || 'normal';
 G.lv = (min) => ({ easy: 0, normal: 1, hard: 2 })[G.level()] >= ({ easy: 0, normal: 1, hard: 2 })[min || 'easy'];
 G.fast = () => !!(G.settings && G.settings.fast);
-G.reduced = () => G.settings && (G.settings.reduceMotion || (G.settings.reduceAuto && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches));
+// 10/16 휴대폰 끊김: 매 화면 matchMedia를 새로 만들던 것 → 한 번 만들어 두고 .matches만 봄(설정이 바뀌면 브라우저가 알아서 갱신)
+const RM_Q = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+G.reduced = () => G.settings && (G.settings.reduceMotion || (G.settings.reduceAuto && !!RM_Q && RM_Q.matches));
 
 // ---------- 저장소 (학교 PC에서 막혀 있어도 게임은 돌아가게) ----------
 G.store = {
@@ -1060,7 +1062,7 @@ G.mapView = (parent, o = {}) => {
     if (live) { w.spr.style.backgroundSize = '4300px 520px';   // 살아 있는 그림이 없으면 예전 9칸 그림으로
       const t = new Image(); t.onerror = () => { w.live = false; w.src = sheet; w.spr.style.backgroundImage = `url("${G.asset(sheet)}")`; w.spr.style.backgroundSize = ''; w.bp = ''; w.draw(); }; t.src = G.asset(src); }
     w.occ = G.el('canvas', 'occ', w.el); w.occ.width = 100; w.occ.height = 130; w.occ.style.display = 'none';
-    w.set = (x, y) => { w.x = x; w.y = y; w.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`; const z = Math.round(y); if (z !== w.z) { w.z = z; w.el.style.zIndex = z; } V.occDirty(w); };   // 10/4 폰 끊김: 바뀔 때만 씀
+    w.set = (x, y) => { w.x = x; w.y = y; w.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`; const z = Math.round(y); if (z !== w.z) { w.z = z; w.el.style.zIndex = z; } const v = V.inCam(x, y, 250) ? '' : 'hidden'; if (w.el.style.visibility !== v) w.el.style.visibility = v; V.occDirty(w); };   // 10/4 폰 끊김: 바뀔 때만 씀
     w.col = () => {
       if (!w.live) return w.frame;
       if (w.rc >= 0) return w.rc;   // 10/12 주인공 달리기 칸
@@ -1123,6 +1125,8 @@ G.mapView = (parent, o = {}) => {
   function occlude(w) {
     const D = V.depth, cv = w.occ;
     if (!D || !w.el.isConnected || w.el.style.display === 'none') { cv.style.display = 'none'; w.hid = false; return; }
+    if (!V.inCam(w.x, w.y, 300)) { cv.style.display = 'none'; w.hid = false; w.occLater = true; return; }   // 10/16 휴대폰 끊김: 화면 밖 인물은 가림 계산을 미룸(화면에 들어오면 V.cull이 다시)
+    w.occLater = false;
     const a = w.age || 1, fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50 * a, y0 = fy - 125 * a, px = mdat.data;   // 10/15: 줄어든 인물은 발 둘레의 더 좁은 땅을 봄
     // 10/10 선생님(전망대): 발밑이 언덕 윗면이면 언덕 아래 땅 높이를 발 높이로 (위에 선 인물을 언덕·언덕 위 집이 가리지 않게)
     const fsx = Math.floor(fx / D.k), fsy = Math.floor((fy - 3) / D.k), gf = fsy >= 0 && fsy < D.h && fsx >= 0 && fsx < D.w ? D.gy[fsy * D.w + fsx] : 0;
@@ -1176,10 +1180,13 @@ G.mapView = (parent, o = {}) => {
       x = vw >= V.W ? V.W / 2 : Math.max(vw / 2, Math.min(V.W - vw / 2, x));
       y = vh >= V.H ? V.H / 2 : Math.max(vh / 2, Math.min(V.H - vh / 2, y));
     }
-    V.cam = { x, y, z };
+    V.cam = { x, y, z }; V.cull();
     el.style.transform = `translate(${(W / 2 - x * s).toFixed(1)}px,${(H / 2 - y * s).toFixed(1)}px) scale(${s.toFixed(4)})`;
     el.style.setProperty('--k', (u / s).toFixed(3));   // 지도 위 글자·말풍선을 화면 크기에 맞게
   };
+  // 10/16 선생님(꽃집 앞 휴대폰 끊김): 지도 인물 31명을 늘 다 그리던 것 → 화면 밖(여유 250)은 숨기고, 가림 계산을 미뤄 둔 인물은 들어올 때 다시
+  V.inCam = (x, y, m) => { if (!V.cam) return true; const s = G.stage.ws * V.cam.z; if (!s || !G.stage.W) return true; return Math.abs(x - V.cam.x) < G.stage.W / 2 / s + m && Math.abs(y - V.cam.y) < G.stage.H / 2 / s + m; };
+  V.cull = () => { if (!V.walkers) return; for (const w of V.walkers) { const on = V.inCam(w.x, w.y, 250), v = on ? '' : 'hidden'; if (w.el.style.visibility !== v) w.el.style.visibility = v; if (on && w.occLater) V.occDirty(w); } };
   V.toScreen = (x, y) => { const s = G.stage.ws * V.cam.z; return [G.stage.W / 2 + (x - V.cam.x) * s, G.stage.H / 2 + (y - V.cam.y) * s]; };
   return V;
 };
@@ -10312,7 +10319,7 @@ G.s5 = (() => {
 
 /* ---- mapfx.js ---- */
 // mapfx.js — 10/10 선생님(지도 생동감, 시안 review/mapfx1010 1~5 + review/mapfx2_1010 A1~A6)
-//  지도 그림 위에 밤 덧칠·구름 그림자(곱하기 캔버스)와 가로등 바닥빛·창문 불빛·루미 빛·반딧불·물 반짝임·강물 물결·꽃잎·발밑 먼지·별똥별(빛 캔버스)을 얹음.
+//  지도 그림 위에 밤 덧칠·구름 그림자(곱하기 캔버스)와 가로등 바닥빛·창문 불빛·루미 빛·반딧불·물 반짝임·강물 물결·발밑 먼지·별똥별(빛 캔버스)을 얹음.
 //  두 캔버스는 화면에 보이는 만큼만 그림(지도 전체 크기 캔버스는 휴대폰에서 무거움). 인물은 빛 받기(가까운 불빛 쪽 따뜻하게, 먼 곳은 달빛 푸르게)와 테두리.
 //  물·풀·창문 자리는 data/mapfx.json(소리의별/지도/도구/가려지기_1010/gen_mapfx.py, 창문은 3D 렌더의 창문 모델 자리).
 //  움직임 줄이기: 날리는 것·깜빡임 없이 빛만. 가벼운 모드(G.settings.light): 모두 끔.
@@ -10351,7 +10358,7 @@ G.s5 = (() => {
     V.stage = 5; const sm0 = V.setMood; V.setMood = (s) => { V.stage = Math.max(0, Math.min(5, s)); return sm0(s); };
     V.night = 0; V.fxN = 0; V.fxHero = null; V.fxLumi = null;
     let T = 0, dawn = 0, ripT = 0, shootT = 3, litT = 0, sndT = 0, prevA = null;
-    const flies = [], petals = [], parts = [], burst = [], ripples = [], shoot = [], reveals = [];
+    const flies = [], parts = [], burst = [], ripples = [], shoot = [], reveals = [];
     const clouds = Array.from({ length: 4 }, (_, i) => ({ x: (i + 0.3) * V.W / 4, y: rnd(0.15, 0.85) * V.H, w: rnd(560, 760), el: G.el('div', 'mfx-cloud', layer) }));
     for (const k of clouds) { k.el.style.width = k.w + 'px'; k.el.style.height = k.w / 2 + 'px'; }
     let skip = 0;
@@ -10457,7 +10464,7 @@ G.s5 = (() => {
 
     // ---- 10/12 선생님(어우러지기 시안 review/blend1012): 주인공 발자국(흙길, 3초 뒤 사라짐)과 바람에 날리는 잎(주인공 곁에서 맴돌다 감) ----
     //  어둡게 찍혀야 해서 빛 캔버스(밝게 더하기)가 아니라 인물 판(V.fx)에 작은 조각으로. 달리기 흙먼지는 선생님이 빼기로 함(걸음 먼지는 그대로)
-    const hp = []; let gust = 4, hside = 1;
+    const hp = []; let hside = 1;
     const hpAdd = (cls, o) => { o.e = G.el('div', 'hfx ' + cls, V.fx); if (o.bg) o.e.style.background = o.bg; o.t = 0; hp.push(o); };
     const hpClear = () => { for (const p of hp) p.e.remove(); hp.length = 0; };
     // 10/16 선생님(미끄러지듯 걷기): 발자국은 시간·칸 번호가 아니라 실제로 발을 디딜 때(worldmap.js 걸음 위상)마다 찍음.
@@ -10470,8 +10477,7 @@ G.s5 = (() => {
     };
     function heroFx(dt, rm) {
       const H = V.fxHero; if (!H) return;
-      if (!rm) { gust -= dt; if (gust < 0) { gust = rnd(6, 10);
-        for (let i = 0; i < 9; i++) hpAdd('leaf', { x: H.x - rnd(260, 420), y: H.y - rnd(-20, 200), vx: rnd(200, 280), vy: rnd(20, 50), life: 3.4, rot: rnd(0, 360), wob: rnd(0, 6), wind: 1, bg: ['#c9a35a', '#b8c96a', '#e8b4b8', '#a7c96f'][i % 4] }); } }
+      // 10/16 선생님: 주인공 둘레로 부는 꽃바람(잎 9장 돌풍) 지움
       for (let i = hp.length - 1; i >= 0; i--) { const p = hp[i]; p.t += dt; const a = p.t / p.life;
         if (a >= 1) { p.e.remove(); hp.splice(i, 1); continue; }
         if (p.wind) { const dx = p.x - H.x, dy = p.y - (H.y - 50), d = Math.hypot(dx, dy); if (d < 90 && d > 1) { p.vx += (-dy / d * 260 + dx / d * 60) * dt; p.vy += (dx / d * 260 - 80) * dt; } p.vy += Math.sin(p.t * 4 + p.wob) * 60 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += 220 * dt; }
@@ -10575,17 +10581,7 @@ G.s5 = (() => {
           else if (p.kind === 'leaf') { ac.globalAlpha = a; ac.fillStyle = p.c; ac.fillRect(p.x - 2, p.y - 2, 4, 3); }
           else { ac.globalAlpha = a * 0.9; ac.fillStyle = 'rgb(255,226,140)'; ac.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); if (a > 0.6) { ac.globalAlpha = (a - 0.6) * 2; ac.fillStyle = 'rgb(255,250,220)'; ac.fillRect(p.x - 0.5, p.y - 3, 1, 7); ac.fillRect(p.x - 3, p.y - 0.5, 7, 1); } }
         }
-        // 꽃잎 (마을이 꽤 살아난 뒤)
-        const np = stg >= 3 ? (stg - 2) * 6 : 0;
-        while (petals.length < np) petals.push({ x: rnd(vx0, vx0 + vw), y: rnd(vy0, vy0 + vh), r: rnd(0, 6.28), v: rnd(0.6, 1.2), c: Math.random() < 0.5 ? 'rgb(246,193,207)' : 'rgb(251,224,230)' });
-        if (petals.length > np) petals.length = np;
-        ac.globalCompositeOperation = 'source-over';
-        for (const p of petals) {
-          p.x += dt * 38 * p.v; p.y += dt * 22 * p.v + Math.sin(T * 2 + p.r) * 0.4; p.r += dt * 2;
-          if (!inView(p.x, p.y, 40)) { if (Math.random() < 0.5) { p.x = vx0 - 20; p.y = rnd(vy0, vy0 + vh); } else { p.x = rnd(vx0, vx0 + vw); p.y = vy0 - 20; } }
-          ac.save(); ac.translate(p.x, p.y); ac.rotate(p.r); ac.scale(1, Math.abs(Math.cos(p.r * 1.3)) * 0.8 + 0.2); ac.globalAlpha = 0.9; ac.fillStyle = p.c; ac.beginPath(); ac.ellipse(0, 0, 5, 3, 0, 0, 7); ac.fill(); ac.restore();
-        }
-        ac.globalCompositeOperation = 'lighter';
+        // 10/16 선생님: 지도에 날리는 꽃잎(꽃바람) 지움
       }
       // ---- 화면 기준: 별똥별, 새벽빛 ----
       ac.setTransform(q, 0, 0, q, 0, 0);
@@ -10605,7 +10601,7 @@ G.s5 = (() => {
 
       // ---- 인물 빛 받기 (0.2초마다), 가려진 조각은 구름이 지나가니 가끔 다시 ----
       heroFx(dt, G.reduced());
-      litT -= dt; if (litT < 0) { litT = 0.2; for (const w of V.walkers) { relight(w); if (w.hid) V.occDirty(w); } }   // 가려진 조각도 빛·구름이 바뀌니 다시
+      litT -= dt; if (litT < 0) { litT = 0.2; for (const w of V.walkers) { if (w.el.style.visibility === 'hidden') continue; relight(w); if (w.hid) V.occDirty(w); } }   // 10/16 화면 밖(V.cull이 숨긴) 인물은 건너뜀   // 가려진 조각도 빛·구름이 바뀌니 다시
       // A3 물소리: 주인공이 물가에 가까울수록 크게
       sndT -= dt;
       if (sndT < 0 && V.fxHero && G.audio.ambientLevel) {
@@ -11319,7 +11315,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-16)';
-G.BUILT = '2026-10-16 20:49';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-16 21:38';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
