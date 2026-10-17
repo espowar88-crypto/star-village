@@ -1508,11 +1508,14 @@ G.story = (() => {
     G.hud.hide(true); const m = G.el('div', 'modal st-night', under());
     const night = G.art('window_night') || G.asset('assets/ui/sky.jpg');   // 10/12 선생님: 밤·아침 모두 아이 방 배경 (조각 자리는 여기서 보이지 않음)
     m.style.backgroundImage = `url("${night}")`;
-    await G.dialog.play(['TD08_nar_01'], { noPortraits: true }); if (!ok()) return false;
-    await G.dialog.play(['TD08_rumi_01'], { partner: null }); if (!ok()) return false;
-    m.classList.add('dim');
-    await G.dialog.play(['TD08_nar_02'], { noPortraits: true }); if (!ok()) return false;
-    await G.dialog.play(['TD08_rumi_02'], { partner: null }); if (!ok()) return false;
+    if (!await G.cut.video('lumi_leave')) {   // 10/17 선생님: 대사 없이 조용히 고민하다 떠나는 영상 (못 열면 옛 대사)
+      await G.dialog.play(['TD08_nar_01'], { noPortraits: true }); if (!ok()) return false;
+      await G.dialog.play(['TD08_rumi_01'], { partner: null }); if (!ok()) return false;
+      m.classList.add('dim');
+      await G.dialog.play(['TD08_nar_02'], { noPortraits: true }); if (!ok()) return false;
+      await G.dialog.play(['TD08_rumi_02'], { partner: null }); if (!ok()) return false;
+    }
+    if (!ok()) return false;
     // 아침: 머리맡 그림 쪽지
     const note = G.art('note_lumi');
     m.classList.remove('dim'); m.classList.add('morning');
@@ -1524,14 +1527,18 @@ G.story = (() => {
     await G.dialog.play(['TD08_chief_01'], { partner: 'chief', noBuddy: true }); if (!ok()) return false;
     m.querySelectorAll('.st-note').forEach(e => e.remove()); m.classList.remove('morning'); m.classList.add('gil');
     sst().lumiGone = true; G.save.write(); S.swapAll();   // 이제부터 루미 자리에 길별
-    G.audio.sfx('sfx_sparkle', 0.7);
-    // 10/12 선생님: 길별이 하늘에서 반짝이며 내려오는 연출 (이야기꾼 줄과 함께)
-    const gd = G.el('div', 'st-gildown', m), gi = G.el('img', '', gd); gi.src = G.asset('assets/chars/pt/gil_02.webp'); gi.alt = '';
-    for (let k = 0; k < 10; k++) { const sp = G.el('i', 'st-spark', gd); sp.style.setProperty('--d', (k * 0.12) + 's'); sp.style.setProperty('--x', ((k % 2 ? 1 : -1) * (10 + k * 6)) + '%'); }
-    const fall = gd.animate ? gd.animate([{ transform: 'translate(-50%, -120vh) scale(.35) rotate(-25deg)', opacity: 0 }, { opacity: 1, offset: .2 }, { transform: 'translate(-50%, 0) scale(1.08) rotate(6deg)', offset: .85 }, { transform: 'translate(-50%, 0) scale(1) rotate(0)', opacity: 1 }], { duration: G.reduced() ? 300 : 2400, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }).finished.catch(() => { }) : null;
-    await Promise.all([G.dialog.play(['TD08_nar_05'], { noPortraits: true }), fall]); if (!ok()) return false;
-    if (gd.animate) await gd.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' }).finished.catch(() => { });
-    gd.remove();
+    if (await G.cut.video('gil_arrive')) {   // 10/17 선생님: 길별이 내려온 아침 영상. 끝 장면(광장) 위에서 첫인사
+      if (!ok()) return false; m.style.backgroundImage = `url("${G.asset('assets/video/gil_end.jpg')}")`;
+    } else {
+      G.audio.sfx('sfx_sparkle', 0.7);
+      // 10/12 선생님: 길별이 하늘에서 반짝이며 내려오는 연출 (이야기꾼 줄과 함께)
+      const gd = G.el('div', 'st-gildown', m), gi = G.el('img', '', gd); gi.src = G.asset('assets/chars/pt/gil_02.webp'); gi.alt = '';
+      for (let k = 0; k < 10; k++) { const sp = G.el('i', 'st-spark', gd); sp.style.setProperty('--d', (k * 0.12) + 's'); sp.style.setProperty('--x', ((k % 2 ? 1 : -1) * (10 + k * 6)) + '%'); }
+      const fall = gd.animate ? gd.animate([{ transform: 'translate(-50%, -120vh) scale(.35) rotate(-25deg)', opacity: 0 }, { opacity: 1, offset: .2 }, { transform: 'translate(-50%, 0) scale(1.08) rotate(6deg)', offset: .85 }, { transform: 'translate(-50%, 0) scale(1) rotate(0)', opacity: 1 }], { duration: G.reduced() ? 300 : 2400, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }).finished.catch(() => { }) : null;
+      await Promise.all([G.dialog.play(['TD08_nar_05'], { noPortraits: true }), fall]); if (!ok()) return false;
+      if (gd.animate) await gd.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' }).finished.catch(() => { });
+      gd.remove();
+    }
     await G.dialog.play(['TD08_gil_01', 'TD08_gil_02', 'TD08_ply_02'], { partner: null }); if (!ok()) return false;
     if (m.animate) await m.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }).finished.catch(() => { });
     m.remove(); G.hud.hide(false);
@@ -1705,6 +1712,52 @@ G.cut = (() => {
     if (!C.active) return false;
     if ((e.key === 'Enter' || e.key === ' ') && C.active.skipShown) { C.active.skip(); return true; }
     return true;   // 연출 중에는 다른 키를 먹음
+  };
+  // ---- 10/17 선생님: 컷신 영상 (assets/video/<이름>.mp4, 오프닝·별 올리기·루미 떠남·길별)
+  //      크림빛 종이로 0.6초 스며들고, 게임 음악은 잠깐 내림. 소리 있는 재생이 막히면 [눌러서 보기]
+  //      3초 안에 못 열면(한 파일 판·느린 인터넷·영상 못 트는 기기) false → 부른 곳이 옛 연출로 대신
+  async function playVideo(c, root, name) {
+    const box = G.el('div', 'vid', root), v = G.el('video', '', box);
+    v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
+    v.volume = Math.min(1, Math.max(0, G.settings && G.settings.volume != null ? G.settings.volume : 0.9));
+    box.style.opacity = 0; G.audio.musicLevel(0, 0.6);
+    const ok = await new Promise(resolve => {
+      let started = false, over = false;
+      const fin = (r) => { if (over) return; over = true; clearTimeout(to); resolve(r); };
+      const to = setTimeout(() => fin(false), 3000);
+      v.addEventListener('playing', () => { if (started) return; started = true; clearTimeout(to); G.tween(0, 1, 0.6, k => box.style.opacity = k, 'out'); });
+      v.addEventListener('ended', () => fin(true));
+      v.addEventListener('error', () => fin(started));
+      c.skipP.then(() => fin(true));
+      v.src = G.asset('assets/video/' + name + '.mp4');
+      const p = v.play();
+      if (p && p.catch) p.catch(e => {
+        if (over || !e || e.name !== 'NotAllowedError') return;
+        clearTimeout(to); box.style.opacity = 1;
+        const b = G.btn('pill vid-play', '눌러서 보기', box, () => { b.remove(); v.play().catch(() => fin(false)); }, '눌러서 보기');
+      });
+    });
+    try { v.pause(); } catch (_) { }
+    if (ok && !c.skipped) await G.tween(1, 0, 0.4, k => box.style.opacity = k);
+    box.remove(); v.removeAttribute('src'); try { v.load(); } catch (_) { }
+    G.audio.musicLevel(1, 1.5);
+    return ok;
+  }
+  C.videoIn = playVideo;   // 이미 도는 연출(C11) 안에서
+  C.video = async (name) => {
+    let r = false;
+    SCRIPTS['V:' + name] = async (c, root) => { root.style.background = 'transparent'; r = await playVideo(c, root, name); };
+    await C.play('V:' + name); return r;
+  };
+  // 별 올리기: 영상을 보면 옛 연출 끝 모습(가로등·색)만 맞추고 true. 엔딩은 C.raised로 영상 속 되풀이 문장을 다시 말하지 않음
+  C.raised = '';
+  C.raise = async (id, V, layer) => {
+    if (!await C.video('raise_' + id)) return false;
+    C.raised = id;
+    for (const l of V.lamps) l.el.classList.add('on');
+    const col = V.colorImg; if (col) { col.style.visibility = ''; col.style.opacity = 1; }
+    if (layer) layer.remove(); G.hud.hide(false);
+    return true;
   };
 
   const fadeIn = (c, el, d = 0.8) => c.tween(0, 1, d, v => el.style.opacity = v);
@@ -3910,7 +3963,7 @@ Object.assign(G.flows, {
     G.$('#fade').classList.remove('on');
     await G.cut.play('C12', { live: MV, part: 1 }); if (!ok()) return;
     for (const [who, ids] of E.talk) { await G.dialog.play(ids, { partner: who || undefined }); if (!ok()) return; }
-    await G.dialog.play(['S12_nar_12', 'S12_nar_10', 'S12_nar_11'], { noPortraits: true }); if (!ok()) return;   // 10/12 최종스토리: 되풀이 문장
+    await G.dialog.play(G.cut.raised === 'road' ? ['S12_nar_12'] : ['S12_nar_12', 'S12_nar_10', 'S12_nar_11'], { noPortraits: true }); if (!ok()) return;   // 10/17 영상을 봤으면 되풀이 문장은 영상 속에서 이미 말함   // 10/12 최종스토리: 되풀이 문장
     await G.story.window(1); if (!ok()) return;   // 창가 이야기 (예고 앞)
     await G.cut.play('C12', { live: MV, part: 2 }); if (!ok()) return;
     G.resizers.delete(onR);
@@ -4068,6 +4121,9 @@ G.cut.add({
     const GA = { chief: [880, 500], haesol: [1360, 440], daon: [1370, 870], post: [680, 600] };
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
     await Promise.race([V.gather(GA, c.skipped ? 0 : 4), c.skipP]);   // 10/8 선생님: 받침대로 올 때도 픽셀 걷기로 광장 길을 따라
+    if (await G.cut.videoIn(c, root, 'raise_road')) {   // 10/17 선생님: 별 올리기 컷신 영상 (못 열면 아래 옛 연출)
+      G.cut.raised = 'road'; const col = V.colorImg; col.style.visibility = ''; col.style.opacity = 1; for (const l of V.lamps) l.el.classList.add('on'); return;
+    }
     c.voice('S11_nar_01');
     // (가) 빛을 잃은 별이 주인공에게서 받침대로 날아감 (10/14: 별빛 조각은 뺌)
     const piece = G.el('div', 'c11-item', root, G.icon(G.litIcon('piece')));
@@ -6446,6 +6502,7 @@ G.s2 = (() => {
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');   // 옛 자리에 빛 테두리가 남지 않게
     // (가) 인물들이 받침대 둘레로 모임
     await V.gather(GATHER, 4);   // 10/8 선생님: 받침대로 올 때도 픽셀 걷기로 광장 길을 따라
+    if (await G.cut.raise('sound', V, layer)) return;   // 10/17 선생님: 별 올리기 컷신 영상 (못 열면 아래 옛 연출)
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     // (나) 빛을 잃은 별이 주인공에게서 받침대로
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_sound')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
@@ -6508,12 +6565,12 @@ G.s2 = (() => {
       G.$('#fade').classList.remove('on');
       // 별이 하늘로
       // 10/3 선생님: 별은 광장 받침대에서 이미 올렸으니 지도에서는 다시 올리지 않음
-      await play(['SD06_nar_01']); if (!ok()) return;
+      if (G.cut.raised !== 'sound') { await play(['SD06_nar_01']); if (!ok()) return; }   // 10/17 영상 속에서 이미 말함
       // 편안한 소리가 돌아옴: 소리 구역 전체에 색
       if (MV.s2) { G.audio.sfx('sfx_sparkle', 0.7); bloom(MV, ['s2all'], rm ? 0.3 : 2.6); }
       MV.setLamps(5, true);
       await G.wait(rm ? 0.4 : 2.6); if (!ok()) return;   // D1 (10/5): 해설 대신 색이 번지는 모습을 보여 줌
-      await play(['SD06_nar_02']); if (!ok()) return;   // 10/12 최종스토리: 되풀이 문장 "마을에 보랏빛이 하나 켜졌어요."
+      if (G.cut.raised !== 'sound') { await play(['SD06_nar_02']); if (!ok()) return; }   // 10/12 최종스토리: 되풀이 문장 "마을에 보랏빛이 하나 켜졌어요."
       const rest = D2().restMarks.map(at => { const e = G.el('div', 's2-restmark', MV.fx, G.artImg('mark_rest') || ''); Object.assign(e.style, { left: at[0] + 'px', top: at[1] + 'px' }); e.animate && e.animate([{ scale: .2, opacity: 0 }, { scale: 1.2, opacity: 1 }, { scale: 1 }], { duration: 700, easing: 'ease-out' }); return e; });
       G.tween(0, 1, rm ? 0.3 : 2.5, k => MV.setCam(cam[0] + (3900 - cam[0]) * k, cam[1] + (1950 - cam[1]) * k, 1 - 0.25 * k), 'io');
       G.audio.sfx('sfx_chime', 0.4);
@@ -8033,6 +8090,7 @@ G.s3 = (() => {
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');
     await V.gather(GATHER, 4);   // 10/8 선생님: 받침대로 올 때도 픽셀 걷기로 광장 길을 따라
+    if (await G.cut.raise('word', V, layer)) return;   // 10/17 선생님: 별 올리기 컷신 영상 (못 열면 아래 옛 연출)
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_word')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
@@ -8089,14 +8147,14 @@ G.s3 = (() => {
       MV.setCam(cam[0], cam[1], 1);
       G.audio.music('music_night');
       G.$('#fade').classList.remove('on');
-      await play(['WD06_nar_01']); if (!ok()) return;
+      if (G.cut.raised !== 'word') { await play(['WD06_nar_01']); if (!ok()) return; }   // 10/17 영상 속에서 이미 말함
       // 호숫가 전체에 색
       { const z = G.D.mood.zones.find(q => q.id === 's3all'), ovl = G.el('img', 'bg', MV.imgs); ovl.src = MV.colorImg.src; ovl.width = MV.W; ovl.height = MV.H; ovl.alt = '';
         const m = `radial-gradient(ellipse ${z.r[0]}px ${z.r[1]}px at ${z.center[0]}px ${z.center[1]}px, #000 0%, #000 42%, rgba(0,0,0,.55) 72%, transparent 100%)`;
         Object.assign(ovl.style, { maskImage: m, webkitMaskImage: m, opacity: 0, transition: `opacity ${rm ? 0.3 : 2.6}s ease-out` }); ovl.getBoundingClientRect(); ovl.style.opacity = 1; G.audio.sfx('sfx_sparkle', 0.7); }
       MV.setLamps(5, true);
       await G.wait(rm ? 0.4 : 2.6); if (!ok()) return;   // 10/5 D2: 같은 교훈을 말하는 이야기꾼 줄(WD06_nar_02)은 빼고, 색이 번지는 것만 보여 줌
-      await play(['WD06_nar_02']); if (!ok()) return;   // 10/12 최종스토리: 되풀이 문장 "마을에 분홍빛이 하나 켜졌어요." (교훈 줄 아님)
+      if (G.cut.raised !== 'word') { await play(['WD06_nar_02']); if (!ok()) return; }   // 10/12 최종스토리: 되풀이 문장 "마을에 분홍빛이 하나 켜졌어요." (교훈 줄 아님)
       // 그림 표시가 생김 (찻집 = 찻잔, 나루터 = 호수, 하랑이네 = 그림)
       const icons = [['s3cafe', 'tea'], ['s3dock', 'lake'], ['s3harang', 'draw']].map(([id, k]) => { const p = G.D.places.places.find(q => q.id === id); const e = G.el('div', 's3-mapico', MV.fx, `<img src="${cardImg(k)}" alt="">`);
         Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); e.animate && e.animate([{ scale: .2, opacity: 0 }, { scale: 1.2, opacity: 1 }, { scale: 1 }], { duration: 700, easing: 'ease-out' }); return e; });
@@ -9186,6 +9244,7 @@ G.s4 = (() => {
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');
     await V.gather(GATHER, 4);   // 10/8 선생님: 받침대로 올 때도 픽셀 걷기로 광장 길을 따라
+    if (await G.cut.raise('door', V, layer)) return;   // 10/17 선생님: 별 올리기 컷신 영상 (못 열면 아래 옛 연출)
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_door')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
@@ -9251,7 +9310,7 @@ G.s4 = (() => {
       const icons = MAPICO4.map(([id, k]) => { const p = G.D.places.places.find(q => q.id === id), src = G.art('place_' + id) || G.art(k); if (!p || !src) return null; const e = G.el('div', 's3-mapico', MV.fx, `<img src="${src}" alt="">`);
         Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); e.animate && e.animate([{ scale: .2, opacity: 0 }, { scale: 1.2, opacity: 1 }, { scale: 1 }], { duration: 700, easing: 'ease-out' }); return e; }).filter(Boolean);
       await G.wait(rm ? 0.5 : 3.0); if (!ok()) return;   // 10/7 교훈 세 번째는 말 대신 마을 변화로 (TD06_nar_01 뺌)
-      await play(['TD06_nar_01', 'TD06_nar_10']); if (!ok()) return;   // 10/12 최종스토리: 되풀이 문장 (TD06_nar_01 글을 바꿔 다시 씀)
+      if (G.cut.raised !== 'door') { await play(['TD06_nar_01', 'TD06_nar_10']); if (!ok()) return; }   // 10/17 영상 속에서 이미 말함   // 10/12 최종스토리: 되풀이 문장 (TD06_nar_01 글을 바꿔 다시 씀)
       icons.forEach(e => e.remove());
       await sky(true); if (!ok()) return;   // 예고는 루미가 사라진 밤 뒤로
       G.st.stars = Math.max(G.st.stars || 0, 4); G.st.mood = 5;
@@ -10142,6 +10201,7 @@ G.s5 = (() => {
     G.hud.hide(true);
     V.fx.querySelectorAll('.hot-glow, .mstar').forEach(e => e.style.visibility = 'hidden');
     await V.gather(GATHER, 4);   // 10/8 선생님: 받침대로 올 때도 픽셀 걷기로 광장 길을 따라
+    if (await G.cut.raise('heart', V, layer)) return;   // 10/17 선생님: 별 올리기 컷신 영상 (못 열면 아래 옛 연출)
     const [bx, by] = V.toScreen(ped[0] + ped[2] / 2, ped[1] + 40), hs = (V.spr.hero && V.spr.hero.rect) || S.sprites.find(q => q.id === 'hero').rect, [hx, hy] = V.toScreen(hs[0] + hs[2] / 2, hs[1]);
     const piece = G.el('div', 'c11-item', layer, G.icon(G.litIcon('piece_heart')));   // 10/6: 받침대로 가는 별은 빛나는 별 Object.assign(piece.style, { left: hx + 'px', top: hy + 'px' });
     await G.tween(0, 1, rm ? 0.3 : 1.2, k => { piece.style.left = (hx + (bx - hx) * k) + 'px'; piece.style.top = (hy + (by - hy) * k - Math.sin(k * Math.PI) * 120 * u) + 'px'; }, 'io');
@@ -10207,7 +10267,7 @@ G.s5 = (() => {
       const icons = MAPICO5.map(([id, k]) => { const p = G.D.places.places.find(q => q.id === id), src = G.art('place_' + id) || G.art(k); if (!p || !src) return null; const e = G.el('div', 's3-mapico', MV.fx, `<img src="${src}" alt="">`);
         Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); e.animate && e.animate([{ scale: .2, opacity: 0 }, { scale: 1.2, opacity: 1 }, { scale: 1 }], { duration: 700, easing: 'ease-out' }); return e; }).filter(Boolean);
       await G.wait(rm ? 0.5 : 3.0); if (!ok()) return;   // 교훈 세 번째는 말 대신 마을 변화로
-      await play(['HM05_nar_10', 'HM05_nar_11'], { noPortraits: true }); if (!ok()) return;   // 10/12 최종스토리: 되풀이 문장 (HM05_nar_01 뺌)
+      if (G.cut.raised !== 'heart') { await play(['HM05_nar_10', 'HM05_nar_11'], { noPortraits: true }); if (!ok()) return; }   // 10/17 영상 속에서 이미 말함   // 10/12 최종스토리: 되풀이 문장 (HM05_nar_01 뺌)
       icons.forEach(e => e.remove());
       await sky(); if (!ok()) return;
       await play(['HM05_nar_12'], { noPortraits: true }); if (!ok()) return;   // "루미는 아직 보이지 않았어요."
@@ -11315,7 +11375,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-17)';
-G.BUILT = '2026-10-17 11:49';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-17 20:11';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
@@ -11400,7 +11460,7 @@ G.flow = (() => {
     if (g !== G.gen) return;
     await G.cut.play('CH:intro', { key: 'intro', cover: !!G.art('parchment_open') });   // 9/30 장 제목 "제 1 장 별이 사라진 밤"
     if (g !== G.gen) return;
-    await G.cut.play('C1');
+    if (!await G.cut.video('intro')) await G.cut.play('C1');   // 10/17 선생님: 동화풍 오프닝 영상이 C1 대신 (못 열면 C1)
     if (g !== G.gen) return;
     G.st.place = 'home';
     await G.map.show({ noLumi: true });
