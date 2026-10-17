@@ -1716,8 +1716,9 @@ G.cut = (() => {
   // ---- 10/17 선생님: 컷신 영상 (assets/video/<이름>.mp4, 오프닝·별 올리기·루미 떠남·길별)
   //      크림빛 종이로 0.6초 스며들고, 게임 음악은 잠깐 내림. 소리 있는 재생이 막히면 [눌러서 보기]
   //      3초 안에 못 열면(한 파일 판·느린 인터넷·영상 못 트는 기기) false → 부른 곳이 옛 연출로 대신
-  async function playVideo(c, root, name) {
+  async function playVideo(c, root, name, o = {}) {
     const box = G.el('div', 'vid', root), v = G.el('video', '', box);
+    if (o.dark) box.style.background = 'transparent';   // 10/17 선생님: 인트로는 크림색 종이 없이 앞 화면(장 제목)에서 바로 밝아짐
     v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
     v.volume = Math.min(1, Math.max(0, G.settings && G.settings.volume != null ? G.settings.volume : 0.9));
     box.style.opacity = 0; G.audio.musicLevel(0, 0.6);
@@ -1725,7 +1726,7 @@ G.cut = (() => {
       let started = false, over = false;
       const fin = (r) => { if (over) return; over = true; clearTimeout(to); resolve(r); };
       const to = setTimeout(() => fin(false), 3000);
-      v.addEventListener('playing', () => { if (started) return; started = true; clearTimeout(to); G.tween(0, 1, 0.6, k => box.style.opacity = k, 'out'); });
+      v.addEventListener('playing', () => { if (started) return; started = true; clearTimeout(to); G.tween(0, 1, o.fade || 0.6, k => box.style.opacity = k, o.dark ? 'io' : 'out'); });
       v.addEventListener('ended', () => fin(true));
       v.addEventListener('error', () => fin(started));
       c.skipP.then(() => fin(true));
@@ -1744,9 +1745,9 @@ G.cut = (() => {
     return ok;
   }
   C.videoIn = playVideo;   // 이미 도는 연출(C11) 안에서
-  C.video = async (name) => {
+  C.video = async (name, o) => {
     let r = false;
-    SCRIPTS['V:' + name] = async (c, root) => { root.style.background = 'transparent'; r = await playVideo(c, root, name); };
+    SCRIPTS['V:' + name] = async (c, root) => { root.style.background = 'transparent'; r = await playVideo(c, root, name, o); };
     await C.play('V:' + name); return r;
   };
   // 별 올리기: 영상을 보면 옛 연출 끝 모습(가로등·색)만 맞추고 true. 엔딩은 C.raised로 영상 속 되풀이 문장을 다시 말하지 않음
@@ -2056,13 +2057,12 @@ G.cut = (() => {
       const win = G.el('div', 'pi-win', cam); if (ch) win.style.backgroundImage = `url("${ch}")`;
       win.style.opacity = 0; cam.style.opacity = 0;
       c.sfx('sfx_page', 0.6);
-      const v0 = c.voice('S00_nar_01');   // 10/12 최종스토리: "자, 책을 펴 볼까요?"
+      // 10/17 선생님: "자, 책을 펴 볼까요?"(S00_nar_01) 음성·자막 뺌
       await c.tween(0, 1, c.rm ? 0.3 : 0.9, v => { cam.style.opacity = v; if (!c.rm) cam.style.transform = `scale(${0.92 + 0.08 * v})`; }, 'out');
       await c.wait(0.5);
       c.sfx('sfx_sparkle', 0.5);
       if (c.rm) await c.tween(0, 1, 0.6, v => win.style.opacity = v);
       else await c.tween(0, 1, 1.8, v => { cam.style.transform = `scale(${1 + 1.4 * v * v})`; win.style.opacity = Math.min(1, v * 1.6); }, 'io');
-      await v0;
       const full = G.el('div', 'ch-bg', root); full.style.backgroundImage = `url("${ch || pa}")`; full.style.transform = 'scale(1.06)'; full.style.opacity = 0;
       await c.tween(0, 1, 0.35, v => full.style.opacity = v);
     },
@@ -11375,7 +11375,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-17)';
-G.BUILT = '2026-10-17 20:11';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-17 22:49';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
@@ -11460,7 +11460,7 @@ G.flow = (() => {
     if (g !== G.gen) return;
     await G.cut.play('CH:intro', { key: 'intro', cover: !!G.art('parchment_open') });   // 9/30 장 제목 "제 1 장 별이 사라진 밤"
     if (g !== G.gen) return;
-    if (!await G.cut.video('intro')) await G.cut.play('C1');   // 10/17 선생님: 동화풍 오프닝 영상이 C1 대신 (못 열면 C1)
+    if (!await G.cut.video('intro', { dark: true, fade: 1.4 })) await G.cut.play('C1');   // 10/17 선생님: 동화풍 오프닝 영상이 C1 대신 (못 열면 C1)
     if (g !== G.gen) return;
     G.st.place = 'home';
     await G.map.show({ noLumi: true });
