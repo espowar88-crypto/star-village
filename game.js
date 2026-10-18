@@ -1701,7 +1701,7 @@ G.cut = (() => {
       G.btn('pill skip', '건너뛰기 ' + G.icon('icon_skip'), skipBox, () => { skipBox.innerHTML = ''; G.audio.voice('S92_btn_skip'); c.skip(); }, '건너뛰기');
       c.skipShown = true;
     };
-    if (seen || G.fast()) showSkip(); else c.wait(2).then(showSkip);
+    if (G.fast()) showSkip();   // 10/18 선생님: 컷신은 건너뛰기 없이 끝까지 (교사용 빠르게 모드에서만 보임)
     try { await fn(c, root, opts); } catch (e) { console.error('연출 오류', id, e); }
     done = true;
     if (st0 && !st0.seenCutscenes.includes(id) && !opts.replay) { st0.seenCutscenes.push(id); if (st0 === G.st) G.save.write(); }
@@ -1734,8 +1734,9 @@ G.cut = (() => {
       const p = v.play();
       if (p && p.catch) p.catch(e => {
         if (over || !e || e.name !== 'NotAllowedError') return;
-        clearTimeout(to); box.style.opacity = 1;
-        const b = G.btn('pill vid-play', '눌러서 보기', box, () => { b.remove(); v.play().catch(() => fin(false)); }, '눌러서 보기');
+        // 10/18 선생님: [눌러서 보기] 없이 자동재생. 브라우저가 소리 있는 재생을 막으면 소리 없이 틀고, 화면을 한 번 누르면 소리가 켜짐
+        v.muted = true;
+        v.play().then(() => root.addEventListener('pointerdown', () => { v.muted = false; }, { once: true })).catch(() => fin(false));
       });
     });
     try { v.pause(); } catch (_) { }
@@ -11374,8 +11375,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-17)';
-G.BUILT = '2026-10-17 22:49';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-18)';
+G.BUILT = '2026-10-18 10:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
