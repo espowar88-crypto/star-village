@@ -4407,12 +4407,12 @@ G.p4 = (() => {
   // 10/19 선생님: 해결한 것은 지도 위 픽셀 물건(픽셀랩, 지도 색 60개)으로 바로 놓고, 누르면 어떻게 바꿨는지 한 줄. 자리는 넓은 지도 좌표(발 자리), 별 1 지도는 off만큼 뺌
   //      소리 안내 기둥은 이미 서 있는 기둥(p4-mpole)을 누르게 함. [그림 키, 그림 크기(지도 px), 발 자리들]
   const ACCOBJ = {
-    block: [[208, 114], [[2675, 1640], [2515, 1720]]],
+    block: [[242, 172], [[2495, 1550]]],   // 광장 미션 장면(plaza2_blocks)과 같은 자리: 광장에서 도서관 쪽 ㄴ자 길
     rest: [[80, 154], [[4705, 1990]]],
     lamp: [[36, 164], [[5190, 2190]]],
     menu: [[58, 108], [[4870, 640]]],
     wave: [[80, 144], [[5300, 835]]],
-    ramp: [[124, 104], [[3985, 735]]],
+    ramp: [[320, 260], [[3960, 820]]],   // 목공방 위 계단을 덮는 낮은 ㄴ자 경사로
     button: [[76, 108], [[3865, 350]]],
     turnboard: [[80, 136], [[690, 450]]],
     flag: [[62, 110], [[1475, 535]]],
@@ -4441,12 +4441,12 @@ G.p4 = (() => {
       const [[w, h], spots] = o;
       spots.forEach(([x, y], i) => {
         x += off[0]; y += off[1]; if (x < 0 || y < 0 || x > M.width || y > M.height) return;
-        // 그림은 발 y 순서(인물과 앞뒤가 맞게, 바닥 그림은 맨 아래), 누르는 판은 장소 누르는 곳(2990)보다 위에 따로
+        // 그림은 발 y 순서(인물과 앞뒤가 맞게, 바닥 그림·경사로는 맨 아래라 위를 걷는 사람이 가려지지 않음), 누르는 판은 장소 누르는 곳(2990)보다 위에 따로
         const im = G.el('img', 'acc-img', V.fx); im.src = G.asset('assets/map/acc_' + key + '.png'); im.alt = ''; im.draggable = false; im.dataset.acc = i ? key + i : key;
         const b = G.el('button', 'acc-obj', V.fx, `<span>${name}</span>`);
         b.type = 'button'; b.dataset.acc = i ? key + i : key; b.setAttribute('aria-label', name);
         const box = { left: (x - w / 2) + 'px', top: (y - h) + 'px', width: w + 'px', height: h + 'px' };
-        Object.assign(im.style, box, { zIndex: key === 'block' ? 2 : Math.round(y) }); Object.assign(b.style, box, { zIndex: 2992 });
+        Object.assign(im.style, box, { zIndex: key === 'block' || key === 'ramp' ? 2 : Math.round(y) }); Object.assign(b.style, box, { zIndex: 2992 });
         accTip(V, b, name, text);
         if (!seen.includes(key) && i === 0) { seen.push(key); G.save.write(); G.wait(1.2).then(() => { if (b.isConnected) { G.waveMark(V.fx, x, y - h * 0.6, 2); G.audio.sfx('sfx_sparkle', 0.5); } }); }
       });
@@ -11459,7 +11459,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-19)';
-G.BUILT = '2026-10-19 09:53';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-19 10:57';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
