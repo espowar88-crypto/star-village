@@ -1114,7 +1114,7 @@ G.mapView = (parent, o = {}) => {
   const occQ = new Set(); let occRaf = 0;
   V.occDirty = (w) => { if (!V.depth) return; occQ.add(w); if (!occRaf) occRaf = requestAnimationFrame(() => { occRaf = 0; for (const q of occQ) occlude(q); occQ.clear(); }); };
   const sheets = {};
-  const mask = document.createElement('canvas'); mask.width = 100; mask.height = 130; const mctx = mask.getContext('2d'); const mdat = mctx.createImageData(100, 130);
+  const mdat = new ImageData(100, 130), px32 = new Uint32Array(mdat.data.buffer), occXs = new Int32Array(100), OPAQ = new Uint8Array(new Uint32Array([1]).buffer)[0] ? 0xff000000 : 0x000000ff;   // 점 하나를 한 번에 씀(알파만 255)
   V.colorAlphaAt = (x, y) => {   // applyMask와 같은 계산(그 점 하나)
     if (col.style.visibility === 'hidden') return 0;
     if (V.colorFull != null) return V.colorFull;
@@ -1127,31 +1127,55 @@ G.mapView = (parent, o = {}) => {
     }
     return 1 - keep;
   };
+  // 10/19 휴대폰 지도 끊김(후반부·광장): 가림 조각을 그릴 때마다(숨쉬기 칸·빛 0.2초마다) 점 13,000개를 다시 세고 큰 지도 그림(5760x3240)에서 잘라 그리던 것 →
+  //  ① 발 자리가 그대로면 가림 모양(인물마다 w.om)을 다시 세지 않음 ② 지도 그림은 인물 둘레 조금 넉넉한 조각(w.rg)에 한 번 옮겨 두고, 그 안에서 움직이는 동안은 작은 조각에서 그림
+  //  ③ 화면 밖으로 나간 인물의 조각은 비움(휴대폰 메모리). 보이는 모습은 같음
+  const RG = 60;   // 조각 둘레 여유(지도 px)
+  const occFree = (w) => { if (w.rg) { for (const k in w.rg) w.rg[k].cv.width = w.rg[k].cv.height = 0; w.rg = null; } if (w.om) { w.om.width = w.om.height = 0; w.om = null; w.okey = null; } };
+  function rgDraw(w, k, img, c, x0, y0, al) {   // 원래: c.drawImage(img, x0 * s, y0 * s, 100 * s, 130 * s, 0, 0, 100, 130)
+    if (!img || !img.naturalWidth || al <= 0.003) return;
+    const s = img.naturalWidth / V.W, sx = x0 * s, sy = y0 * s, src = img.currentSrc || img.src, R = w.rg || (w.rg = {});
+    let r = R[k];
+    if (!r || r.src !== src || sx < r.x || sy < r.y || sx + 100 * s > r.x + r.w || sy + 130 * s > r.y + r.h) {
+      const m = Math.round(RG * s), iw = img.naturalWidth, ih = img.naturalHeight;
+      if (!r) r = R[k] = { cv: document.createElement('canvas') };
+      r.src = src; r.x = Math.floor(sx) - m; r.y = Math.floor(sy) - m; r.w = Math.ceil(100 * s) + 2 * m + 2; r.h = Math.ceil(130 * s) + 2 * m + 2;
+      if (r.cv.width !== r.w) r.cv.width = r.w; if (r.cv.height !== r.h) r.cv.height = r.h;
+      const rc = r.cv.getContext('2d'); rc.clearRect(0, 0, r.w, r.h);
+      const ix = Math.max(0, r.x), iy = Math.max(0, r.y), ix2 = Math.min(iw, r.x + r.w), iy2 = Math.min(ih, r.y + r.h);   // 지도 밖은 비워 둠(점 그대로 1:1로 옮김)
+      if (ix2 > ix && iy2 > iy) rc.drawImage(img, ix, iy, ix2 - ix, iy2 - iy, ix - r.x, iy - r.y, ix2 - ix, iy2 - iy);
+    }
+    c.globalAlpha = al; c.drawImage(r.cv, sx - r.x, sy - r.y, 100 * s, 130 * s, 0, 0, 100, 130);
+  }
   function occlude(w) {
     const D = V.depth, cv = w.occ;
     if (!D || !w.el.isConnected || w.el.style.display === 'none') { cv.style.display = 'none'; w.hid = false; return; }
-    if (!V.inCam(w.x, w.y, 300)) { cv.style.display = 'none'; w.hid = false; w.occLater = true; return; }   // 10/16 휴대폰 끊김: 화면 밖 인물은 가림 계산을 미룸(화면에 들어오면 V.cull이 다시)
+    if (!V.inCam(w.x, w.y, 300)) { cv.style.display = 'none'; w.hid = false; w.occLater = true; occFree(w); return; }   // 10/16 휴대폰 끊김: 화면 밖 인물은 가림 계산을 미룸(화면에 들어오면 V.cull이 다시)
     w.occLater = false;
-    const a = w.age || 1, fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50 * a, y0 = fy - 125 * a, px = mdat.data;   // 10/15: 줄어든 인물은 발 둘레의 더 좁은 땅을 봄
-    // 10/10 선생님(전망대): 발밑이 언덕 윗면이면 언덕 아래 땅 높이를 발 높이로 (위에 선 인물을 언덕·언덕 위 집이 가리지 않게)
-    const fsx = Math.floor(fx / D.k), fsy = Math.floor((fy - 3) / D.k), gf = fsy >= 0 && fsy < D.h && fsx >= 0 && fsx < D.w ? D.gy[fsy * D.w + fsx] : 0;
-    const up = !!(gf & 0x8000), lim = (up ? Math.max(fy, gf & 0x7fff) : fy) + 4, jmax = up ? 104 : 130;   // 언덕 위면 발 아래(그림자)는 안 덮음
-    let any = false;
-    for (let j = 0; j < 130; j++) {
-      const sy = Math.floor((y0 + j * a) / D.k);
-      for (let i = 0; i < 100; i++) {
-        const sx = Math.floor((x0 + i * a) / D.k), o = (j * 100 + i) * 4;
-        const g = sy >= 0 && sy < D.h && sx >= 0 && sx < D.w ? D.gy[sy * D.w + sx] : 0;
-        const f = j < jmax && (g & 0x7fff) > lim; px[o + 3] = f ? 255 : 0; if (f) any = true;
+    const a = w.age || 1, fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50 * a, y0 = fy - 125 * a;   // 10/15: 줄어든 인물은 발 둘레의 더 좁은 땅을 봄
+    const okey = fx + ',' + fy + ',' + a;
+    if (w.okey !== okey) {
+      w.okey = okey;
+      // 10/10 선생님(전망대): 발밑이 언덕 윗면이면 언덕 아래 땅 높이를 발 높이로 (위에 선 인물을 언덕·언덕 위 집이 가리지 않게)
+      const fsx = Math.floor(fx / D.k), fsy = Math.floor((fy - 3) / D.k), gf = fsy >= 0 && fsy < D.h && fsx >= 0 && fsx < D.w ? D.gy[fsy * D.w + fsx] : 0;
+      const up = !!(gf & 0x8000), lim = (up ? Math.max(fy, gf & 0x7fff) : fy) + 4, jmax = up ? 104 : 130;   // 언덕 위면 발 아래(그림자)는 안 덮음
+      let any = false;
+      for (let i = 0; i < 100; i++) { const sx = Math.floor((x0 + i * a) / D.k); occXs[i] = sx >= 0 && sx < D.w ? sx : -1; }   // 줄마다 같은 칸 번호를 한 번만 셈
+      const gy = D.gy;
+      for (let j = 0; j < 130; j++) {
+        const sy = Math.floor((y0 + j * a) / D.k), o = j * 100;
+        if (j >= jmax || sy < 0 || sy >= D.h) { px32.fill(0, o, o + 100); continue; }
+        const b = sy * D.w;
+        for (let i = 0; i < 100; i++) { const sx = occXs[i]; if (sx >= 0 && (gy[b + sx] & 0x7fff) > lim) { px32[o + i] = OPAQ; any = true; } else px32[o + i] = 0; }
       }
+      w.oany = any;
+      if (any) { if (!w.om) { w.om = document.createElement('canvas'); w.om.width = 100; w.om.height = 130; } w.om.getContext('2d').putImageData(mdat, 0, 0); }
     }
-    if (!any) { cv.style.display = 'none'; w.hid = false; return; }
-    mctx.putImageData(mdat, 0, 0);
+    if (!w.oany) { cv.style.display = 'none'; w.hid = false; return; }
     const c = cv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; c.clearRect(0, 0, 100, 130);
     c.setTransform(1 / a, 0, 0, 1 / a, 0, 0); c.imageSmoothingEnabled = !V.pix;   // 픽셀 지도면 가림 조각도 점 그대로   // 아래 땅·밤 덧칠·불빛은 지도 단위로 그림 (캔버스는 인물과 같이 a배로 보임)
-    const draw = (img, a) => { if (!img || !img.naturalWidth || a <= 0.003) return; const s = img.naturalWidth / V.W; c.globalAlpha = a; c.drawImage(img, x0 * s, y0 * s, 100 * s, 130 * s, 0, 0, 100, 130); };
-    draw(mono, 1); draw(col, V.colorAlphaAt(fx, fy) * (+(col.style.opacity || 1)));
-    if (V.s2 && V.s2.fog) draw(V.s2.fog, +(V.s2.fog.style.opacity || 1));
+    rgDraw(w, 'm', mono, c, x0, y0, 1); rgDraw(w, 'c', col, c, x0, y0, V.colorAlphaAt(fx, fy) * (+(col.style.opacity || 1)));
+    if (V.s2 && V.s2.fog) rgDraw(w, 'f', V.s2.fog, c, x0, y0, +(V.s2.fog.style.opacity || 1));
     if (V.fxPatch) V.fxPatch(c, x0, y0);   // 10/10 지도 밤 덧칠(mapfx.js)
     // 가로등 불빛 (지도 위 불빛과 같은 모양)
     const light = !!el.closest('.light');
@@ -1163,7 +1187,7 @@ G.mapView = (parent, o = {}) => {
       g.addColorStop(0, 'rgba(255,246,214,1)'); g.addColorStop(0.05, 'rgba(255,246,214,1)'); g.addColorStop(0.14, 'rgba(255,214,120,.65)'); g.addColorStop(0.38, 'rgba(244,162,89,.25)'); g.addColorStop(0.68, 'rgba(244,162,89,0)');
       c.globalCompositeOperation = light ? 'source-over' : 'screen'; c.globalAlpha = light ? 0.55 : 1; c.fillStyle = g; c.fillRect(0, 0, 100, 130);
     }
-    c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'destination-in'; c.drawImage(mask, 0, 0);
+    c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'destination-in'; c.drawImage(w.om, 0, 0);
     // 가려진 부분에 인물을 흐리게
     const sh = sheets[w.src] || (sheets[w.src] = Object.assign(new Image(), { src: G.asset(w.src) }));
     if (sh.complete && sh.naturalWidth) { const k = sh.naturalWidth / (w.live ? 43 : 9) / 100; c.globalCompositeOperation = 'source-atop'; c.globalAlpha = 0.35; c.imageSmoothingEnabled = false; c.drawImage(sh, (w.c ?? w.frame) * 100 * k, (w.r ?? ROW[w.dir]) * 130 * k, 100 * k, 130 * k, 0, 0, 100, 130); }
@@ -11388,7 +11412,8 @@ G.s6 = (() => {
     // 밤 덧칠·구름은 판 하나씩(곱하기, 다시 그리지 않음), 빛은 캔버스(밝게, 30번/초)
     const nightEl = G.el('div', 'mfx-night', layer), add = G.el('canvas', 'mfx-add', layer);
     const ac = add.getContext('2d');
-    const lc = document.createElement('canvas'), lx = lc.getContext('2d');   // 10/11 가로등·창문·루미 빛만 따로(가려지는 조각에도 같은 빛을 그리려고)
+    const kc = document.createElement('canvas'), kx = kc.getContext('2d');   // 10/11 가로등·창문 빛만 따로(가려지는 조각에도 같은 빛을 그리려고). 10/19 화면보다 조금 넓게(아래 kcB)
+    const pc = document.createElement('canvas'), px = pc.getContext('2d'); pc.width = 100; pc.height = 130;   // 가려지는 조각 하나 몫의 빛
     let cw = 0, ch = 0, vx0 = 0, vy0 = 0, sc = 1, vw = 1, vh = 1;
     // ---- 풀밭 칸 ----
     const gbits = Uint8Array.from(atob(D.grass), c => c.charCodeAt(0));
@@ -11396,7 +11421,7 @@ G.s6 = (() => {
     // ---- 상태 ----
     V.stage = 5; const sm0 = V.setMood; V.setMood = (s) => { V.stage = Math.max(0, Math.min(5, s)); return sm0(s); };
     V.night = 0; V.fxN = 0; V.fxHero = null; V.fxLumi = null;
-    let T = 0, dawn = 0, ripT = 0, shootT = 3, litT = 0, sndT = 0, prevA = null;
+    let T = 0, dawn = 0, ripT = 0, shootT = 3, litT = 0, sndT = 0, prevA = null, kcT = 0, kcB = null;
     const flies = [], parts = [], burst = [], ripples = [], shoot = [], reveals = [];
     const clouds = Array.from({ length: 4 }, (_, i) => ({ x: (i + 0.3) * V.W / 4, y: rnd(0.15, 0.85) * V.H, w: rnd(560, 760), el: G.el('div', 'mfx-cloud', layer) }));
     for (const k of clouds) { k.el.style.width = k.w + 'px'; k.el.style.height = k.w / 2 + 'px'; }
@@ -11472,7 +11497,11 @@ G.s6 = (() => {
       if (!V.night) return;
       c.globalCompositeOperation = 'multiply'; c.globalAlpha = V.night; c.fillStyle = 'rgb(120,128,190)'; c.fillRect(0, 0, 100, 130);
       for (const k of clouds) { if (Math.abs(k.x - x0 - 50) > k.w / 2 + 60 || Math.abs(k.y - y0 - 65) > k.w / 4 + 70) continue; c.save(); c.translate(k.x - x0, k.y - y0); c.scale(1, 0.5); c.globalAlpha = 0.28; c.drawImage(glow(70, 80, 130), -k.w / 2, -k.w / 2, k.w, k.w); c.restore(); }
-      if (cw) { c.globalCompositeOperation = 'screen'; c.globalAlpha = 1; c.drawImage(lc, (x0 - vx0) * sc, (y0 - vy0) * sc, 100 * sc, 130 * sc, 0, 0, 100, 130); }
+      if (kcB) {   // 가로등·창문 빛 + 루미 빛을 더한 뒤 한 번에 밝게(화면과 같은 계산)
+        px.setTransform(1, 0, 0, 1, 0, 0); px.globalAlpha = 1; px.globalCompositeOperation = 'source-over'; px.clearRect(0, 0, 100, 130); px.globalCompositeOperation = 'lighter';
+        px.drawImage(kc, (x0 - kcB.x) * kcB.sc, (y0 - kcB.y) * kcB.sc, 100 * kcB.sc, 130 * kcB.sc, 0, 0, 100, 130);
+        const lu = V.fxLumi && V.fxLumi(); if (lu && inView(lu.x, lu.y, 190)) { px.globalAlpha = 0.45; px.drawImage(glow(255, 236, 160), lu.x - 190 - x0, lu.y - 190 - y0, 380, 380); }
+        c.globalCompositeOperation = 'screen'; c.globalAlpha = 1; c.drawImage(pc, 0, 0, 100, 130); }
       c.globalAlpha = 1;
     };
 
@@ -11526,7 +11555,7 @@ G.s6 = (() => {
     }
 
     const stop = G.every((dt) => {
-      if (!V.el.isConnected) { if (V.fxSeen || V.gone) { stop(); hpClear(); add.width = add.height = lc.width = lc.height = 0; } return; }   // 10/10: 지도를 떠나면 빛 캔버스를 비움(휴대폰 메모리). 10/15: 화면에 붙기 전에 지도를 떠난 경우(V.gone)도 멈춤(지난 지도 전체가 남던 것)
+      if (!V.el.isConnected) { if (V.fxSeen || V.gone) { stop(); hpClear(); add.width = add.height = kc.width = kc.height = pc.width = pc.height = 0; } return; }   // 10/10: 지도를 떠나면 빛 캔버스를 비움(휴대폰 메모리). 10/15: 화면에 붙기 전에 지도를 떠난 경우(V.gone)도 멈춤(지난 지도 전체가 남던 것)
       V.fxSeen = true;
       const { W, H, ws } = G.stage; if (!W) return;
       if (off()) { if (layer.style.display !== 'none') { layer.style.display = 'none'; V.night = 0; for (const w of V.walkers) relight(w); hpClear(); } return; }
@@ -11539,7 +11568,7 @@ G.s6 = (() => {
       // 보이는 곳
       const s = ws * V.cam.z; vw = W / s; vh = H / s; vx0 = V.cam.x - vw / 2; vy0 = V.cam.y - vh / 2;
       const q = Math.min(0.75, 700 / W), nw = Math.round(W * q), nh = Math.round(H * q);
-      if (nw !== cw || nh !== ch) { cw = add.width = lc.width = nw; ch = add.height = lc.height = nh; }
+      if (nw !== cw || nh !== ch) { cw = add.width = nw; ch = add.height = nh; }
       sc = cw / vw;
       add.style.transform = `translate(${vx0.toFixed(1)}px,${vy0.toFixed(1)}px) scale(${(vw / cw).toFixed(5)})`;
       // A6 별을 되찾을수록 별똥별이 자주, 8개면 새벽빛
@@ -11557,30 +11586,38 @@ G.s6 = (() => {
       ac.setTransform(1, 0, 0, 1, 0, 0); ac.globalAlpha = 1; ac.globalCompositeOperation = 'source-over'; ac.clearRect(0, 0, cw, ch);
       ac.setTransform(sc, 0, 0, sc, -vx0 * sc, -vy0 * sc); ac.globalCompositeOperation = 'lighter';
       const dark = V.night > 0;
-      lx.setTransform(1, 0, 0, 1, 0, 0); lx.globalAlpha = 1; lx.globalCompositeOperation = 'source-over'; lx.clearRect(0, 0, cw, ch);
-      lx.setTransform(sc, 0, 0, sc, -vx0 * sc, -vy0 * sc); lx.globalCompositeOperation = 'lighter';
       if (dark) {
-        // 가로등 바닥빛 (살짝 흔들림)
-        const gl = glow(255, 190, 110), gb = glow(255, 236, 190);
-        for (const l of V.lamps) {
-          if (!l.el.classList.contains('on')) continue; const [x, y] = l.def.at; if (!inView(x, y, 260)) continue;
-          const lf = litF(x, y); if (lf <= 0) continue;
-          const fl = rm ? 0.92 : 0.9 + Math.sin(T * 3 + x) * 0.05 + Math.sin(T * 7.3 + y) * 0.03, R = 230 * fl;
-          lx.globalAlpha = 0.32 * lf; lx.drawImage(gl, x - R, y + 60 - R * 0.62, R * 2, R * 1.24);
-          lx.globalAlpha = 0.7 * lf; lx.drawImage(gb, x - 46 * fl, y - 4 - 46 * fl, 92 * fl, 92 * fl);
+        // 10/19 휴대폰 지도 끊김(광장): 가로등·창문 빛(광장에서 50장 가까이)은 화면보다 조금 넓은 판(kc)에 0.1초마다만 그려 두고, 그 사이에는 판을 옮겨 붙이기만 함.
+        //  화면이 판 밖으로 나가거나 확대가 바뀌거나 색이 번지는 중이면 바로 다시. 루미 빛은 따라다니니 매번
+        const KM = 160; kcT -= dt;
+        if (!kcB || kcB.sc !== sc || vx0 < kcB.x || vy0 < kcB.y || vx0 + vw > kcB.x + kcB.w || vy0 + vh > kcB.y + kcB.h || kcT <= 0 || reveals.length) {
+          kcT = 0.1; kcB = { x: vx0 - KM, y: vy0 - KM, w: vw + KM * 2, h: vh + KM * 2, sc };
+          const kw = Math.ceil(kcB.w * sc), kh = Math.ceil(kcB.h * sc); if (kc.width !== kw || kc.height !== kh) { kc.width = kw; kc.height = kh; }
+          const inK = (x, y, m) => x > kcB.x - m && x < kcB.x + kcB.w + m && y > kcB.y - m && y < kcB.y + kcB.h + m;
+          kx.setTransform(1, 0, 0, 1, 0, 0); kx.globalAlpha = 1; kx.globalCompositeOperation = 'source-over'; kx.clearRect(0, 0, kw, kh);
+          kx.setTransform(sc, 0, 0, sc, -kcB.x * sc, -kcB.y * sc); kx.globalCompositeOperation = 'lighter';
+          // 가로등 바닥빛 (살짝 흔들림)
+          const gl = glow(255, 190, 110), gb = glow(255, 236, 190);
+          for (const l of V.lamps) {
+            if (!l.el.classList.contains('on')) continue; const [x, y] = l.def.at; if (!inK(x, y, 260)) continue;
+            const lf = litF(x, y); if (lf <= 0) continue;
+            const fl = rm ? 0.92 : 0.9 + Math.sin(T * 3 + x) * 0.05 + Math.sin(T * 7.3 + y) * 0.03, R = 230 * fl;
+            kx.globalAlpha = 0.32 * lf; kx.drawImage(gl, x - R, y + 60 - R * 0.62, R * 2, R * 1.24);
+            kx.globalAlpha = 0.7 * lf; kx.drawImage(gb, x - 46 * fl, y - 4 - 46 * fl, 92 * fl, 92 * fl);
+          }
+          // 창문 불빛: 색이 돌아온 곳만
+          const gw = glow(255, 190, 100);
+          D.windows.forEach(([x, y], i) => {
+            if (!inK(x, y, 30)) return;
+            const on = V.colorAlphaAt(x, y) * litF(x, y) * (rm ? 0.85 : 0.75 + 0.25 * Math.sin(T * 0.7 + i * 1.7)); if (on < 0.02) return;
+            kx.globalAlpha = 0.8 * on; kx.drawImage(gw, x - 26, y - 26, 52, 52);
+          });
         }
-        // 창문 불빛: 색이 돌아온 곳만
-        const gw = glow(255, 190, 100);
-        D.windows.forEach(([x, y], i) => {
-          if (!inView(x, y, 30)) return;
-          const on = V.colorAlphaAt(x, y) * litF(x, y) * (rm ? 0.85 : 0.75 + 0.25 * Math.sin(T * 0.7 + i * 1.7)); if (on < 0.02) return;
-          lx.globalAlpha = 0.8 * on; lx.drawImage(gw, x - 26, y - 26, 52, 52);
-        });
+        ac.setTransform(1, 0, 0, 1, 0, 0); ac.globalAlpha = 1; ac.drawImage(kc, (kcB.x - vx0) * sc, (kcB.y - vy0) * sc); ac.setTransform(sc, 0, 0, sc, -vx0 * sc, -vy0 * sc);
         // 루미 빛
         const lu = V.fxLumi && V.fxLumi();
-        if (lu && inView(lu.x, lu.y, 190)) { lx.globalAlpha = 0.45; lx.drawImage(glow(255, 236, 160), lu.x - 190, lu.y - 190, 380, 380); }
-      }
-      ac.setTransform(1, 0, 0, 1, 0, 0); ac.globalAlpha = 1; ac.drawImage(lc, 0, 0); ac.setTransform(sc, 0, 0, sc, -vx0 * sc, -vy0 * sc);
+        if (lu && inView(lu.x, lu.y, 190)) { ac.globalAlpha = 0.45; ac.drawImage(glow(255, 236, 160), lu.x - 190, lu.y - 190, 380, 380); }
+      } else kcB = null;
       if (!rm) {
         // 물 반짝임
         ac.fillStyle = 'rgb(220,235,255)';
@@ -12379,7 +12416,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-19)';
-G.BUILT = '2026-10-19 19:35';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-19 22:54';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
