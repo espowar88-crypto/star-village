@@ -4407,7 +4407,7 @@ G.p4 = (() => {
   // 10/19 선생님: 해결한 것은 지도 위 픽셀 물건(픽셀랩, 지도 색 60개)으로 바로 놓고, 누르면 어떻게 바꿨는지 한 줄. 자리는 넓은 지도 좌표(발 자리), 별 1 지도는 off만큼 뺌
   //      소리 안내 기둥은 이미 서 있는 기둥(p4-mpole)을 누르게 함. [그림 키, 그림 크기(지도 px), 발 자리들]
   const ACCOBJ = {
-    block: [[242, 172], [[2495, 1550]]],   // 광장 미션 장면(plaza2_blocks)과 같은 자리: 광장에서 도서관 쪽 ㄴ자 길
+    block: [[280, 240], [[2520, 1580]]],   // 광장 미션 장면과 같은 자리: 광장에서 도서관 쪽 ㄴ자 길 가운데, 바닥에 붙게(도구/acc_block_draw.py)
     rest: [[80, 154], [[4705, 1990]]],
     lamp: [[36, 164], [[5190, 2190]]],
     menu: [[58, 108], [[4870, 640]]],
@@ -11459,7 +11459,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-19)';
-G.BUILT = '2026-10-19 10:57';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-19 11:59';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
