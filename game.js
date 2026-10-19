@@ -240,7 +240,7 @@ document.addEventListener('dblclick', e => e.preventDefault(), { passive: false 
 'use strict';
 G.audio = (() => {
   const A = { ready: false, ctx: null, buffers: new Map(), speaking: 0 };
-  let master, gVoice, gSfx, gAmb, gMusic, musicEl = null, musicName = '', musicNode = null, ambs = {}, hold = null, lvl = 1, ducked = false;   // hold·lvl: 10/6 음악회 음악을 말의 별 전까지 이어 틂
+  let master, gVoice, gSfx, gAmb, gMusic, musicEl = null, musicName = '', musicNode = null, ambs = {}, hold = null, lvl = 1, ducked = false, uVoice, uSfx, uMusic;   // hold·lvl: 10/6 음악회 음악을 말의 별 전까지 이어 틂
   const VOL = { voice: 1.0, sfx: 0.6, amb: 0.3, music: 0.35, duck: 0.2 };
   const S = () => G.settings || { volume: 0.9, voiceOn: true };
 
@@ -257,7 +257,9 @@ G.audio = (() => {
       const AC = window.AudioContext || window.webkitAudioContext;
       A.ctx = new AC(); master = A.ctx.createGain(); master.connect(A.ctx.destination);
       gVoice = A.ctx.createGain(); gSfx = A.ctx.createGain(); gAmb = A.ctx.createGain(); gMusic = A.ctx.createGain();
-      for (const g of [gVoice, gSfx, gAmb, gMusic]) g.connect(master);
+      // 10/19 선생님(평가 C3): 목소리·음악·효과음(환경음 함께)을 교사 설정에서 따로 줄임 → 칸마다 사용자 음량 한 겹
+      uVoice = A.ctx.createGain(); uSfx = A.ctx.createGain(); uMusic = A.ctx.createGain(); for (const u of [uVoice, uSfx, uMusic]) u.connect(master);
+      gVoice.connect(uVoice); gSfx.connect(uSfx); gAmb.connect(uSfx); gMusic.connect(uMusic);
       gVoice.gain.value = VOL.voice; gSfx.gain.value = VOL.sfx; gAmb.gain.value = VOL.amb; gMusic.gain.value = VOL.music;
       const b = A.ctx.createBuffer(1, 1, 22050); const s = A.ctx.createBufferSource(); s.buffer = b; s.connect(A.ctx.destination); s.start(0);
       A.ctx.resume && A.ctx.resume();
@@ -297,7 +299,7 @@ G.audio = (() => {
   A.wake = () => { if (!A.ready || G.paused) return; if (A.ctx.state !== 'running') try { A.ctx.resume().catch(() => { }); } catch (e) { } };
   const awake = async () => { if (A.ctx.state === 'running') return true; A.wake(); await Promise.race([new Promise(r => { const f = () => { if (A.ctx.state === 'running') r(); else setTimeout(f, 30); }; f(); }), G.wait(0.5)]); return A.ctx.state === 'running'; };
   ['pointerdown', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, (e) => { if (tapLayer && e.target === tapLayer) return; if (A.ready && (A.ctx.state !== 'running' || (musicEl && musicName && musicEl.paused))) fixSound(); }, true));
-  A.setVolume = () => { if (!A.ready) return; master.gain.value = S().volume ?? 0.9; };
+  A.setVolume = () => { if (!A.ready) return; master.gain.value = S().volume ?? 0.9; uVoice.gain.value = S().volVoice ?? 1; uSfx.gain.value = S().volSfx ?? 1; uMusic.gain.value = S().volMusic ?? 1; };
   A.pause = () => { if (A.ready && A.ctx.state === 'running') A.ctx.suspend(); if (musicEl) musicEl.pause(); try { speechSynthesis.pause(); } catch (e) { } };
   A.resume = () => { if (A.ready) A.ctx.resume(); if (musicEl && musicName) musicEl.play().catch(() => { }); try { speechSynthesis.resume(); } catch (e) { } };
 
@@ -336,7 +338,7 @@ G.audio = (() => {
       if (my !== vseq) return fin();
       if (!(await awake())) {   // 소리 엔진이 깨지 않으면 <audio>로 (폴더 판은 mp3 파일이 없어 길이만큼 기다림)
         if (my !== vseq) return fin();
-        if (!FILE) { const el = new Audio(await mediaUrl('assets/voice/' + id + '.mp3')); el.volume = Math.min(1, S().volume ?? 0.9); curEl = el; el.onended = () => { if (curEl === el) curEl = null; fin(); }; el.play().catch(() => { }); }
+        if (!FILE) { const el = new Audio(await mediaUrl('assets/voice/' + id + '.mp3')); el.volume = Math.min(1, (S().volume ?? 0.9) * (S().volVoice ?? 1)); curEl = el; el.onended = () => { if (curEl === el) curEl = null; fin(); }; el.play().catch(() => { }); }
         G.wait(buf.duration + 1.5).then(fin); return;
       }
       const src = A.ctx.createBufferSource(); src.buffer = buf; src.connect(gVoice); cur = src;
@@ -353,7 +355,7 @@ G.audio = (() => {
   function tts(text, fin) {
     try {
       if (!window.speechSynthesis) return false;
-      const u = new SpeechSynthesisUtterance(text.replace(/[「」“”]/g, '')); u.lang = 'ko-KR'; u.rate = 0.9; u.volume = S().volume ?? 0.9;
+      const u = new SpeechSynthesisUtterance(text.replace(/[「」“”]/g, '')); u.lang = 'ko-KR'; u.rate = 0.9; u.volume = (S().volume ?? 0.9) * (S().volVoice ?? 1);
       const ko = speechSynthesis.getVoices().find(v => /ko/i.test(v.lang)); if (ko) u.voice = ko;
       u.onend = fin; u.onerror = () => G.wait(1).then(fin);
       speechSynthesis.speak(u); G.wait(Math.max(4, text.length * 0.35)).then(fin); return true;
@@ -365,7 +367,7 @@ G.audio = (() => {
     gMusic.gain.linearRampToValueAtTime((on ? VOL.duck : VOL.music) * lvl, t + 0.4); ducked = on;
     gAmb.gain.cancelScheduledValues(t); gAmb.gain.setValueAtTime(gAmb.gain.value, t);
     gAmb.gain.linearRampToValueAtTime(on ? VOL.amb * 0.3 : VOL.amb, t + 0.3);
-    if (musicEl && !musicNode) musicEl.volume = Math.min(1, (on ? VOL.duck : VOL.music) * lvl * (S().volume ?? 0.9));
+    if (musicEl && !musicNode) musicEl.volume = Math.min(1, (on ? VOL.duck : VOL.music) * lvl * (S().volume ?? 0.9) * (S().volMusic ?? 1));
   }
 
   // ---- 효과음 ----
@@ -388,7 +390,7 @@ G.audio = (() => {
   A.musicLevel = (k, sec = 2) => {
     lvl = k; if (!A.ready) return; const t = A.ctx.currentTime;
     gMusic.gain.cancelScheduledValues(t); gMusic.gain.setValueAtTime(gMusic.gain.value, t); gMusic.gain.linearRampToValueAtTime((ducked ? VOL.duck : VOL.music) * k, t + sec);
-    if (musicEl && !musicNode) musicEl.volume = Math.min(1, (ducked ? VOL.duck : VOL.music) * k * (S().volume ?? 0.9));
+    if (musicEl && !musicNode) musicEl.volume = Math.min(1, (ducked ? VOL.duck : VOL.music) * k * (S().volume ?? 0.9) * (S().volMusic ?? 1));
   };
   A.holdMusic = (name, k = 1) => { hold = null; if (name) A.music(name); hold = name || null; A.musicLevel(k, name ? 0.6 : 1.5); };
   A.musicNow = () => musicName;   // 10/11 지금 음악 이름 (루미 꾸미기 스튜디오가 닫을 때 되돌림)
@@ -404,7 +406,7 @@ G.audio = (() => {
     try {
       const el = new Audio(); el.loop = true; el.preload = 'auto'; el.src = await mediaUrl(p);
       if (musicName !== name) return;
-      try { const node = A.ctx.createMediaElementSource(el); node.connect(gMusic); musicNode = node; } catch (e) { el.volume = VOL.music * (S().volume ?? 0.9); }
+      try { const node = A.ctx.createMediaElementSource(el); node.connect(gMusic); musicNode = node; } catch (e) { el.volume = VOL.music * (S().volume ?? 0.9) * (S().volMusic ?? 1); }
       musicEl = el;
       el.addEventListener('error', () => { if (musicEl === el) { musicEl = null; loopBuffer(p, gMusic, name); } }, { once: true });
       await el.play();
@@ -478,6 +480,9 @@ G.save = (() => {
   // 고른 칸 번호를 돌려줌 { slot, data } (새로 하기는 data 없음)
   S.screen = () => new Promise(async (done) => {
     let mode = null;
+    // 10/19 선생님(평가 U3): 저장이 하나도 없는 기기(처음 켬)는 고르기 두 단계를 건너뛰고 1번 칸에 바로 시작 → 이름 쓰기
+    let any = false; for (let i = 1; i <= S.count(); i++) if (S.load(i)) { any = true; break; }
+    if (!any) { done({ slot: 1, data: null }); return; }
     for (;;) {
       if (!mode) mode = await chooseMode();
       const list = [];
@@ -1441,6 +1446,9 @@ G.story = (() => {
     const box = G.el('div', 'st-recap', root); box.style.opacity = 0;
     G.el('div', 'st-recap-t', box, '지난 이야기');
     const a = G.art(R[0]); if (a) G.el('div', 'st-recap-pic', box, `<img src="${a}" alt="">`);
+    // 10/19 선생님(평가 T2): 루미가 길별로 바뀐 것을 저학년도 알게 루미와 길별을 나란히 (마음의 별부터 2부)
+    if (key === 's5_1') box.classList.add('pair');
+    if (key === 's5_1') G.el('div', 'st-recap-pair', box, `<figure><img src="${G.asset('assets/chars/pt/lumi_01.webp')}" alt=""><figcaption>루미</figcaption></figure><span>떠난 루미 대신</span><figure><img src="${G.asset('assets/chars/pt/gil_02.webp')}" alt=""><figcaption>길별</figcaption></figure><span class="st-rp-sub">길별이 우리와 함께 다녀요</span>`);
     await c.tween(0, 1, c.rm ? 0.2 : 0.6, v => box.style.opacity = v);
     for (const id of R.slice(1)) { await c.voice(id); await c.wait(0.3); }
     await c.tween(1, 0, c.rm ? 0.2 : 0.5, v => box.style.opacity = v);
@@ -1726,11 +1734,18 @@ G.cut = (() => {
       let started = false, over = false;
       const fin = (r) => { if (over) return; over = true; clearTimeout(to); resolve(r); };
       const to = setTimeout(() => fin(false), 3000);
+      // 10/19 GPT 평가(이름 뒤 빈 화면): 시작한 뒤 인터넷이 느려 멈추면 끝나지 않고 서 있었음 → 5초 동안 안 움직이면 끝냄(반 넘게 봤으면 본 것으로, 아니면 옛 연출로)
+      let lastT = -1, still = 0;
+      const dog = setInterval(() => {
+        if (over) return clearInterval(dog); if (!started || document.hidden) return;
+        if (v.currentTime !== lastT) { lastT = v.currentTime; still = 0; return; }
+        if (++still >= 5) { clearInterval(dog); fin(!!v.duration && v.currentTime > v.duration * 0.5); }
+      }, 1000);
       v.addEventListener('playing', () => { if (started) return; started = true; clearTimeout(to); G.tween(0, 1, o.fade || 0.6, k => box.style.opacity = k, o.dark ? 'io' : 'out'); });
       v.addEventListener('ended', () => fin(true));
       v.addEventListener('error', () => fin(started));
       c.skipP.then(() => fin(true));
-      v.src = G.asset('assets/video/' + name + '.mp4');
+      const vu = G.asset('assets/video/' + name + '.mp4'); v.src = vu + (o.start && !/^(data|blob):/.test(vu) ? '#t=' + o.start : '');   // 10/19 o.start: 앞의 빈 밤하늘을 건너뛰고 별이 보이는 곳부터
       const p = v.play();
       if (p && p.catch) p.catch(e => {
         if (over || !e || e.name !== 'NotAllowedError') return;
@@ -4360,15 +4375,18 @@ G.p4 = (() => {
 
   // ---- 10/9 수정안 3단계: "도와줄까?" 카드. 처음이면 카드를 받고, 가방에서 인물(who)에게 끌어다 놓으면 주인공이 묻는 말(lineId)을 함.
   //      인물이 화면에 없으면 예전처럼 고르기 단추로 물음. 대답(받아들임·자기 방법·거절)은 부르는 쪽에서 이어서 들려줌 ----
-  P.askHelp = async (V, who, lineId) => {
+  P.askHelp = async (V, who, lineId, o = {}) => {
     const g = G.gen, ok = () => g === G.gen;
     // 10/14 QA(선생님 지시서): 카드는 말의 별 하랑이와 이야기하면서 처음 받음. 그 전(해솔·미루)에는 카드 없이 말로 먼저 물음 (예전 저장에 이미 있는 카드는 그대로 씀)
     if (!has('help') && who !== 'harang') { await G.dialog.choose([{ label: G.txt(lineId), icon: 'icon_good', voice: lineId }], true); return ok(); }
     if (!has('help')) { G.dialog.close(); await G.present.item('help'); if (!ok()) return false; await G.dialog.play(['S90_rumi_help']); if (!ok()) return false; }
     const v = V && V.spr && V.spr[who], t = v && v.img && v.img.style.display !== 'none' && v.img.isConnected ? v.img : null;
     if (!t) { await G.dialog.choose([{ label: G.txt(lineId), icon: 'icon_good', voice: lineId }], true); return ok(); }
-    G.dialog.close(); G.hud.say('S90_hint_help');
+    // 10/19 선생님(평가 D2, 10/10 지적 1): 안내를 바로 띄우지 않음. 학생이 먼저 알아차릴 시간을 주고, 도움 단계(G.help, 교사 설정 시간)가 안내·화살표·빛을 차례로 줌
+    //      o.onEarly: 안내 전에 스스로 카드를 쓰면 부름 (별 6부터 '먼저 물으면 별가루 하나 더'에 씀)
+    G.dialog.close(); const t0 = Date.now();
     const u = await P.useItem('help', t, { say: (id) => G.hud.say(id), hint: 'S90_hint_help' }); if (!u || !ok()) return false;
+    if (o.onEarly && Date.now() - t0 < 10000) await o.onEarly();
     await G.dialog.play([lineId]); return ok();
   };
 
@@ -4386,14 +4404,52 @@ G.p4 = (() => {
     ['s5play', 's5play', [-150, 60], 'turnboard', '그림 차례판', '누구 차례인지, 얼마나 기다리는지 보여요.'],   // 10/10 마음의 별
     ['s5pond', 's5pond', [-150, 60], 'flag', '쉼터 깃발', '힘들면 쉬어 가는 자리예요.'],
   ];
+  // 10/19 선생님: 해결한 것은 지도 위 픽셀 물건(픽셀랩, 지도 색 60개)으로 바로 놓고, 누르면 어떻게 바꿨는지 한 줄. 자리는 넓은 지도 좌표(발 자리), 별 1 지도는 off만큼 뺌
+  //      소리 안내 기둥은 이미 서 있는 기둥(p4-mpole)을 누르게 함. [그림 키, 그림 크기(지도 px), 발 자리들]
+  const ACCOBJ = {
+    block: [[208, 114], [[2675, 1640], [2515, 1720]]],
+    rest: [[80, 154], [[4705, 1990]]],
+    lamp: [[36, 164], [[5190, 2190]]],
+    menu: [[58, 108], [[4870, 640]]],
+    wave: [[80, 144], [[5300, 835]]],
+    ramp: [[124, 104], [[3985, 735]]],
+    button: [[76, 108], [[3865, 350]]],
+    turnboard: [[80, 136], [[690, 450]]],
+    flag: [[62, 110], [[1475, 535]]],
+  };
+  function accTip(V, el, name, text) {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation(); const o = el.querySelector('.acc-tip'); V.fx.querySelectorAll('.acc-tip').forEach(t => t.remove());
+      if (!o) { const t = G.el('div', 'acc-tip', el); G.el('b', '', t, name); G.el('span', '', t, text); G.audio.sfx('sfx_tap', 0.4); }
+    }, true);
+  }
   P.accessMarks = (V) => {
     if (!V || !V.fx || !G.st) return;
-    for (const [need, place, [ox, oy], key, name, text] of ACC) {
-      if (!(G.st.cleared || []).includes(need) || V.fx.querySelector(`.acc-mark[data-k="${key}"]`)) continue;
-      const p = G.D.places.places.find(q => q.id === place); if (!p || !p.marker) continue;
-      const b = G.el('button', 'acc-mark', V.fx, (G.artImg('mapmark_' + key) || '') + `<span>${name}</span>`); b.type = 'button'; b.dataset.k = key; b.setAttribute('aria-label', name);
-      b.style.left = (p.marker[0] + ox) + 'px'; b.style.top = (p.marker[1] + oy) + 'px';
-      b.addEventListener('click', (e) => { e.stopPropagation(); const o = b.querySelector('.acc-tip'); V.fx.querySelectorAll('.acc-tip').forEach(t => t.remove()); if (!o) { G.el('div', 'acc-tip', b, text); G.audio.sfx('sfx_tap', 0.4); } }, true);
+    const M = G.D.places.map, off = M && M.width > 4000 ? [0, 0] : [-1440, -810];
+    const seen = G.st.accSeen = G.st.accSeen || [];
+    for (const [need, , , key, name, text] of ACC) {
+      if (!(G.st.cleared || []).includes(need) || V.fx.querySelector(`[data-acc="${key}"]`)) continue;
+      if (key === 'pole') {   // 이미 있는 안내 기둥
+        const e = V.fx.querySelector('.p4-mpole'); if (!e) continue;
+        e.dataset.acc = key;
+        const box = G.el('button', 'acc-obj acc-pole', V.fx); box.type = 'button'; box.dataset.acc = key; box.setAttribute('aria-label', name);   // 기둥 그림은 누르지 않는 img라 같은 자리에 누를 판
+        Object.assign(box.style, { left: e.style.left, top: e.style.top, width: e.style.width || '36px', height: e.style.height || '151px', zIndex: 2992 });
+        accTip(V, box, name, text); continue;
+      }
+      if (key === 'rest' && V.fx.querySelector('.s2-restmark')) continue;   // 소리의 별 엔딩 뒤에는 같은 자리에 누르면 쉬는 쉼터 표지판이 이미 있음
+      const o = ACCOBJ[key]; if (!o) continue;
+      const [[w, h], spots] = o;
+      spots.forEach(([x, y], i) => {
+        x += off[0]; y += off[1]; if (x < 0 || y < 0 || x > M.width || y > M.height) return;
+        // 그림은 발 y 순서(인물과 앞뒤가 맞게, 바닥 그림은 맨 아래), 누르는 판은 장소 누르는 곳(2990)보다 위에 따로
+        const im = G.el('img', 'acc-img', V.fx); im.src = G.asset('assets/map/acc_' + key + '.png'); im.alt = ''; im.draggable = false; im.dataset.acc = i ? key + i : key;
+        const b = G.el('button', 'acc-obj', V.fx, `<span>${name}</span>`);
+        b.type = 'button'; b.dataset.acc = i ? key + i : key; b.setAttribute('aria-label', name);
+        const box = { left: (x - w / 2) + 'px', top: (y - h) + 'px', width: w + 'px', height: h + 'px' };
+        Object.assign(im.style, box, { zIndex: key === 'block' ? 2 : Math.round(y) }); Object.assign(b.style, box, { zIndex: 2992 });
+        accTip(V, b, name, text);
+        if (!seen.includes(key) && i === 0) { seen.push(key); G.save.write(); G.wait(1.2).then(() => { if (b.isConnected) { G.waveMark(V.fx, x, y - h * 0.6, 2); G.audio.sfx('sfx_sparkle', 0.5); } }); }
+      });
     }
   };
 
@@ -5209,6 +5265,8 @@ G.s2 = (() => {
 .s2-fog { pointer-events: none; transition: opacity 2.4s ease; }
 .s2-restmark { position: absolute; width: 130px; height: 130px; transform: translate(-50%, -50%); border: 0; padding: 0; background: transparent; cursor: pointer; z-index: 2994; animation: tw 2.6s ease-in-out infinite; }
 .s2-restmark img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 10px rgba(160, 220, 200, .9)); }
+.s2-restmark.px { width: 80px; height: 154px; transform: translate(-50%, -100%); animation: none; }
+.s2-restmark.px img { filter: none; image-rendering: pixelated; }
 .s2-pz .s2-wrap { position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--u) * 26); }
 .s2-pz .s2-wrap.dim::before { content: ''; position: fixed; inset: 0; background: rgba(15, 18, 38, .5); z-index: -1; }
 .s2-card { display: flex; align-items: center; gap: calc(var(--u) * 20); background: #FFF4E0; border: calc(var(--u) * 5) solid #e0b96a; border-radius: calc(var(--u) * 26); padding: calc(var(--u) * 14) calc(var(--u) * 26);
@@ -5587,8 +5645,9 @@ G.s2 = (() => {
     if (done('s2_end') && !V.s2.rest) { V.s2.rest = D2().restMarks.map(at => restMark(V, at)); }
   }
   function restMark(V, at) {
-    const b = G.el('button', 's2-restmark', V.fx, G.artImg('mark_rest') || ''); b.type = 'button'; b.setAttribute('aria-label', '쉼터 표시');
-    Object.assign(b.style, { left: at[0] + 'px', top: at[1] + 'px' });
+    // 10/19 선생님: 지도 위 표시는 픽셀 물건으로 (둥근 그림 대신 지도와 같은 결의 쉼터 표지판, 발 자리 = at)
+    const b = G.el('button', 's2-restmark px', V.fx, `<img src="${G.asset('assets/map/acc_rest.png')}" alt="" draggable="false">`); b.type = 'button'; b.setAttribute('aria-label', '쉼터 표시');
+    Object.assign(b.style, { left: at[0] + 'px', top: at[1] + 'px', zIndex: Math.round(at[1]) });
     G.onTap(b, () => { if (G.busy > 0 || G.dialog.active) return; calm(); });
     return b;
   }
@@ -6572,7 +6631,7 @@ G.s2 = (() => {
       MV.setLamps(5, true);
       await G.wait(rm ? 0.4 : 2.6); if (!ok()) return;   // D1 (10/5): 해설 대신 색이 번지는 모습을 보여 줌
       if (G.cut.raised !== 'sound') { await play(['SD06_nar_02']); if (!ok()) return; }   // 10/12 최종스토리: 되풀이 문장 "마을에 보랏빛이 하나 켜졌어요."
-      const rest = D2().restMarks.map(at => { const e = G.el('div', 's2-restmark', MV.fx, G.artImg('mark_rest') || ''); Object.assign(e.style, { left: at[0] + 'px', top: at[1] + 'px' }); e.animate && e.animate([{ scale: .2, opacity: 0 }, { scale: 1.2, opacity: 1 }, { scale: 1 }], { duration: 700, easing: 'ease-out' }); return e; });
+      const rest = D2().restMarks.map(at => { const e = G.el('div', 's2-restmark px', MV.fx, `<img src="${G.asset('assets/map/acc_rest.png')}" alt="">`); Object.assign(e.style, { left: at[0] + 'px', top: at[1] + 'px', zIndex: Math.round(at[1]) }); e.animate && e.animate([{ scale: .2, opacity: 0 }, { scale: 1.2, opacity: 1 }, { scale: 1 }], { duration: 700, easing: 'ease-out' }); return e; });
       G.tween(0, 1, rm ? 0.3 : 2.5, k => MV.setCam(cam[0] + (3900 - cam[0]) * k, cam[1] + (1950 - cam[1]) * k, 1 - 0.25 * k), 'io');
       G.audio.sfx('sfx_chime', 0.4);
       await play(['SD06_miru_01'], { partner: 'miru' }); if (!ok()) return;
@@ -11014,6 +11073,13 @@ G.teacher = (() => {
   };
   // 누르기: 게임이 멈춰 있어도 동작해야 하므로 G.onTap을 쓰지 않음
   const tb = (label, parent, fn, cls = '') => { const b = G.el('button', 't-btn ' + cls, parent, label); b.type = 'button'; b.addEventListener('click', (e) => { e.stopPropagation(); fn(b); }); return b; };
+  const LESSON = [
+    ['길의 별', '해솔', '시각장애(점자·소리로 정보를 얻음)', '점자블록, 소리 안내 기둥, 그림·점자·소리 게시판', '노란 길 앞 "같이 걸어 드릴까요?" → "이제 혼자 갈 수 있어!"(거절)'],
+    ['소리의 별', '미루', '감각 예민(큰 소리가 힘듦)', '쉼터, 빛 알림등, 앞자리 헤드폰석', '"음악회에 같이 갈래? 힘들면 말해 줘."'],
+    ['말의 별', '하랑', '말로 하기 어려움, 보완대체의사소통(그림 카드)', '그림 메뉴판, 손짓 인사', '하랑 "괜찮아, 내가" 카드 → 기다리기(거절)'],
+    ['문턱의 별', '누리, 마루 할머니', '지체장애(휠체어), 무릎이 아픈 어르신', '경사로, 낮은 단추, 추 단 문', '"내가 가져다줄까?" → "내가 갈 수 있어!"(거절)'],
+    ['마음의 별', '수현, 소율', '순서가 갑자기 바뀌거나 시끄러우면 힘듦(진단 이름 없음)', '그림 차례판, 쉼터 깃발·의자', '수현에게 "같이 쉬러 갈까?" → 그림 카드로 대답'],
+  ];
   const sec = (panel, title) => { const s = G.el('div', 't-sec', panel); G.el('h4', '', s, title); return s; };
   const row = (s) => G.el('div', 't-row', s);
   const set = (k, v) => { G.settings[k] = v; G.applySettings(); render(); };
@@ -11030,7 +11096,17 @@ G.teacher = (() => {
     G.el('div', 't-help', p, '게임은 잠시 멈춰 있어요. ' + (G.st ? `지금 칸: ${G.st.slot}번${G.st.name ? ' (' + G.save.esc(G.st.name) + ')' : ''}` : '아직 칸을 고르지 않았어요.'));
 
     // 빠르게 모드 (9/30 선생님 요청, 청선별GO처럼): 대화·연출·걷기를 바로 넘길 수 있게
-    let s = sec(p, '빠르게 모드 (선생님 확인·시연용)');
+    // 10/19 선생님(평가 E2): 이 별 수업 안내. 기획안 v2.1 2-1·4-1 표 그대로, 진단 이름은 선생님 화면에만 (학생 화면에는 없음)
+    let s = sec(p, '이 별 수업 안내');
+    const raised = ['plaza2_star', 's2plaza_star', 's3plaza_star', 's4plaza_star', 's5plaza_star'], dn = (G.st && G.st.done) || [];
+    const curI = Math.min(LESSON.length - 1, Math.max(0, raised.findIndex(f => !dn.includes(f)) < 0 ? LESSON.length - 1 : raised.findIndex(f => !dn.includes(f))));
+    G.el('div', 't-note', s, '남길 행동(모든 별): ① "도와줄까?" 먼저 묻기 ② 대답을 기다리기(거절도 괜찮아요) ③ 그 사람 방법으로 하기');
+    LESSON.forEach((L, i) => {
+      const d = G.el('details', 't-lesson', s); if (i === curI) d.open = true;
+      G.el('summary', '', d, `${i + 1}. ${L[0]}${i === curI ? ' (지금)' : ''}`);
+      G.el('div', '', d, `<b>중심 인물</b> ${L[1]}<br><b>연관된 장애·어려움</b> ${L[2]}<br><b>마을이 바꾸는 방법</b> ${L[3]}<br><b>"도와줄까?" 장면</b> ${L[4]}`);
+    });
+    s = sec(p, '빠르게 모드 (선생님 확인·시연용)');
     choice(s, 'fast', [[false, '끄기'], [true, '켜기']]);
     G.el('div', 't-note', s, '켜면 음성이 끝나기 전에도 [다음]을 누를 수 있고, 연출은 처음부터 [건너뛰기]가 보이며, 지도에서 걷기는 바로 도착해요. 선택지는 한 번 누르면 골라져요. 학생이 할 때는 꺼 주세요.');
 
@@ -11045,6 +11121,13 @@ G.teacher = (() => {
     const lab = G.el('label', '', r, '음량 '); const rg = G.el('input', '', lab); rg.type = 'range'; rg.min = 0; rg.max = 100; rg.value = Math.round(G.settings.volume * 100);
     const vv = G.el('span', '', lab, rg.value + '%');
     rg.addEventListener('input', () => { G.settings.volume = rg.value / 100; vv.textContent = rg.value + '%'; G.applySettings(); });
+    // 10/19 선생님(평가 C3): 소리에 예민한 학생을 위해 목소리·음악·효과음을 따로
+    r = row(s);
+    for (const [k, name] of [['volVoice', '목소리'], ['volMusic', '음악'], ['volSfx', '효과음']]) {
+      const l = G.el('label', '', r, name + ' '), q = G.el('input', '', l); q.type = 'range'; q.min = 0; q.max = 100; q.value = Math.round((G.settings[k] ?? 1) * 100); q.id = 't-' + k;
+      const qv = G.el('span', '', l, q.value + '%');
+      q.addEventListener('input', () => { G.settings[k] = q.value / 100; qv.textContent = q.value + '%'; G.applySettings(); });
+    }
 
     s = sec(p, '2. 글자 크기');
     choice(s, 'textBig', [[false, '보통'], [true, '크게']]);
@@ -11375,9 +11458,9 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-18)';
-G.BUILT = '2026-10-18 10:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
-G.defaults = { volume: 0.9, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
+G.VERSION = '별의 스펙트럼 (2026-10-19)';
+G.BUILT = '2026-10-19 09:53';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
   document.documentElement.style.setProperty('--ts', s.textBig ? 1.2 : 1);
@@ -11461,7 +11544,7 @@ G.flow = (() => {
     if (g !== G.gen) return;
     await G.cut.play('CH:intro', { key: 'intro', cover: !!G.art('parchment_open') });   // 9/30 장 제목 "제 1 장 별이 사라진 밤"
     if (g !== G.gen) return;
-    if (!await G.cut.video('intro', { dark: true, fade: 1.4 })) await G.cut.play('C1');   // 10/17 선생님: 동화풍 오프닝 영상이 C1 대신 (못 열면 C1)
+    if (!await G.cut.video('intro', { dark: true, fade: 1.0, start: 1.6 })) await G.cut.play('C1');   // 10/17 선생님: 동화풍 오프닝 영상이 C1 대신 (못 열면 C1)
     if (g !== G.gen) return;
     G.st.place = 'home';
     await G.map.show({ noLumi: true });
