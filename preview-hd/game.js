@@ -42,6 +42,7 @@ G.litPath = (p) => {
   return who && G.lit(who) ? m[1] + '_lit' + m[2] : p;
 };
 // 10/20 시안(큰 화면 화질): 고화질 그림(_hd)이 있으면 그것을 씀. 주소 끝 ?hd=0 이면 지금 그림
+G.halfSheet = /iPhone|iPod|Android.*Mobile/.test(navigator.userAgent) || /[?&]hd=0/.test(location.search);
 G.HD = new Set(window.HD_LIST || []); G.hdOn = !/[?&]hd=0/.test(location.search);
 G.asset = (p) => { p = G.litPath(p); if (G.hdOn && G.HD.has(p)) p = p.replace(/(\.\w+)$/, '_hd$1'); return (window.EMBED && window.EMBED[p]) || p; };
 G.voiceUrl = (id) => G.asset('assets/voice/' + id + '.mp3');
@@ -1056,7 +1057,7 @@ G.mapView = (parent, o = {}) => {
   const LIVE = /\/walk_[^/]+\.png$/;
   V.walkers = [];
   V.walker = (sheet, cls) => {
-    const live = LIVE.test(sheet), src = live ? sheet.replace(/\.png$/, '_live_h.png') : sheet;   // 10/15 메모리: 지도에서는 반 크기(_h, 4300x520 → 2150x260. 지도 인물은 칸 높이의 0.4배 이하로 보여서 화질 그대로, 채이는 8600x1040 → 4300x520)
+    const live = LIVE.test(sheet), src = live ? sheet.replace(/\.png$/, G.halfSheet ? '_live_h.png' : '_live.png') : sheet;   // 10/20 시안: PC·전자칠판은 원래 크기 그림(반 크기는 픽셀랩 인물의 잔 점이 뭉개짐), 휴대폰만 반 크기   // 10/15 메모리: 지도에서는 반 크기(_h, 4300x520 → 2150x260. 지도 인물은 칸 높이의 0.4배 이하로 보여서 화질 그대로, 채이는 8600x1040 → 4300x520)
     const w = { x: 0, y: 0, dir: 'SE', frame: 8, rc: -1, live, src, ph: Math.random() * 2600, nb: 1500 + Math.random() * 3000, nl: 5000 + Math.random() * 5000, bu: 0, lu: 0, st: 0, ws: -1e9, lf: -1, lt: 0 };
     w.el = G.el('div', 'walker' + (cls ? ' ' + cls : ''), V.fx);
     // 10/15 선생님(연령별 키): 그림·그림자·가림 캔버스만 발(이 칸의 0,0)을 기준으로 줄임 (css .walker > * scale). 누르는 단추(walker-hit)는 그대로
@@ -2584,7 +2585,7 @@ G.map = (() => {
 
   // 10/12 동물: mv = loop(제자리 동작), hop(가끔 콩콩), swim·fly(타원으로 돎), follow(주민 who 옆에서 같이 걸음). sh = 그림자 [폭, 높이] (없으면 그림자 없음)
   function makeAnimal(a) {
-    const w = V.walker(`assets/chars/ani_${a.img}_h.png`, 'animal'), s = a.sh, at = a.at || [0, 0];   // 10/15 메모리: ani_*_h = 보이는 크기(900x520) 그대로 저장, 7MB→2MB
+    const w = V.walker(`assets/chars/ani_${a.img}${G.halfSheet ? '_h' : ''}.png`, 'animal'), s = a.sh, at = a.at || [0, 0];   // 10/15 메모리: ani_*_h = 보이는 크기(900x520) 그대로 저장, 7MB→2MB
     if (s) Object.assign(w.sh.style, { width: s[0] + 'px', height: s[1] + 'px', margin: `${-s[1] / 2}px 0 0 ${-s[0] / 2}px` }); else w.sh.style.display = 'none';
     w.dir = a.dir || 'SE'; w.set(at[0], at[1]); w.draw();
     let t = Math.random() * 3, nx = 1 + Math.random() * 4, h = -1;
