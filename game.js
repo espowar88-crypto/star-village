@@ -42,6 +42,8 @@ G.litPath = (p) => {
   return who && G.lit(who) ? m[1] + '_lit' + m[2] : p;
 };
 G.asset = (p) => { p = G.litPath(p); return (window.EMBED && window.EMBED[p]) || p; };
+// 10/20 선생님(PC·전자칠판에서 픽셀 인물 뭉개짐): 반 크기 걷기 그림(_h)은 휴대폰·메모리 적은 기기만. 픽셀랩 인물은 잔 점이라 반으로 줄이면 점 3/4이 사라짐
+G.halfSheet = /iPhone|iPod|Android.*Mobile/.test(navigator.userAgent) || (navigator.deviceMemory > 0 && navigator.deviceMemory < 4);
 G.voiceUrl = (id) => G.asset('assets/voice/' + id + '.mp3');
 
 // ---------- DOM 도구 ----------
@@ -1031,6 +1033,12 @@ G.mapView = (parent, o = {}) => {
       V.markers[p.id] = { m, lb, p, state: '' };
     }
   };
+  // 10/20 선생님: 장소 그림 표지는 이름표 안 글자 앞에 ('지도로' 단추처럼). 한 번만 넣음
+  V.labelIcon = (id, src) => {
+    const k = V.markers[id]; if (!k || !src) return null;
+    if (!k.lb.querySelector('.plabel-ico')) k.lb.insertAdjacentHTML('afterbegin', `<img class="plabel-ico" src="${src}" alt="">`);
+    return k.lb;
+  };
   // state: open(반짝) / locked(흐림) / done(작은 별) / hidden
   V.setMarker = (id, state, showLabel) => {
     const k = V.markers[id]; if (!k) return;
@@ -1054,7 +1062,7 @@ G.mapView = (parent, o = {}) => {
   const LIVE = /\/walk_[^/]+\.png$/;
   V.walkers = [];
   V.walker = (sheet, cls) => {
-    const live = LIVE.test(sheet), src = live ? sheet.replace(/\.png$/, '_live_h.png') : sheet;   // 10/15 메모리: 지도에서는 반 크기(_h, 4300x520 → 2150x260. 지도 인물은 칸 높이의 0.4배 이하로 보여서 화질 그대로, 채이는 8600x1040 → 4300x520)
+    const live = LIVE.test(sheet), src = live ? sheet.replace(/\.png$/, G.halfSheet ? '_live_h.png' : '_live.png') : sheet;   // 10/20: PC·전자칠판은 원래 크기(core.js G.halfSheet)   // 10/15 메모리: 지도에서는 반 크기(_h, 4300x520 → 2150x260. 지도 인물은 칸 높이의 0.4배 이하로 보여서 화질 그대로, 채이는 8600x1040 → 4300x520)
     const w = { x: 0, y: 0, dir: 'SE', frame: 8, rc: -1, live, src, ph: Math.random() * 2600, nb: 1500 + Math.random() * 3000, nl: 5000 + Math.random() * 5000, bu: 0, lu: 0, st: 0, ws: -1e9, lf: -1, lt: 0 };
     w.el = G.el('div', 'walker' + (cls ? ' ' + cls : ''), V.fx);
     // 10/15 선생님(연령별 키): 그림·그림자·가림 캔버스만 발(이 칸의 0,0)을 기준으로 줄임 (css .walker > * scale). 누르는 단추(walker-hit)는 그대로
@@ -2582,7 +2590,7 @@ G.map = (() => {
 
   // 10/12 동물: mv = loop(제자리 동작), hop(가끔 콩콩), swim·fly(타원으로 돎), follow(주민 who 옆에서 같이 걸음). sh = 그림자 [폭, 높이] (없으면 그림자 없음)
   function makeAnimal(a) {
-    const w = V.walker(`assets/chars/ani_${a.img}_h.png`, 'animal'), s = a.sh, at = a.at || [0, 0];   // 10/15 메모리: ani_*_h = 보이는 크기(900x520) 그대로 저장, 7MB→2MB
+    const w = V.walker(`assets/chars/ani_${a.img}${G.halfSheet ? '_h' : ''}.png`, 'animal'), s = a.sh, at = a.at || [0, 0];   // 10/15 메모리: ani_*_h = 보이는 크기(900x520) 그대로 저장, 7MB→2MB
     if (s) Object.assign(w.sh.style, { width: s[0] + 'px', height: s[1] + 'px', margin: `${-s[1] / 2}px 0 0 ${-s[0] / 2}px` }); else w.sh.style.display = 'none';
     w.dir = a.dir || 'SE'; w.set(at[0], at[1]); w.draw();
     let t = Math.random() * 3, nx = 1 + Math.random() * 4, h = -1;
@@ -2590,7 +2598,8 @@ G.map = (() => {
     return (dt) => {
       t += dt; const rm = G.reduced();
       if (a.mv === 'follow') {
-        const v = vills.find(q => q.id === a.who); if (!v) { w.el.style.display = 'none'; return; }
+        const v = vills.find(q => q.id === a.who || (G.s2 && G.s2.who && G.s2.who[q.id]) === a.who);   // 10/20: 주인이 다음 별 마을로 옮겨 가면 함께 감
+        if (!v) { w.el.style.display = 'none'; return; }
         const o = v.w, b = BACK[o.dir] || BACK.SE; w.set(o.x + b[0] * a.gap - b[1] * (a.side || 0), o.y + b[1] * a.gap + b[0] * (a.side || 0) * 0.5); w.dir = o.dir; w.frame = o.frame; w.draw(); return;
       }
       if (a.mv === 'hop') {
@@ -4811,6 +4820,15 @@ G.p4 = (() => {
     await G.dialog.play([].concat(line), { partner: G.D.portraits[vid] ? vid : undefined });
     await gain(k, el, fx, x, y);
   };
+  // 10/20 선생님: 지도 물건(나무·의자·가로등) 안에 숨긴 별가루. 대놓고 두지 않고, 물건을 누르면 튀어나옴 (story.json sN.mapDust {주민: [x, y, w, h]}, 가끔 작게 반짝)
+  P.mapHide = (V, [x, y, w, h], has, pop) => {
+    if (has()) return null;
+    const b = G.el('button', 'map-hide', V.fx); b.type = 'button'; b.setAttribute('aria-label', '반짝이는 곳');
+    Object.assign(b.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', zIndex: 2994 });
+    G.el('i', 'map-hide-glint', b).style.animationDelay = (-Math.random() * 7).toFixed(2) + 's';
+    G.onTap(b, async () => { if (G.busy > 0 || G.dialog.active || has()) return; b.style.pointerEvents = 'none'; await pop(x + w / 2, y + h * 0.3, b); b.remove(); });
+    return b;
+  };
   P.villagerHas = (vid) => !!(((G.D.story || {}).dustGive || {})[vid]) && !!G.st && !dustSt().includes('map:' + vid);
   // 별가루 하나 얻기: 반짝 + 몇 개인지 + 처음·다섯 번째에는 루미가 알려 줌
   async function gain(k, el, fx, x, y) {
@@ -5612,8 +5630,15 @@ G.s2 = (() => {
     const M = D2().map;
     if (MOBILE && M.places.map.small) Object.assign(M.places.map, M.places.map.small);   // 휴대폰·태블릿은 작은 지도 그림 (큰 그림은 iOS에서 안 보임)
     G.D.places = M.places;
-    G.D.mood = Object.assign({}, M.mood, { villagers: M.mood.villagers.filter(v => !v.s2 || (v.s2 === true ? done('s2_fog') : flagOn(v.s2))) });
+    const on = M.mood.villagers.filter(v => !v.s2 || (v.s2 === true ? done('s2_fog') : flagOn(v.s2)));
+    // 10/20 선생님: 같은 사람이 두 별 마을에 함께 있지 않게. 가장 나중에 열린 별 마을에만 둠 (별을 깨면 다음 별로 옮겨 감)
+    const seen = new Set();
+    const one = on.slice().reverse().filter(v => { const k = WHO[v.id] || v.id; if (seen.has(k)) return false; seen.add(k); return true; }).reverse();
+    G.D.mood = Object.assign({}, M.mood, { villagers: one });
   }
+  // 같은 사람 (지도 주민 id → 처음 나온 id). 서연 그림에는 채이가 함께 있음
+  const WHO = { s5iden: 'v2', s3gran: 'v3', s4gran: 'v4', s6cheongram: 'v4', s3dog: 'v8', s5moa: 'moa', seoyeon: 'chaei', seoyeon6: 'chaei' };
+  T.who = WHO;
   T.sync = sync;
   // 지도 그림에 안개, 소리 구역 색, 가로등, 시끄러운 표시, 쉼터 표시를 더함
   const mv0 = G.mapView;
@@ -6881,9 +6906,10 @@ G.s3 = (() => {
     if (!done('s3_fog')) for (const p of G.D.places.places) if (isS3(p.id)) V.setMarker(p.id, 'hidden', false);
     // 엔딩 뒤: 지도에 그림 표시 (찻집 = 찻잔, 나루터 = 호수, 하랑이네 = 그림)
     // 10/6 선생님: 말의 별 엔딩 뒤에는 마을 모든 장소에 그림 표시. 선생님 그림 place_<장소>가 오면 그것을 먼저 씀, 없으면 비슷한 그림, 그것도 없으면 그 장소는 비워 둠
+    // 10/20 선생님: 같은 사람이 별가루를 거듭 주지 않게, 옮긴 별가루는 지도 물건 안에 숨김 (story.json s3.mapDust, 열쇠는 그대로 map:주민)
+    if (began() && done('s3_fog') && !done('s3_end') && !V.s3md) V.s3md = Object.entries(D3().mapDust || {}).map(([vid, r]) => G.p4.mapHide(V, r, () => sd().includes('map:' + vid), (x, y, el) => popDust(V, 'map:' + vid, x, y, el)));
     if (done('s3_end') && !V.s3ico) V.s3ico = MAPICO3.map(([id, k]) => {
-      const p = G.D.places.places.find(q => q.id === id), src = G.art('place_' + id) || G.art(k); if (!p || !src) return null;
-      const e = G.el('div', 's3-mapico', V.fx, `<img src="${src}" alt="">`); Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); return e;
+      const src = G.art('place_' + id) || G.art(k); return V.labelIcon(id, src);   // 이름표 안 글자 앞에
     });
   };
   // 지도 주민의 별가루 (호숫가 주민 둘)
@@ -8472,9 +8498,10 @@ G.s4 = (() => {
     if (!done('s4_fog')) for (const p of G.D.places.places) if (isS4(p.id)) V.setMarker(p.id, 'hidden', false);
     // 엔딩 뒤: 지도에 그림 표시 (찻집 = 찻잔, 나루터 = 호수, 하랑이네 = 그림)
     // 10/6 선생님: 문턱의 별 엔딩 뒤에는 마을 모든 장소에 그림 표시. 선생님 그림 place_<장소>가 오면 그것을 먼저 씀, 없으면 비슷한 그림, 그것도 없으면 그 장소는 비워 둠
+    // 10/20 선생님: 같은 사람이 별가루를 거듭 주지 않게, 옮긴 별가루는 지도 물건 안에 숨김 (story.json s4.mapDust, 열쇠는 그대로 map:주민)
+    if (began() && done('s4_fog') && !done('s4_end') && !V.s4md) V.s4md = Object.entries(D4().mapDust || {}).map(([vid, r]) => G.p4.mapHide(V, r, () => sd().includes('map:' + vid), (x, y, el) => popDust(V, 'map:' + vid, x, y, el)));
     if (done('s4_end') && !V.s4ico) V.s4ico = MAPICO4.map(([id, k]) => {
-      const p = G.D.places.places.find(q => q.id === id), src = G.art('place_' + id) || G.art(k); if (!p || !src) return null;
-      const e = G.el('div', 's3-mapico', V.fx, `<img src="${src}" alt="">`); Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); return e;
+      const src = G.art('place_' + id) || G.art(k); return V.labelIcon(id, src);   // 이름표 안 글자 앞에
     });
   };
   // 지도 주민의 별가루 (호숫가 주민 둘)
@@ -9628,9 +9655,10 @@ G.s5 = (() => {
     if (!done('s5_fog')) for (const p of G.D.places.places) if (isS5(p.id)) V.setMarker(p.id, 'hidden', false);
     // 엔딩 뒤: 지도에 그림 표시 (찻집 = 찻잔, 나루터 = 호수, 하랑이네 = 그림)
     // 10/6 선생님: 마음의 별 엔딩 뒤에는 마을 모든 장소에 그림 표시. 선생님 그림 place_<장소>가 오면 그것을 먼저 씀, 없으면 비슷한 그림, 그것도 없으면 그 장소는 비워 둠
+    // 10/20 선생님: 같은 사람이 별가루를 거듭 주지 않게, 옮긴 별가루는 지도 물건 안에 숨김 (story.json s5.mapDust, 열쇠는 그대로 map:주민)
+    if (began() && done('s5_fog') && !done('s5_end') && !V.s5md) V.s5md = Object.entries(D5().mapDust || {}).map(([vid, r]) => G.p4.mapHide(V, r, () => sd().includes('map:' + vid), (x, y, el) => popDust(V, 'map:' + vid, x, y, el)));
     if (done('s5_end') && !V.s5ico) V.s5ico = MAPICO5.map(([id, k]) => {
-      const p = G.D.places.places.find(q => q.id === id), src = G.art('place_' + id) || G.art(k); if (!p || !src) return null;
-      const e = G.el('div', 's3-mapico', V.fx, `<img src="${src}" alt="">`); Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); return e;
+      const src = G.art('place_' + id) || G.art(k); return V.labelIcon(id, src);   // 이름표 안 글자 앞에
     });
   };
   // 지도 주민의 별가루 (호숫가 주민 둘)
@@ -10595,9 +10623,10 @@ G.s6 = (() => {
     if (!done('s6_fog')) for (const p of G.D.places.places) if (isS6(p.id)) V.setMarker(p.id, 'hidden', false);
     // 엔딩 뒤: 지도에 그림 표시 (찻집 = 찻잔, 나루터 = 호수, 하랑이네 = 그림)
     // 10/6 선생님: 속도의 별 엔딩 뒤에는 마을 모든 장소에 그림 표시. 선생님 그림 place_<장소>가 오면 그것을 먼저 씀, 없으면 비슷한 그림, 그것도 없으면 그 장소는 비워 둠
+    // 10/20 선생님: 같은 사람이 별가루를 거듭 주지 않게, 옮긴 별가루는 지도 물건 안에 숨김 (story.json s6.mapDust, 열쇠는 그대로 map:주민)
+    if (began() && done('s6_fog') && !done('s6_end') && !V.s6md) V.s6md = Object.entries(D6().mapDust || {}).map(([vid, r]) => G.p4.mapHide(V, r, () => sd().includes('map:' + vid), (x, y, el) => popDust(V, 'map:' + vid, x, y, el)));
     if (done('s6_end') && !V.s6ico) V.s6ico = MAPICO6.map(([id, k]) => {
-      const p = G.D.places.places.find(q => q.id === id), src = G.art('place_' + id) || G.art(k); if (!p || !src) return null;
-      const e = G.el('div', 's3-mapico', V.fx, `<img src="${src}" alt="">`); Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); return e;
+      const src = G.art('place_' + id) || G.art(k); return V.labelIcon(id, src);   // 이름표 안 글자 앞에
     });
   };
   // 지도 주민의 별가루 (호숫가 주민 둘)
@@ -12415,8 +12444,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-19)';
-G.BUILT = '2026-10-19 22:54';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-20)';
+G.BUILT = '2026-10-20 16:37';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
