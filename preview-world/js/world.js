@@ -20,7 +20,7 @@ G.World = (host, def, o = {}) => {
     ch.imgs[1].style.opacity = V.color;
     chunks.push(ch);
   }
-  V.setColor = (a) => { V.color = a; for (const ch of chunks) ch.imgs[1].style.opacity = a; };
+  V.setColor = (a) => { V.color = a; for (const ch of chunks) ch.imgs[1].style.opacity = a; for (const o of V.objs || []) if (o.light) o.e.style.opacity = a; };
   const view = (m) => { const s = V.cam.s, hw = G.stage.W / 2 / s + m, hh = G.stage.H / 2 / s + m; return [V.cam.x - hw, V.cam.y - hh, V.cam.x + hw, V.cam.y + hh]; };
   function updChunks() {
     const a = view(256), b = view(900);
@@ -32,14 +32,14 @@ G.World = (host, def, o = {}) => {
   }
   V.loaded = () => chunks.filter((c) => c.on).length;
 
-  // ---------- 물건: 그림 묶음(obj.png) 한 장에서 잘라 씀. z-index = 발 y ----------
+  // ---------- 물건: 그림 묶음(obj.png) 한 장에서 잘라 씀. z-index = 발 y. light(등불 빛)는 fx 층에 더하기 섞기, 먹색이면 꺼짐 ----------
   const A = def.atlas, objs = V.objs = [];
   for (const ob of def.objs) {
-    const sp = def.sprites[ob.s], [sx, sy, sw, sh] = sp.r, e = G.el('div', 'w2-obj', sort);
+    const sp = def.sprites[ob.s], [sx, sy, sw, sh] = sp.r, e = G.el('div', ob.light ? 'w2-obj w2-light' : 'w2-obj', ob.light ? fx : sort);
     const x0 = ob.x - sp.f[0] * u, y0 = ob.y - sp.f[1] * u;
     Object.assign(e.style, { left: x0 + 'px', top: y0 + 'px', width: sw * u + 'px', height: sh * u + 'px', zIndex: ob.y,
       backgroundImage: `url("${G.asset(A.src)}")`, backgroundSize: `${A.w * u}px ${A.h * u}px`, backgroundPosition: `${-sx * u}px ${-sy * u}px` });
-    objs.push({ e, def: ob, box: [x0, y0, x0 + sw * u, y0 + sh * u], y: ob.y, fade: !!ob.fade, faded: false });
+    objs.push({ e, def: ob, box: [x0, y0, x0 + sw * u, y0 + sh * u], y: ob.y, fade: !!ob.fade, faded: false, light: !!ob.light });
   }
 
   // ---------- 걸을 수 있는 곳 ----------

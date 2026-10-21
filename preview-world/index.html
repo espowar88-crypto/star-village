@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>마음 공원 미리보기 (월드 리빌드 1단계)</title>
+<title>마음 공원 미리보기 (월드 리빌드 2단계)</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
 <style>
 /* 월드 리빌드 1단계 미리보기(학생 게임과 따로). 새 월드 화면 js/world.js를 회색 상자 구역으로 시험 */
@@ -13,6 +13,7 @@ html,body{margin:0;height:100%;background:#1a1d24;overflow:hidden;touch-action:n
 .w2-sort{position:absolute;inset:0}
 .w2-obj{position:absolute;image-rendering:pixelated;pointer-events:none;transition:opacity .25s}
 .w2-obj.faded{opacity:.5}
+.w2-light{mix-blend-mode:screen;transition:opacity .4s}
 .w2-walker{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}
 .w2-spr{position:absolute;image-rendering:pixelated}
 .w2-shadow{position:absolute;border-radius:50%;background:rgba(20,16,40,.38)}
@@ -41,9 +42,9 @@ html,body{margin:0;height:100%;background:#1a1d24;overflow:hidden;touch-action:n
 <div id="game"><div id="world"></div><div id="rotate"></div>
 <div class="w2-ui" id="ui">
   <div class="w2-card">
-    <h1>마음 공원 · 1단계 회색 상자</h1>
+    <h1>마음 공원 · 2단계 입체감 회색 시안</h1>
     <div class="w2-more">
-    <p>땅을 누르면 그곳까지 걸어가요. PC는 방향키·WASD(Shift 달리기), 휴대폰은 왼쪽 아래 패드를 끌어요. 그림은 아직 회색 상자이고, 3단계에서 연못 공원 바닥으로 바뀝니다.</p>
+    <p>땅을 누르면 그곳까지 걸어가요. PC는 방향키·WASD(Shift 달리기), 휴대폰은 왼쪽 아래 패드를 끌어요. 빛은 왼쪽 위에서 비추고, 그림자·언덕 벼랑·물가 둑·다리 높이로 입체감을 넣었어요. 색과 질감은 3단계에서 연못 공원 바닥으로 바뀝니다.</p>
     <div class="w2-row" id="areas"></div>
     <div class="w2-row">
       <button class="alt" id="bColor" aria-pressed="false">먹색으로 보기</button>
