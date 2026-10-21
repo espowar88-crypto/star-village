@@ -20,7 +20,7 @@ G.World = (host, def, o = {}) => {
     ch.imgs[1].style.opacity = V.color;
     chunks.push(ch);
   }
-  V.setColor = (a) => { V.color = a; for (const ch of chunks) ch.imgs[1].style.opacity = a; for (const o of V.objs || []) if (o.light) o.e.style.opacity = a; };
+  V.setColor = (a) => { V.color = a; for (const ch of chunks) ch.imgs[1].style.opacity = a; for (const im of ground.querySelectorAll('.w2-patch.c')) im.style.opacity = a; for (const o of V.objs || []) if (o.light) o.e.style.opacity = a; };
   const view = (m) => { const s = V.cam.s, hw = G.stage.W / 2 / s + m, hh = G.stage.H / 2 / s + m; return [V.cam.x - hw, V.cam.y - hh, V.cam.x + hw, V.cam.y + hh]; };
   function updChunks() {
     const a = view(256), b = view(900);
@@ -32,6 +32,22 @@ G.World = (host, def, o = {}) => {
   }
   V.loaded = () => chunks.filter((c) => c.on).length;
 
+  // ---------- 바뀌는 곳(states): 이야기를 깨면 바닥 한 조각·걷는 곳·물건이 바뀜(예: 문턱의 별 뒤 언덕 계단 → 경사로) ----------
+  V.states = {};
+  const patches = (def.states || []).map((S) => { const [px, py, pw, ph] = S.patch.r;
+    const ims = ['m', 'c'].map((v) => { const im = G.el('img', 'w2-chunk w2-patch ' + v, ground); im.alt = ''; im.draggable = false;
+      Object.assign(im.style, { left: px * u + 'px', top: py * u + 'px', width: pw * u + 'px', height: ph * u + 'px', display: 'none' }); im.dataset.src = G.asset(S.patch.src.replace('{v}', v)); return im; });
+    return { S, ims }; });
+  V.setState = (id, on) => {
+    const P = patches.find((p) => p.S.id === id); if (!P || !!V.states[id] === !!on) return Promise.resolve();
+    V.states[id] = !!on;
+    for (const im of P.ims) { if (on && !im.src) im.src = im.dataset.src; im.style.display = on ? '' : 'none'; }
+    P.ims[1].style.opacity = V.color;
+    for (const o of V.objs) { if (o.def.st === id) o.e.style.display = on ? '' : 'none'; if (o.def.nst === id) o.e.style.display = on ? 'none' : ''; }
+    return loadWalk(on ? P.S.walk : WK.src);   // 바뀌는 곳이 하나인 구역 기준(둘 이상이면 조합별 walk가 필요)
+  };
+  V.applyCleared = (cleared) => Promise.all((def.states || []).map((S) => V.setState(S.id, (cleared || []).includes(S.when))));
+
   // ---------- 물건: 그림 묶음(obj.png) 한 장에서 잘라 씀. z-index = 발 y. light(등불 빛)는 fx 층에 더하기 섞기, 먹색이면 꺼짐 ----------
   const A = def.atlas, objs = V.objs = [];
   for (const ob of def.objs) {
@@ -39,17 +55,19 @@ G.World = (host, def, o = {}) => {
     const x0 = ob.x - sp.f[0] * u, y0 = ob.y - sp.f[1] * u;
     Object.assign(e.style, { left: x0 + 'px', top: y0 + 'px', width: sw * u + 'px', height: sh * u + 'px', zIndex: ob.y,
       backgroundImage: `url("${G.asset(A.src)}")`, backgroundSize: `${A.w * u}px ${A.h * u}px`, backgroundPosition: `${-sx * u}px ${-sy * u}px` });
+    if (ob.st) e.style.display = 'none';
     objs.push({ e, def: ob, box: [x0, y0, x0 + sw * u, y0 + sh * u], y: ob.y, fade: !!ob.fade, faded: false, light: !!ob.light });
   }
 
   // ---------- 걸을 수 있는 곳 ----------
   const WK = def.walk, cell = WK.cell, gw = WK.w, gh = WK.h;
   let grid = null;
-  const gridReady = new Promise((res) => { const im = new Image(); im.onload = () => {
+  const loadWalk = (src) => new Promise((res) => { const im = new Image(); im.onload = () => {
     const cv = document.createElement('canvas'); cv.width = gw; cv.height = gh; const cx = cv.getContext('2d'); cx.drawImage(im, 0, 0);
     const d = cx.getImageData(0, 0, gw, gh).data; grid = new Uint8Array(gw * gh); for (let i = 0; i < grid.length; i++) grid[i] = d[i * 4] > 127 ? 1 : 0;
     stand = new Uint8Array(gw * gh); for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) stand[j * gw + i] = V.canStand((i + 0.5) * cell, (j + 0.5) * cell) ? 1 : 0; res(); };
-    im.onerror = () => res(); im.src = G.asset(WK.src); });
+    im.onerror = () => res(); im.src = G.asset(src); });
+  const gridReady = loadWalk(WK.src);
   let stand = null;   // 칸 가운데에 발을 디딜 수 있는 칸(길찾기는 이것으로, 자유 이동은 canStand로 → 둘이 늘 같은 답)
   const ptOk = (x, y) => { const i = Math.floor(x / cell), j = Math.floor(y / cell); return i >= 0 && j >= 0 && i < gw && j < gh && !!grid && grid[j * gw + i] === 1; };
   V.canStand = (x, y) => ptOk(x, y) && ptOk(x - 14, y) && ptOk(x + 14, y) && ptOk(x, y - 6) && ptOk(x, y + 6);   // 발 둘레

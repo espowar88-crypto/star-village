@@ -49,6 +49,7 @@ html,body{margin:0;height:100%;background:#1a1d24;overflow:hidden;touch-action:n
     <div class="w2-row">
       <button class="alt" id="bColor" aria-pressed="false">먹색으로 보기</button>
       <button class="alt" id="bWalk" aria-pressed="false">걷는 곳 보기</button>
+      <button class="alt" id="bRamp" aria-pressed="false">문턱의 별 깬 뒤(경사로)</button>
       <button class="alt" id="bGrid" aria-pressed="false">조각 경계 보기</button>
     </div>
     <div id="stat"></div>
@@ -72,13 +73,15 @@ html,body{margin:0;height:100%;background:#1a1d24;overflow:hidden;touch-action:n
   const areas = G.$('#areas');
   for (const [id, a] of Object.entries(def.areas)) { const b = G.el('button', '', areas, a.name + '로 가기'); b.onclick = () => V.goArea(id); }
   const toast = G.$('#toast'); let tt = 0;
-  V.onArea = (id) => { if (!id) return; toast.textContent = def.areas[id].name; toast.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => toast.classList.remove('on'), 1600); };
+  const say = (t) => { toast.textContent = t; toast.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => toast.classList.remove('on'), 1600); };
+  V.onArea = (id) => { if (id) say(def.areas[id].name); };
   const tog = (b, f) => { b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); f(on); }; };
   tog(G.$('#bColor'), (on) => V.setColor(on ? 0 : 1));
   let wm = null; tog(G.$('#bWalk'), (on) => {
     if (!wm) { const g = V.grid(), c = def.walk; wm = G.el('canvas', 'w2-walkmap', V.el); wm.width = c.w; wm.height = c.h; const cx = wm.getContext('2d'), id = cx.createImageData(c.w, c.h);
       for (let i = 0; i < g.length; i++) { if (!g[i]) { id.data[i * 4] = 230; id.data[i * 4 + 3] = 120; } } cx.putImageData(id, 0, 0); Object.assign(wm.style, { width: c.w * c.cell + 'px', height: c.h * c.cell + 'px' }); }
     wm.style.display = on ? '' : 'none'; });
+  tog(G.$('#bRamp'), (on) => { V.applyCleared(on ? ['s4plaza'] : []).then(() => { if (wm) { wm.remove(); wm = null; G.$('#bWalk').setAttribute('aria-pressed', 'false'); } }); say(on ? '언덕 계단이 경사로로 바뀌었어요' : '다시 계단이에요'); });
   let gr = null; tog(G.$('#bGrid'), (on) => {
     if (!gr) { gr = G.el('div', 'w2-grid', V.el); const C = def.chunk.size * def.unit; Object.assign(gr.style, { width: def.size[0] + 'px', height: def.size[1] + 'px', backgroundImage: `linear-gradient(90deg, rgba(255,231,168,.8) 4px, transparent 4px), linear-gradient(rgba(255,231,168,.8) 4px, transparent 4px)`, backgroundSize: `${C}px ${C}px` }); }
     gr.style.display = on ? '' : 'none'; });
