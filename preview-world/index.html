@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>마음 공원 미리보기 (월드 리빌드 1단계)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
+<style>
+/* 월드 리빌드 1단계 미리보기(학생 게임과 따로). 새 월드 화면 js/world.js를 회색 상자 구역으로 시험 */
+html,body{margin:0;height:100%;background:#1a1d24;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:"Jua",system-ui,sans-serif}
+#game{position:absolute;left:0;top:0;overflow:hidden;transform-origin:0 0}
+#world{position:absolute;inset:0;overflow:hidden}
+#rotate{display:none}
+.world2 img.w2-chunk{position:absolute;image-rendering:pixelated;pointer-events:none;user-select:none}
+.w2-sort{position:absolute;inset:0}
+.w2-obj{position:absolute;image-rendering:pixelated;pointer-events:none;transition:opacity .25s}
+.w2-obj.faded{opacity:.5}
+.w2-walker{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}
+.w2-spr{position:absolute;image-rendering:pixelated}
+.w2-shadow{position:absolute;border-radius:50%;background:rgba(20,16,40,.38)}
+.w2-fx{position:absolute;inset:0;pointer-events:none;z-index:100000}
+.w2-marker{position:absolute;left:-26px;top:-13px;width:52px;height:26px;border:4px solid #FFE7A8;border-radius:50%;box-sizing:border-box;animation:w2m 1s ease-in-out infinite}
+@keyframes w2m{50%{opacity:.4}}
+.w2-walkmap,.w2-grid{position:absolute;left:0;top:0;pointer-events:none;image-rendering:pixelated;z-index:99999}
+.w2-pad{position:absolute;left:calc(28px + env(safe-area-inset-left,0px));bottom:28px;width:170px;height:170px;border-radius:50%;background:rgba(255,248,236,.16);border:3px solid rgba(255,248,236,.5);touch-action:none;z-index:10}
+.w2-knob{position:absolute;left:50%;top:50%;width:70px;height:70px;margin:-35px 0 0 -35px;border-radius:50%;background:rgba(255,248,236,.75)}
+.w2-ui{position:absolute;left:12px;top:12px;z-index:20;display:grid;gap:8px;max-width:min(560px,calc(100% - 24px));color:#2a2440}
+.w2-card{background:rgba(255,248,236,.94);border-radius:14px;padding:10px 14px;box-shadow:0 2px 8px rgba(0,0,0,.25);display:grid;gap:8px}
+.w2-card h1{font-size:20px;margin:0;font-weight:400}
+.w2-card p{margin:0;font-size:14px;color:#5a5270;font-family:system-ui,sans-serif}
+.w2-row{display:flex;flex-wrap:wrap;gap:6px}
+.w2-ui button{font-family:inherit;font-size:16px;border:0;border-radius:10px;padding:7px 12px;background:#5B4FA8;color:#FFF8EC;cursor:pointer}
+.w2-ui button.alt{background:#E6DFF2;color:#2a2440}
+.w2-ui button[aria-pressed="true"]{background:#2F7D5B;color:#fff}
+#stat{font-family:ui-monospace,monospace;font-size:12px}
+#toast{position:absolute;left:50%;top:18px;transform:translateX(-50%);z-index:30;background:rgba(36,33,58,.85);color:#FFF8EC;padding:8px 18px;border-radius:99px;font-size:20px;opacity:0;transition:opacity .4s;pointer-events:none}
+#toast.on{opacity:1}
+.w2-more{display:grid;gap:8px}
+.w2-ui.min .w2-more{display:none}
+@media (max-height:600px){.w2-card h1{font-size:16px}.w2-ui button{font-size:14px;padding:5px 10px}.w2-card p{font-size:12px}#toast{font-size:16px}}
+</style></head>
+<body>
+<div id="game"><div id="world"></div><div id="rotate"></div>
+<div class="w2-ui" id="ui">
+  <div class="w2-card">
+    <h1>마음 공원 · 1단계 회색 상자</h1>
+    <div class="w2-more">
+    <p>땅을 누르면 그곳까지 걸어가요. PC는 방향키·WASD(Shift 달리기), 휴대폰은 왼쪽 아래 패드를 끌어요. 그림은 아직 회색 상자이고, 3단계에서 연못 공원 바닥으로 바뀝니다.</p>
+    <div class="w2-row" id="areas"></div>
+    <div class="w2-row">
+      <button class="alt" id="bColor" aria-pressed="false">먹색으로 보기</button>
+      <button class="alt" id="bWalk" aria-pressed="false">걷는 곳 보기</button>
+      <button class="alt" id="bGrid" aria-pressed="false">조각 경계 보기</button>
+    </div>
+    <div id="stat"></div>
+    </div>
+    <div class="w2-row"><button class="alt" id="bMin">접기</button></div>
+  </div>
+</div>
+<div id="toast"></div>
+</div>
+<script src="js/core.js"></script>
+<script src="js/world.js"></script>
+<script>
+(async () => {
+  G.settings = {};
+  const [def, feet] = await Promise.all([fetch('data/world/s5park.json').then(r => r.json()), fetch('data/feet.json').then(r => r.json())]);
+  G.D.feet = feet;
+  G.layout(); window.addEventListener('resize', G.layout); if (window.visualViewport) visualViewport.addEventListener('resize', G.layout);
+  const host = G.$('#world');
+  const V = window.V = G.World(host, def, { pad: G.isTouch || /pad/.test(location.search) });
+  await V.ready;
+  const areas = G.$('#areas');
+  for (const [id, a] of Object.entries(def.areas)) { const b = G.el('button', '', areas, a.name + '로 가기'); b.onclick = () => V.goArea(id); }
+  const toast = G.$('#toast'); let tt = 0;
+  V.onArea = (id) => { if (!id) return; toast.textContent = def.areas[id].name; toast.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => toast.classList.remove('on'), 1600); };
+  const tog = (b, f) => { b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); f(on); }; };
+  tog(G.$('#bColor'), (on) => V.setColor(on ? 0 : 1));
+  let wm = null; tog(G.$('#bWalk'), (on) => {
+    if (!wm) { const g = V.grid(), c = def.walk; wm = G.el('canvas', 'w2-walkmap', V.el); wm.width = c.w; wm.height = c.h; const cx = wm.getContext('2d'), id = cx.createImageData(c.w, c.h);
+      for (let i = 0; i < g.length; i++) { if (!g[i]) { id.data[i * 4] = 230; id.data[i * 4 + 3] = 120; } } cx.putImageData(id, 0, 0); Object.assign(wm.style, { width: c.w * c.cell + 'px', height: c.h * c.cell + 'px' }); }
+    wm.style.display = on ? '' : 'none'; });
+  let gr = null; tog(G.$('#bGrid'), (on) => {
+    if (!gr) { gr = G.el('div', 'w2-grid', V.el); const C = def.chunk.size * def.unit; Object.assign(gr.style, { width: def.size[0] + 'px', height: def.size[1] + 'px', backgroundImage: `linear-gradient(90deg, rgba(255,231,168,.8) 4px, transparent 4px), linear-gradient(rgba(255,231,168,.8) 4px, transparent 4px)`, backgroundSize: `${C}px ${C}px` }); }
+    gr.style.display = on ? '' : 'none'; });
+  G.$('#bMin').onclick = () => { const m = G.$('#ui').classList.toggle('min'); G.$('#bMin').textContent = m ? '펴기' : '접기'; };
+  if (G.stage.H < 600) { G.$('#ui').classList.add('min'); G.$('#bMin').textContent = '펴기'; }
+  // 상태: 초당 장 수, 올라온 바닥 조각(풀린 크기 = 조각 수 x 2판 x 1 MiB)
+  let n = 0, t0 = performance.now(); const st = G.$('#stat');
+  const loop = (now) => { n++; if (now - t0 > 1000) { const fps = Math.round(n * 1000 / (now - t0)); n = 0; t0 = now;
+      st.textContent = `초당 ${fps}장 · 바닥 조각 ${V.loaded()}/${def.chunk.cols * def.chunk.rows} (약 ${V.loaded() * 2} MiB) · 배율 ${V.cam.s.toFixed(2)} · 자리 ${V.area ? def.areas[V.area].name : '-'}`; window.__fps = fps; }
+    requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  window.__ready = true;
+})();
+</script>
+</body></html>
