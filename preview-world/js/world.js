@@ -112,7 +112,8 @@ G.World = (host, def, o = {}) => {
   V.findPath = findPath;
 
   // ---------- 주인공(장면 인물과 같은 걷기 그림: walk_<id>_live.png, 칸 100x130을 2배, 발 (50,125)) ----------
-  const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 };
+  const ROW = { SE: 0, SW: 1, NW: 2, NE: 3, S: 0, N: 1 };
+  const NS = { hero: 1, hero_lit: 1 };   // 위·아래 걷기 그림이 따로 있는 인물(walk_<id>_ns_live.png: 0줄 아래, 1줄 위. 10/21 선생님)
   V.walker = (id, x, y) => {
     const k = G.ageScale(id), cw = 200 * k, chh = 260 * k, w = { id, x, y, k, dir: 'SE', dist: 0, moving: false, ph: Math.random() * 2600, nb: performance.now() + 2000, bu: 0 };
     w.el = G.el('div', 'w2-walker', sort);
@@ -120,6 +121,8 @@ G.World = (host, def, o = {}) => {
     w.sh = G.el('div', 'w2-shadow', w.el);
     w.spr = G.el('div', 'w2-spr', w.el);
     Object.assign(w.spr.style, { width: cw + 'px', height: chh + 'px', backgroundImage: `url("${G.asset('assets/chars/walk_' + id + '_live.png')}")`, backgroundSize: `${8600 * k}px ${1040 * k}px` });
+    w.ns = false;
+    const img = (ns) => `url("${G.asset('assets/chars/walk_' + id + (ns ? '_ns' : '') + '_live.png')}")`;
     w.col = () => {
       if (w.moving) return Math.floor(((w.dist / (116 * k * 1.15)) % 1) * 8) * 2;   // 걸음은 걸은 거리에 묶음(10/16 미끄러지는 발 고침과 같음)
       if (G.reduced && G.reduced()) return 16;
@@ -128,12 +131,16 @@ G.World = (host, def, o = {}) => {
       const br = (now + w.ph) % 2600 < 1100; return now < w.bu ? (br ? 19 : 18) : (br ? 17 : 16);
     };
     w.draw = () => {
-      const c = w.col(), r = ROW[w.dir], bp = `${-c * cw}px ${-r * chh}px`;
+      const ns = w.dir.length === 1, c = w.col(), r = ROW[w.dir], bp = `${-c * cw}px ${-r * chh}px`;
+      if (ns !== w.ns) { w.ns = ns; Object.assign(w.spr.style, { backgroundImage: img(ns), backgroundSize: ns ? `${4000 * k}px ${520 * k}px` : `${8600 * k}px ${1040 * k}px` }); w.r = -1; }
       if (bp !== w.bp) { w.bp = bp; w.spr.style.backgroundPosition = bp; }
-      if (FT && r !== w.r) { w.r = r; const f = FT[r], q = 2 * k; Object.assign(w.sh.style, { left: (f[0] - 50 - f[2] / 2) * q + 'px', top: (f[1] - 125 - f[3] / 2) * q + 'px', width: f[2] * q + 'px', height: f[3] * q + 'px' }); }
+      const fr = ns ? (w.dir === 'S' ? 0 : 3) : r;   // 발 그림자: 아래는 SE, 위는 NE 것
+      if (FT && fr !== w.r) { w.r = fr; const f = FT[fr], q = 2 * k; Object.assign(w.sh.style, { left: (f[0] - 50 - f[2] / 2) * q + 'px', top: (f[1] - 125 - f[3] / 2) * q + 'px', width: f[2] * q + 'px', height: f[3] * q + 'px' }); }
     };
     w.set = (nx, ny) => { w.x = nx; w.y = ny; w.el.style.transform = `translate(${nx.toFixed(1)}px,${ny.toFixed(1)}px)`; const z = Math.round(ny); if (z !== w.z) { w.z = z; w.el.style.zIndex = z; } };
-    w.face = (dx, dy) => { if (Math.hypot(dx, dy) < 0.01) return; w.dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW'); };
+    w.face = (dx, dy) => { if (Math.hypot(dx, dy) < 0.01) return;
+      if (NS[id] && Math.abs(dx) < Math.abs(dy) * 0.42) { w.dir = dy > 0 ? 'S' : 'N'; return; }   // 거의 위·아래(약 23도 안)
+      w.dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW'); };
     w.spr.style.left = -100 * k + 'px'; w.spr.style.top = -250 * k + 'px';
     w.set(x, y); w.draw();
     return w;
