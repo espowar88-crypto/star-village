@@ -42,7 +42,7 @@ const load = (s) => new Promise(r => { const i = new Image(); i.onload = () => r
 const walk = mk(W, H, 'left:0;top:0;opacity:.35;display:none;z-index:3000'), wx = walk.getContext('2d');
 let wd = null;
 const can = (x, y) => wd && x >= 0 && y >= 0 && x < W && y < H && wd[((y | 0) * W + (x | 0)) * 4] > 128;
-const V = '1792703488';   // plaza_build.py가 빌드마다 바꿈(옛 그림이 캐시에 남지 않게)
+const V = '1792704290';   // plaza_build.py가 빌드마다 바꿈(옛 그림이 캐시에 남지 않게)
 Promise.all([load('a/scene.png?v=' + V), load('a/o_fountain0.png?v=' + V), load('a/hero.png?v=2'), fetch('a/scene.json?v=' + V, { cache: 'no-store' }).then(r => r.json()), load('a/walk.png?v=' + V)]).then(([img, fimg, , SJ, wimg]) => {
   const objs = SJ.objs, LIGHTS = SJ.lights; hero.x = SJ.spawn[0]; hero.y = SJ.spawn[1];
   wx.drawImage(wimg, 0, 0); wd = wx.getImageData(0, 0, W, H).data;
@@ -70,6 +70,26 @@ Promise.all([load('a/scene.png?v=' + V), load('a/o_fountain0.png?v=' + V), load(
       const rx = 2 + a * 12, ry = rx * .42; g.fillStyle = `rgba(210,235,255,${((1 - a) * .6).toFixed(2)})`;
       for (let q = 0; q < 32; q++) { const an = q / 32 * Math.PI * 2, px = Math.round(r.x + Math.cos(an) * rx), py = Math.round(r.y + Math.sin(an) * ry); if (isB(px, py)) g.fillRect(X(px), py, 1, 1); } }
   } };
+  // 강·호수(10/22 시안4 물 효과): 줄마다 1칸씩 좌우로 흔들림 + 반짝임 + 동그란 물결. water.png = 물 자리만 오린 그림, SJ.water = 그 왼쪽 위
+  if (SJ.water) load('a/water.png?v=' + V).then(wat => {
+    const [ox, oy] = SJ.water, ww = wat.width, wh = wat.height;
+    const wl = mk(ww, wh, `left:${ox}px;top:${oy}px;z-index:1;pointer-events:none`), wg = wl.getContext('2d'); world.appendChild(wl);
+    const wm = mk(ww, wh).getContext('2d'); wm.drawImage(wat, 0, 0); const wdat = wm.getImageData(0, 0, ww, wh).data;
+    const wpix = []; for (let i = 0; i < ww * wh; i += 7) if (wdat[i * 4 + 3] > 200) wpix.push(i);
+    const isW = (x, y) => x >= 0 && y >= 0 && x < ww && y < wh && wdat[((y | 0) * ww + (x | 0)) * 4 + 3] > 0;
+    const sparks = [], rings = []; let wt = 0; const fw = water;
+    water = (t, dt) => { fw(t, dt); if (t - wt < 110) return; wt = t;
+      wg.clearRect(0, 0, ww, wh);
+      for (let y = 0; y < wh; y += 2) { const dx = Math.round(Math.sin(y * 0.35 + t / 420) * 1.2); if (dx) wg.drawImage(wat, 0, y, ww, 2, dx, y, ww, 2); }
+      while (sparks.length < 90 && Math.random() < .9) { const i = wpix[Math.random() * wpix.length | 0]; sparks.push({ x: i % ww, y: i / ww | 0, t0: t + Math.random() * 600 }); }
+      for (let k = sparks.length - 1; k >= 0; k--) { const s = sparks[k], a = (t - s.t0) / 900; if (a > 1) { sparks.splice(k, 1); continue; } if (a < 0) continue;
+        wg.fillStyle = `rgba(200,225,255,${(Math.sin(a * Math.PI) * .75).toFixed(2)})`; wg.fillRect(s.x, s.y, 3, 1); wg.fillRect(s.x + 1, s.y - 1, 1, 1); }
+      if (rings.length < 8 && Math.random() < .12) { const i = wpix[Math.random() * wpix.length | 0]; rings.push({ x: i % ww, y: i / ww | 0, t0: t }); }
+      for (let k = rings.length - 1; k >= 0; k--) { const r = rings[k], a = (t - r.t0) / 1800; if (a > 1) { rings.splice(k, 1); continue; }
+        const rx = 3 + a * 18, ry = rx * .45; wg.fillStyle = `rgba(190,215,240,${((1 - a) * .55).toFixed(2)})`;
+        for (let q = 0; q < 44; q++) { const an = q / 44 * Math.PI * 2, px = Math.round(r.x + Math.cos(an) * rx), py = Math.round(r.y + Math.sin(an) * ry); if (isW(px, py)) wg.fillRect(px, py, 1, 1); } }
+    };
+  });
   for (const [n, x, y, base, sw] of objs) {
     const im = new Image(); im.src = `a/o_${n}.png?v=${V}`; im.style.cssText = `position:absolute;left:${x}px;top:${y}px;z-index:${base};image-rendering:pixelated`;
     im.style.transition = 'opacity .25s'; if (im.complete || true) TALL.push({ im, x, y, base });
