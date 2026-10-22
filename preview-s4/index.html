@@ -6,7 +6,7 @@
 @font-face{font-family:Jua;src:url(a/BMJUA.ttf)}
 html,body{margin:0;height:100%;background:#15120e;overflow:hidden;touch-action:none;font-family:Jua,sans-serif;-webkit-user-select:none;user-select:none}
 #view{position:fixed;inset:0;overflow:hidden}
-#world{position:absolute;left:0;top:0;transform-origin:0 0;image-rendering:pixelated;transition:filter 2.6s ease}
+#world{position:absolute;left:0;top:0;transform-origin:0 0;image-rendering:pixelated;transition:filter 2.6s ease;overflow:hidden}
 #world.ink{filter:saturate(.55) brightness(.87)}
 #world canvas{position:absolute;image-rendering:pixelated}
 .spr{position:absolute;left:-50px;top:-125px;width:100px;height:130px;background:url(a/hero.png?v=2) no-repeat;image-rendering:pixelated}
@@ -24,7 +24,7 @@ html,body{margin:0;height:100%;background:#15120e;overflow:hidden;touch-action:n
 #burst{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;transition:opacity .5s}
 </style></head><body>
 <div id="view"><div id="world" class="ink"></div></div><div id="tint"></div><canvas id="burst"></canvas>
-<div id="bar"><button id="bStar">별 찾기 (색 되찾기)</button><button id="bWalk">걷는 길 보기</button></div>
+<div id="bar"><button id="bStar">별 찾기 (색 되찾기)</button><button id="bWalk">걷는 길 보기</button><button id="bZoom">가까이 보기</button></div>
 <div id="tip">화면을 누르거나 방향키로 걸어 보세요</div>
 <script>
 (() => {
@@ -132,7 +132,9 @@ addEventListener('keyup', e => { keys[e.key] = 0; });
 view.addEventListener('pointerdown', e => { const x = (e.clientX - cam.x) / S, y = (e.clientY - cam.y) / S; const p = path(hero.x, hero.y, x, y); if (p) { route = p; route.i = 1; } });
 
 let S = 2; const cam = { x: 0, y: 0 };
-function fit() { S = Math.max(1, Math.round(Math.min(innerWidth / 430, innerHeight / 420))); }
+// 배율은 정수만(픽셀 또렷하게). 기본은 장면이 넓게 보이는 작은 배율, 단추로 한 단계 가까이
+let near = 0;
+function fit() { S = Math.max(1, Math.round(Math.min(innerWidth / 860, innerHeight / 760))) + near; }
 addEventListener('resize', fit); fit();
 const SP = 150;
 function start() {
@@ -163,7 +165,8 @@ function start() {
   requestAnimationFrame(frame);
 }
 for (const b of document.querySelectorAll('#bar button')) b.addEventListener('pointerdown', e => e.stopPropagation());
-const bWalk = document.getElementById('bWalk'), bStar = document.getElementById('bStar');
+const bWalk = document.getElementById('bWalk'), bStar = document.getElementById('bStar'), bZoom = document.getElementById('bZoom');
+bZoom.onclick = () => { near = 1 - near; fit(); bZoom.textContent = near ? '멀리 보기' : '가까이 보기'; };
 bWalk.onclick = () => { bWalk.classList.toggle('on'); walk.style.display = bWalk.classList.contains('on') ? '' : 'none'; };
 // 별 찾기: 주인공 자리에서 빛이 퍼지며 색과 밝기를 되찾음. 다시 누르면 먹색으로
 const burst = document.getElementById('burst');
