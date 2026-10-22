@@ -28,7 +28,7 @@ html,body{margin:0;height:100%;background:#15120e;overflow:hidden;touch-action:n
 <div id="tip">광장 시안: 화면을 누르거나 방향키로 걸어 보세요 (바깥 풀밭은 임시)</div>
 <script>
 (() => {
-const W = 3000, H = 2050;
+const W = 3600, H = 2260;
 // 물건 레이어: 바닥(물건을 비우고 다시 그린 그림)과 따로 오려낸 물건. [이름, x, y, 기준선 y] — 주인공 발이 기준선보다 위면 물건이 주인공을 가림
 
 
@@ -42,7 +42,7 @@ const load = (s) => new Promise(r => { const i = new Image(); i.onload = () => r
 const walk = mk(W, H, 'left:0;top:0;opacity:.35;display:none;z-index:3000'), wx = walk.getContext('2d');
 let wd = null;
 const can = (x, y) => wd && x >= 0 && y >= 0 && x < W && y < H && wd[((y | 0) * W + (x | 0)) * 4] > 128;
-const V = '1792659749';   // plaza_build.py가 빌드마다 바꿈(옛 그림이 캐시에 남지 않게)
+const V = '1792664114';   // plaza_build.py가 빌드마다 바꿈(옛 그림이 캐시에 남지 않게)
 Promise.all([load('a/scene.png?v=' + V), load('a/o_fountain0.png?v=' + V), load('a/hero.png?v=2'), fetch('a/scene.json?v=' + V, { cache: 'no-store' }).then(r => r.json()), load('a/walk.png?v=' + V)]).then(([img, fimg, , SJ, wimg]) => {
   const objs = SJ.objs, LIGHTS = SJ.lights; hero.x = SJ.spawn[0]; hero.y = SJ.spawn[1];
   wx.drawImage(wimg, 0, 0); wd = wx.getImageData(0, 0, W, H).data;
