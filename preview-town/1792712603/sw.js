@@ -1,0 +1,11 @@
+// 10/22 별 2 동네 이어 보기 미리보기: 이 폴더에 없는 파일(학생 게임과 같은 그림·소리)은 사이트 맨 위 것을 씀
+const L = new Set(["game.html", "game.js", "data.js", "assets/chars/walk_hero_lit_ns_live.png", "assets/chars/walk_hero_ns_live.png", "assets/scenes/s2hall_v2_glow_drum.png", "assets/scenes/s2rest_v2_glow_s2school.png", "assets/scenes/s2rest_v2_glow_bushB.png", "assets/scenes/s2plaza_v2_walk.png", "assets/scenes/s2rest_v2_glow_bushC.png", "assets/scenes/s2school_v2_glow_chair.png", "assets/scenes/s2hall_v2_px_mono.png", "assets/scenes/s2rest_v2_glow_bushD.png", "assets/scenes/s2school_v2_glow_board.png", "assets/scenes/s2rest_v2_glow_s2hall.png", "assets/scenes/s2rest_v2_glow_bushA.png", "assets/scenes/s2hall_v2_glow_exit.png", "assets/scenes/s2school_v2_glow_locker.png", "assets/scenes/s2school_v2_glow_bell.png", "assets/scenes/s2rest_v2_glow_box.png", "assets/scenes/s2rest_v2_depth.png", "assets/scenes/s2school_v2_depth.png", "assets/scenes/s2plaza_v2_px_mono.png", "assets/scenes/s2school_v2_px_mono.png", "assets/scenes/s2plaza_v2_glow_pedestal.png", "assets/scenes/s2hall_v2_depth.png", "assets/scenes/s2rest_v2_px_mono.png", "assets/scenes/s2rest_v2_glow_pavilion.png", "assets/scenes/s2hall_v2_glow_seats.png", "assets/scenes/s2plaza_v2_glow_fountain.png", "assets/scenes/s2school_v2_glow_window.png", "assets/scenes/s2plaza_v2_depth.png", "assets/scenes/s2rest_v2_px_color.png", "assets/scenes/s2school_v2_glow_exit.png", "assets/scenes/s2plaza_v2_px_color.png", "assets/scenes/s2hall_v2_glow_score.png", "assets/scenes/s2hall_v2_px_color.png", "assets/scenes/s2rest_v2_walk.png", "assets/scenes/s2school_v2_px_color.png", "index.html", "sw.js"]);
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', (e) => {
+  const sc = new URL(self.registration.scope), u = new URL(e.request.url);
+  if (u.origin !== sc.origin || !u.pathname.startsWith(sc.pathname)) return;
+  const rel = decodeURIComponent(u.pathname.slice(sc.pathname.length));
+  if (!rel || L.has(rel)) return;
+  e.respondWith(fetch(new URL('../../' + u.pathname.slice(sc.pathname.length) + u.search, sc), { headers: e.request.headers }));
+});
