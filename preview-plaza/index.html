@@ -25,10 +25,10 @@ html,body{margin:0;height:100%;background:#15120e;overflow:hidden;touch-action:n
 </style></head><body>
 <div id="view"><div id="world" class="ink"></div></div><div id="tint"></div><canvas id="burst"></canvas>
 <div id="bar"><button id="bStar">별 찾기 (색 되찾기)</button><button id="bWalk">걷는 길 보기</button><button id="bZoom">가까이 보기</button></div>
-<div id="tip">광장 시안: 화면을 누르거나 방향키로 걸어 보세요 (바깥 풀밭은 아직)</div>
+<div id="tip">광장 시안: 화면을 누르거나 방향키로 걸어 보세요 (바깥 풀밭은 임시)</div>
 <script>
 (() => {
-const W = 1260, H = 1110;
+const W = 2250, H = 1300;
 // 물건 레이어: 바닥(물건을 비우고 다시 그린 그림)과 따로 오려낸 물건. [이름, x, y, 기준선 y] — 주인공 발이 기준선보다 위면 물건이 주인공을 가림
 
 
