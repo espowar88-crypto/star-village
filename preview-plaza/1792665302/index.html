@@ -42,7 +42,7 @@ const load = (s) => new Promise(r => { const i = new Image(); i.onload = () => r
 const walk = mk(W, H, 'left:0;top:0;opacity:.35;display:none;z-index:3000'), wx = walk.getContext('2d');
 let wd = null;
 const can = (x, y) => wd && x >= 0 && y >= 0 && x < W && y < H && wd[((y | 0) * W + (x | 0)) * 4] > 128;
-const V = '1792664114';   // plaza_build.py가 빌드마다 바꿈(옛 그림이 캐시에 남지 않게)
+const V = '1792665292';   // plaza_build.py가 빌드마다 바꿈(옛 그림이 캐시에 남지 않게)
 Promise.all([load('a/scene.png?v=' + V), load('a/o_fountain0.png?v=' + V), load('a/hero.png?v=2'), fetch('a/scene.json?v=' + V, { cache: 'no-store' }).then(r => r.json()), load('a/walk.png?v=' + V)]).then(([img, fimg, , SJ, wimg]) => {
   const objs = SJ.objs, LIGHTS = SJ.lights; hero.x = SJ.spawn[0]; hero.y = SJ.spawn[1];
   wx.drawImage(wimg, 0, 0); wd = wx.getImageData(0, 0, W, H).data;
@@ -138,9 +138,9 @@ addEventListener('keyup', e => { keys[e.key] = 0; });
 view.addEventListener('pointerdown', e => { const x = (e.clientX - cam.x) / S, y = (e.clientY - cam.y) / S; const p = path(hero.x, hero.y, x, y); if (p) { route = p; route.i = 1; } });
 
 let S = 2; const cam = { x: 0, y: 0 };
-// 배율은 정수만(픽셀 또렷하게). 기본은 장면이 넓게 보이는 작은 배율, 단추로 한 단계 가까이
+// 기본은 본게임처럼 멀리(주인공 키 = 화면 높이의 약 9%), 단추로 두 배 가까이
 let near = 0;
-function fit() { S = Math.max(1, Math.round(Math.min(innerWidth / 860, innerHeight / 760))) + near; }
+function fit() { const b = Math.max(.5, Math.round(Math.min(innerHeight, innerWidth * 1.4) * .09 / 130 * 4) / 4); S = near ? b * 2 : b; }
 addEventListener('resize', fit); fit();
 const SP = 150;
 function start() {
