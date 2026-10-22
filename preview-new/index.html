@@ -9,7 +9,7 @@ html,body{margin:0;height:100%;background:#15120e;overflow:hidden;touch-action:n
 #world{position:absolute;left:0;top:0;transform-origin:0 0;image-rendering:pixelated;transition:filter 2.6s ease}
 #world.ink{filter:saturate(.55) brightness(.87)}
 #world canvas{position:absolute;image-rendering:pixelated}
-.spr{position:absolute;left:-50px;top:-125px;width:100px;height:130px;background:url(a/hero.png) no-repeat;image-rendering:pixelated}
+.spr{position:absolute;left:-50px;top:-125px;width:100px;height:130px;background:url(a/hero.png?v=2) no-repeat;image-rendering:pixelated}
 .sh{position:absolute;left:-17px;top:-5px;width:34px;height:9px;border-radius:50%;background:rgba(18,10,4,.5)}
 .glow{position:absolute;border-radius:50%;pointer-events:none;mix-blend-mode:screen;
  background:radial-gradient(circle,rgba(255,190,90,.5) 0,rgba(255,150,60,.2) 40%,rgba(255,120,40,0) 70%)}
@@ -63,7 +63,7 @@ for (const [pts, w] of PATHS) { wx.lineWidth = w; wx.beginPath(); pts.forEach(([
 const wd = wx.getImageData(0, 0, W, H).data;
 const can = (x, y) => x >= 0 && y >= 0 && x < W && y < H && wd[((y | 0) * W + (x | 0)) * 4 + 3] > 0;
 
-Promise.all([load('a/scene.png'), load('a/water.png'), load('a/hero.png')]).then(([img, wat]) => {
+Promise.all([load('a/scene.png'), load('a/water.png'), load('a/hero.png?v=2')]).then(([img, wat]) => {
   const bg = mk(W, H, 'left:0;top:0;z-index:0'); bg.getContext('2d').drawImage(img, 0, 0); world.appendChild(bg);
   // 물: 줄마다 1칸씩 좌우로 흔들림 + 반짝임 + 동그란 물결
   const wl = mk(W, H, 'left:0;top:0;z-index:1'), wg = wl.getContext('2d'); world.appendChild(wl);
