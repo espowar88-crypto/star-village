@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>새 그림 방식 시험</title>
+<style>
+@font-face{font-family:Jua;src:url(a/BMJUA.ttf)}
+html,body{margin:0;height:100%;background:#1b1712;overflow:hidden;touch-action:none;font-family:Jua,sans-serif}
+#view{position:fixed;inset:0;overflow:hidden}
+#world{position:absolute;left:0;top:0;transform-origin:0 0;image-rendering:pixelated}
+#world canvas,#world img{position:absolute;image-rendering:pixelated}
+.spr{position:absolute;width:48px;height:62px;background-repeat:no-repeat;image-rendering:pixelated}
+.sh{position:absolute;left:-9px;top:-3px;width:18px;height:6px;border-radius:50%;background:rgba(20,10,5,.45)}
+.glow{position:absolute;border-radius:50%;pointer-events:none;mix-blend-mode:screen;
+ background:radial-gradient(circle,rgba(255,190,90,.55) 0,rgba(255,150,60,.22) 38%,rgba(255,120,40,0) 70%)}
+.fly{position:absolute;width:1px;height:1px;background:#ffe9a0;box-shadow:0 0 2px 1px rgba(255,220,120,.8);pointer-events:none}
+#tint{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 55%,rgba(0,0,0,0) 55%,rgba(20,8,0,.45) 100%)}
+#bar{position:fixed;left:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;z-index:9}
+#bar button{font:inherit;font-size:15px;padding:6px 12px;border:0;border-radius:10px;background:rgba(40,28,18,.85);color:#ffe7c2}
+#bar button.on{background:#c7792e;color:#fff}
+#tip{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(40,28,18,.85);color:#ffe7c2;padding:6px 14px;border-radius:12px;font-size:15px;z-index:9;white-space:nowrap}
+</style></head><body>
+<div id="view"><div id="world"></div></div><div id="tint"></div>
+<div id="bar"><button id="bLight" class="on">불빛</button><button id="bWalk">걷는 길 보기</button><button id="bZoom">크게</button></div>
+<div id="tip">화면을 누르거나 방향키로 걸어 보세요</div>
+<script>
+(() => {
+const W = 856, H = 448;
+// 걷는 길: [중심선 점들, 폭] (그림 픽셀 기준)
+const PATHS = [
+  [[[420,0],[424,60],[440,108],[478,138],[540,150],[610,160],[660,180],[700,196],[742,200]], 34],
+  [[[478,138],[520,170],[570,168],[600,190]], 30],
+  [[[660,182],[690,230],[700,290],[690,330],[650,370],[600,380],[560,392],[500,400],[430,385],[380,372],[330,350]], 34],
+  [[[0,372],[120,374],[230,366],[330,350]], 40],
+  [[[300,196],[260,230],[262,290],[300,330],[330,350]], 46],
+  [[[300,196],[340,172],[392,150],[446,136],[478,138]], 26],
+  [[[600,380],[620,420],[610,448]], 30],
+  [[[700,290],[730,330],[720,400],[740,448]], 28],
+  [[[440,108],[400,190],[345,205]], 1],
+];
+// 앞에 그려질 조각: [다각형, 기준선 y] — 주인공 발이 기준선보다 위면 조각이 주인공을 가림
+const FRONT = [
+  [[[524,190],[650,186],[655,330],[600,334],[520,300]], 330],
+  [[[205,215],[240,215],[240,310],[205,310]], 308],
+  [[[505,318],[545,318],[545,416],[505,416]], 414],
+  [[[292,55],[330,55],[330,150],[292,150]], 148],
+  [[[445,10],[475,10],[475,110],[445,110]], 108],
+  [[[0,396],[310,392],[330,448],[0,448]], 448],
+  [[[330,385],[420,395],[425,448],[330,448]], 448],
+  [[[640,395],[720,410],[720,448],[640,448]], 448],
+  [[[760,330],[856,320],[856,448],[760,448]], 448],
+];
+const LIGHTS = [[460,45,70],[317,90,70],[230,248,70],[520,350,70],[678,147,60],[740,170,60],[765,160,40]];
+
+const world = document.getElementById('world'), view = document.getElementById('view');
+world.style.width = W + 'px'; world.style.height = H + 'px';
+const img = new Image(); img.src = 'a/scene.png';
+const walk = document.createElement('canvas'); walk.width = W; walk.height = H;
+const wx = walk.getContext('2d');
+wx.lineCap = wx.lineJoin = 'round'; wx.strokeStyle = '#fff';
+for (const [pts, w] of PATHS) { if (w < 2) continue; wx.lineWidth = w; wx.beginPath(); pts.forEach(([x, y], i) => i ? wx.lineTo(x, y) : wx.moveTo(x, y)); wx.stroke(); }
+const wd = wx.getImageData(0, 0, W, H).data;
+const can = (x, y) => x >= 0 && y >= 0 && x < W && y < H && wd[((y | 0) * W + (x | 0)) * 4 + 3] > 0;
+walk.style.cssText = 'left:0;top:0;opacity:.35;display:none;z-index:2000';
+
+img.onload = () => {
+  const bg = document.createElement('canvas'); bg.width = W; bg.height = H; bg.getContext('2d').drawImage(img, 0, 0); bg.style.cssText = 'left:0;top:0;z-index:0';
+  world.appendChild(bg);
+  for (const [poly, base] of FRONT) {
+    const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]), x0 = Math.min(...xs), y0 = Math.min(...ys), x1 = Math.max(...xs), y1 = Math.max(...ys);
+    const c = document.createElement('canvas'); c.width = x1 - x0; c.height = y1 - y0; const g = c.getContext('2d');
+    g.beginPath(); poly.forEach(([x, y], i) => i ? g.lineTo(x - x0, y - y0) : g.moveTo(x - x0, y - y0)); g.closePath(); g.clip(); g.drawImage(img, -x0, -y0);
+    c.style.cssText = `left:${x0}px;top:${y0}px;z-index:${base}`; world.appendChild(c);
+  }
+  world.appendChild(walk);
+  for (const [x, y, r] of LIGHTS) { const d = document.createElement('div'); d.className = 'glow'; Object.assign(d.style, { left: x - r + 'px', top: y - r + 'px', width: 2 * r + 'px', height: 2 * r + 'px', zIndex: 1500 }); d.dataset.p = Math.random() * 6; world.appendChild(d); }
+  for (let i = 0; i < 26; i++) { const f = document.createElement('div'); f.className = 'fly'; f.style.zIndex = 1600; f.dataset.x = Math.random() * W; f.dataset.y = 60 + Math.random() * 360; f.dataset.p = Math.random() * 99; world.appendChild(f); }
+  start();
+};
+
+// 주인공(걷기 그림을 장면 픽셀 크기에 맞춰 줄인 것: 칸 48x62, 발 24,60)
+const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 };
+const hero = { x: 280, y: 300, dir: 'SE', dist: 0, moving: false, ns: null };
+const el = document.createElement('div'); el.style.cssText = 'position:absolute;left:0;top:0';
+const sh = document.createElement('div'); sh.className = 'sh'; el.appendChild(sh);
+const spr = document.createElement('div'); spr.className = 'spr'; spr.style.left = '-24px'; spr.style.top = '-60px'; el.appendChild(spr);
+world.appendChild(el);
+function drawHero(t) {
+  const ns = hero.dir === 'S' || hero.dir === 'N';
+  if (ns !== hero.ns) { hero.ns = ns; spr.style.backgroundImage = `url(a/${ns ? 'hero_ns' : 'hero'}.png)`; }
+  let c = hero.moving ? Math.floor(((hero.dist / 50) % 1) * 8) * 2 : ((t % 2600) < 1100 ? 17 : 16);
+  if (ns && !hero.moving) c = 16;
+  const r = ns ? (hero.dir === 'S' ? 0 : 1) : ROW[hero.dir];
+  spr.style.backgroundPosition = `${-c * 48}px ${-r * 62}px`;
+  el.style.transform = `translate(${hero.x.toFixed(1)}px,${hero.y.toFixed(1)}px)`; el.style.zIndex = Math.round(hero.y);
+}
+function face(dx, dy) { if (Math.abs(dx) < Math.abs(dy) * 0.42) hero.dir = dy > 0 ? 'S' : 'N'; else hero.dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW'); }
+
+// 누른 곳까지 길 찾기(4칸 격자 A*)
+const C = 4, GW = Math.ceil(W / C), GH = Math.ceil(H / C);
+function path(x0, y0, x1, y1) {
+  const ok = (i) => can((i % GW + .5) * C, ((i / GW | 0) + .5) * C);
+  let t = (y1 / C | 0) * GW + (x1 / C | 0);
+  if (!ok(t)) { let best = -1, bd = 1e9; for (let i = 0; i < GW * GH; i++) if (ok(i)) { const d = Math.hypot((i % GW + .5) * C - x1, ((i / GW | 0) + .5) * C - y1); if (d < bd) { bd = d; best = i; } } if (best < 0 || bd > 60) return null; t = best; }
+  const s = (y0 / C | 0) * GW + (x0 / C | 0), from = new Int32Array(GW * GH).fill(-2), q = [s]; from[s] = -1;
+  for (let h = 0; h < q.length && from[t] === -2; h++) { const i = q[h], x = i % GW, y = i / GW | 0;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const j = ny * GW + nx; if (from[j] !== -2 || !ok(j)) continue; from[j] = i; q.push(j); } }
+  if (from[t] === -2) return null;
+  const pts = []; for (let i = t; i >= 0; i = from[i]) pts.push([(i % GW + .5) * C, ((i / GW | 0) + .5) * C]); pts.reverse();
+  const out = [pts[0]]; let a = 0;
+  const los = (p, q) => { const L = Math.hypot(q[0] - p[0], q[1] - p[1]), n = Math.ceil(L / 3); for (let k = 1; k < n; k++) if (!can(p[0] + (q[0] - p[0]) * k / n, p[1] + (q[1] - p[1]) * k / n)) return false; return true; };
+  while (a < pts.length - 1) { let b = pts.length - 1; while (b > a + 1 && !los(pts[a], pts[b])) b--; out.push(pts[b]); a = b; }
+  return out;
+}
+let route = null; const keys = {};
+addEventListener('keydown', e => { keys[e.key] = 1; route = null; });
+addEventListener('keyup', e => { keys[e.key] = 0; });
+view.addEventListener('pointerdown', e => { const x = (e.clientX - cam.x) / S, y = (e.clientY - cam.y) / S; const p = path(hero.x, hero.y, x, y); if (p) { route = p; route.i = 1; } });
+
+let S = 3; const cam = { x: 0, y: 0 }; let zoomBig = false;
+function fit() { S = Math.max(2, Math.min(4, Math.round(Math.min(innerWidth / 300, innerHeight / (zoomBig ? 200 : 280)) * 2) / 2)); }
+addEventListener('resize', fit); fit();
+const SP = 70;
+function start() {
+  let last = performance.now();
+  const glows = [...world.querySelectorAll('.glow')], flies = [...world.querySelectorAll('.fly')];
+  function frame(t) {
+    const dt = Math.min(.05, (t - last) / 1000); last = t;
+    let dx = (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0), dy = (keys.ArrowDown || keys.s ? 1 : 0) - (keys.ArrowUp || keys.w ? 1 : 0);
+    hero.moving = false;
+    if (dx || dy) { const L = Math.hypot(dx, dy); dx /= L; dy /= L; const nx = hero.x + dx * SP * dt, ny = hero.y + dy * SP * dt;
+      if (can(nx, ny)) { hero.x = nx; hero.y = ny; } else if (can(nx, hero.y)) hero.x = nx; else if (can(hero.x, ny)) hero.y = ny;
+      face(dx, dy); hero.moving = true; hero.dist += SP * dt; }
+    else if (route) { const p = route[route.i], ddx = p[0] - hero.x, ddy = p[1] - hero.y, L = Math.hypot(ddx, ddy), st = SP * dt;
+      if (L <= st) { hero.x = p[0]; hero.y = p[1]; if (++route.i >= route.length) route = null; } else { hero.x += ddx / L * st; hero.y += ddy / L * st; face(ddx, ddy); }
+      hero.moving = true; hero.dist += Math.min(L, st); }
+    drawHero(t);
+    for (const g of glows) g.style.opacity = (0.85 + 0.15 * Math.sin(t / 260 + +g.dataset.p) * Math.sin(t / 97 + +g.dataset.p)).toFixed(3);
+    for (const f of flies) { const p = +f.dataset.p; f.style.transform = `translate(${(+f.dataset.x + 14 * Math.sin(t / 1900 + p)).toFixed(1)}px,${(+f.dataset.y + 9 * Math.sin(t / 1300 + p * 2)).toFixed(1)}px)`; f.style.opacity = (0.5 + 0.5 * Math.sin(t / 700 + p)).toFixed(2); }
+    const vw = innerWidth, vh = innerHeight;
+    let cx = vw / 2 - hero.x * S, cy = vh / 2 - (hero.y - 20) * S;
+    cx = W * S <= vw ? (vw - W * S) / 2 : Math.min(0, Math.max(vw - W * S, cx));
+    cy = H * S <= vh ? (vh - H * S) / 2 : Math.min(0, Math.max(vh - H * S, cy));
+    cam.x = Math.round(cx); cam.y = Math.round(cy);
+    world.style.transform = `translate(${cam.x}px,${cam.y}px) scale(${S})`;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+const tg = (id, f) => document.getElementById(id).onclick = (e) => { e.stopPropagation(); e.currentTarget.classList.toggle('on'); f(e.currentTarget.classList.contains('on')); };
+for (const b of document.querySelectorAll('#bar button')) b.addEventListener('pointerdown', e => e.stopPropagation());
+tg('bLight', on => { for (const g of world.querySelectorAll('.glow,.fly')) g.style.display = on ? '' : 'none'; document.getElementById('tint').style.display = on ? '' : 'none'; });
+tg('bWalk', on => walk.style.display = on ? '' : 'none');
+tg('bZoom', on => { zoomBig = on; fit(); });
+setTimeout(() => document.getElementById('tip').style.display = 'none', 6000);
+})();
+</script></body></html>
