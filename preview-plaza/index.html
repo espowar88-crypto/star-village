@@ -24,7 +24,7 @@ html,body{margin:0;height:100%;background:#15120e;overflow:hidden;touch-action:n
 #burst{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;transition:opacity .5s}
 </style></head><body>
 <div id="view"><div id="world" class="ink"></div></div><div id="tint"></div><canvas id="burst"></canvas>
-<div id="bar"><button id="bStar">별 찾기 (색 되찾기)</button><button id="bWalk">걷는 길 보기</button><button id="bZoom">가까이 보기</button></div>
+<div id="bar"><button id="bStar">별 찾기 (색 되찾기)</button><button id="bWalk">걷는 길 보기</button><button id="bZoom">가까이 보기</button><button id="bRamp">문턱의 별 이후 보기</button></div>
 <div id="tip">광장 시안: 화면을 누르거나 방향키로 걸어 보세요 (바깥 풀밭은 임시)</div>
 <script>
 (() => {
@@ -171,6 +171,9 @@ function start() {
 }
 for (const b of document.querySelectorAll('#bar button')) b.addEventListener('pointerdown', e => e.stopPropagation());
 const bWalk = document.getElementById('bWalk'), bStar = document.getElementById('bStar'), bZoom = document.getElementById('bZoom');
+const bRamp = document.getElementById('bRamp'); let rampOn = false;
+const setRamp = () => { for (const i of world.querySelectorAll('img')) if (i.src.includes('o_ramp')) i.style.display = rampOn ? '' : 'none'; bRamp.textContent = rampOn ? '문턱의 별 이전 보기' : '문턱의 별 이후 보기'; bRamp.classList.toggle('on', rampOn); };
+bRamp.onclick = () => { rampOn = !rampOn; setRamp(); }; setTimeout(setRamp, 1500); setTimeout(setRamp, 4000);   // 경사로는 문턱의 별을 올린 뒤에 생김
 bZoom.onclick = () => { near = 1 - near; fit(); bZoom.textContent = near ? '멀리 보기' : '가까이 보기'; };
 bWalk.onclick = () => { bWalk.classList.toggle('on'); walk.style.display = bWalk.classList.contains('on') ? '' : 'none'; };
 // 별 찾기: 주인공 자리에서 빛이 퍼지며 색과 밝기를 되찾음. 다시 누르면 먹색으로
