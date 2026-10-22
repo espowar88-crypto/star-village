@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>광장 시안</title>
+<style>
+@font-face{font-family:Jua;src:url(a/BMJUA.ttf)}
+html,body{margin:0;height:100%;background:#15120e;overflow:hidden;touch-action:none;font-family:Jua,sans-serif;-webkit-user-select:none;user-select:none}
+#view{position:fixed;inset:0;overflow:hidden}
+#world{position:absolute;left:0;top:0;transform-origin:0 0;image-rendering:pixelated;transition:filter 2.6s ease;overflow:hidden}
+#world.ink{filter:saturate(.55) brightness(.87)}
+#world canvas{position:absolute;image-rendering:pixelated}
+.spr{position:absolute;left:-50px;top:-125px;width:100px;height:130px;background:url(a/hero.png?v=2) no-repeat;image-rendering:pixelated}
+.sh{position:absolute;left:-17px;top:-5px;width:34px;height:9px;border-radius:50%;background:rgba(18,10,4,.5)}
+.glow{position:absolute;border-radius:50%;pointer-events:none;mix-blend-mode:screen;
+ background:radial-gradient(circle,rgba(255,190,90,.5) 0,rgba(255,150,60,.2) 40%,rgba(255,120,40,0) 70%)}
+.p{position:absolute;left:0;top:0;pointer-events:none}
+.sway{transform-origin:50% 100%;animation:sway 3.6s ease-in-out infinite}
+@keyframes sway{0%,100%{transform:skewX(0)}50%{transform:skewX(.8deg)}}
+#tint{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 55%,rgba(0,0,0,0) 55%,rgba(20,8,0,.42) 100%)}
+#bar{position:fixed;left:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;z-index:9}
+#bar button{font:inherit;font-size:15px;padding:6px 12px;border:0;border-radius:10px;background:rgba(40,28,18,.85);color:#ffe7c2}
+#bar button.on{background:#c7792e;color:#fff}
+#tip{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(40,28,18,.85);color:#ffe7c2;padding:6px 14px;border-radius:12px;font-size:15px;z-index:9;white-space:nowrap}
+#burst{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;transition:opacity .5s}
+</style></head><body>
+<div id="view"><div id="world" class="ink"></div></div><div id="tint"></div><canvas id="burst"></canvas>
+<div id="bar"><button id="bStar">별 찾기 (색 되찾기)</button><button id="bWalk">걷는 길 보기</button><button id="bZoom">가까이 보기</button><button id="bRamp">문턱의 별 이후 보기</button></div>
+<div id="tip">광장 시안: 화면을 누르거나 방향키로 걸어 보세요 (바깥 풀밭은 임시)</div>
+<script>
+(() => {
+const W = 4000, H = 2340;
+// 물건 레이어: 바닥(물건을 비우고 다시 그린 그림)과 따로 오려낸 물건. [이름, x, y, 기준선 y] — 주인공 발이 기준선보다 위면 물건이 주인공을 가림
+
+
+
+const world = document.getElementById('world'), view = document.getElementById('view');
+world.style.width = W + 'px'; world.style.height = H + 'px';
+const mk = (w, h, css) => { const c = document.createElement('canvas'); c.width = w; c.height = h; if (css) c.style.cssText = css; return c; };
+const load = (s) => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = s; });
+
+// 걷는 곳: walk.png(흰 곳만 걸음, 그림에서 자동으로 뽑음)
+const walk = mk(W, H, 'left:0;top:0;opacity:.35;display:none;z-index:3000'), wx = walk.getContext('2d');
+let wd = null;
+const can = (x, y) => wd && x >= 0 && y >= 0 && x < W && y < H && wd[((y | 0) * W + (x | 0)) * 4] > 128;
+const V = '1792677579';   // plaza_build.py가 빌드마다 바꿈(옛 그림이 캐시에 남지 않게)
+Promise.all([load('a/scene.png?v=' + V), load('a/o_fountain0.png?v=' + V), load('a/hero.png?v=2'), fetch('a/scene.json?v=' + V, { cache: 'no-store' }).then(r => r.json()), load('a/walk.png?v=' + V)]).then(([img, fimg, , SJ, wimg]) => {
+  const objs = SJ.objs, LIGHTS = SJ.lights; hero.x = SJ.spawn[0]; hero.y = SJ.spawn[1];
+  wx.drawImage(wimg, 0, 0); wd = wx.getImageData(0, 0, W, H).data;
+  { const id = wx.getImageData(0, 0, W, H); for (let i = 0; i < id.data.length; i += 4) { const on = id.data[i] > 128; id.data[i] = 255; id.data[i + 1] = 0; id.data[i + 2] = 255; id.data[i + 3] = on ? 255 : 0; } wx.putImageData(id, 0, 0); }
+  const bg = mk(W, H, 'left:0;top:0;z-index:0'); bg.getContext('2d').drawImage(img, 0, 0); world.appendChild(bg);
+  // 분수: 물줄기(꼭대기 뿜기·그릇 넘쳐 떨어지기)·물결·반짝임. 좌표는 분수 그림(512x448) 안, 오른쪽 분수는 좌우 뒤집음
+  const fm = mk(512, 448).getContext('2d'); fm.drawImage(fimg, 0, 0); const fd = fm.getImageData(0, 0, 512, 448).data;
+  const isB = (x, y) => { const i = ((y | 0) * 512 + (x | 0)) * 4; return fd[i + 3] > 0 && fd[i + 2] > fd[i] + 25 && fd[i + 2] > 150; };
+  const bpix = []; for (let y = 232; y < 344; y++) for (let x = 120; x < 396; x++) if (isB(x, y)) bpix.push([x, y]);
+  const STREAMS = [[222, 124, 158], [294, 124, 158], [258, 126, 160], [182, 208, 282], [334, 208, 282], [212, 210, 300], [304, 210, 300]];
+  const FS = SJ.fountains.map(f => { const c = mk(512, 448, `left:${f.x}px;top:${f.y}px;z-index:${f.y + 401};pointer-events:none`); world.appendChild(c);
+    return { g: c.getContext('2d'), mir: f.mir, drops: [], rings: [], sparks: [] }; });
+  water = (t, dt) => { for (const F of FS) {
+    const g = F.g, X = (x) => Math.round(F.mir ? 511 - x : x); g.clearRect(0, 0, 512, 448);
+    for (let k = 0; k < 2; k++) F.drops.push({ x: 258 + (Math.random() * 4 - 2), y: 86, vx: Math.random() * 56 - 28, vy: -45 - Math.random() * 28, end: 112 });
+    for (const [sx, sy, ey] of STREAMS) if (Math.random() < .55) F.drops.push({ x: sx + (Math.random() * 3 - 1.5), y: sy, vx: (sx - 258) * .05, vy: 15 + Math.random() * 10, end: ey });
+    for (let k = F.drops.length - 1; k >= 0; k--) { const p = F.drops[k]; p.vy += 260 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.vy > 0 && p.y > p.end) { F.drops.splice(k, 1); if (Math.random() < .05) F.rings.push({ x: p.x, y: p.end, t0: t }); continue; }
+      g.fillStyle = 'rgba(225,244,255,.9)'; g.fillRect(X(p.x), Math.round(p.y), 1, 2); g.fillStyle = 'rgba(200,230,255,.35)'; g.fillRect(X(p.x), Math.round(p.y - p.vy * .03), 1, 2); }
+    if (F.sparks.length < 18 && Math.random() < .6) { const [x, y] = bpix[Math.random() * bpix.length | 0]; F.sparks.push({ x, y, t0: t }); }
+    for (let k = F.sparks.length - 1; k >= 0; k--) { const s = F.sparks[k], a = (t - s.t0) / 800; if (a > 1) { F.sparks.splice(k, 1); continue; }
+      g.fillStyle = `rgba(235,248,255,${(Math.sin(a * Math.PI) * .85).toFixed(2)})`; g.fillRect(X(s.x), s.y, 2, 1); }
+    if (F.rings.length < 6 && Math.random() < .08) { const [x, y] = bpix[Math.random() * bpix.length | 0]; F.rings.push({ x, y, t0: t }); }
+    for (let k = F.rings.length - 1; k >= 0; k--) { const r = F.rings[k], a = (t - r.t0) / 1400; if (a > 1) { F.rings.splice(k, 1); continue; }
+      const rx = 2 + a * 12, ry = rx * .42; g.fillStyle = `rgba(210,235,255,${((1 - a) * .6).toFixed(2)})`;
+      for (let q = 0; q < 32; q++) { const an = q / 32 * Math.PI * 2, px = Math.round(r.x + Math.cos(an) * rx), py = Math.round(r.y + Math.sin(an) * ry); if (isB(px, py)) g.fillRect(X(px), py, 1, 1); } }
+  } };
+  for (const [n, x, y, base, sw] of objs) {
+    const im = new Image(); im.src = `a/o_${n}.png?v=${V}`; im.style.cssText = `position:absolute;left:${x}px;top:${y}px;z-index:${base};image-rendering:pixelated`;
+    im.style.transition = 'opacity .25s'; if (im.complete || true) TALL.push({ im, x, y, base });
+    if (sw) { im.className = 'sway'; im.style.animationDelay = (-Math.random() * 3) + 's'; }
+    world.appendChild(im);
+  }
+  world.appendChild(walk);
+  for (const [x, y, r] of LIGHTS) { const d = document.createElement('div'); d.className = 'glow'; Object.assign(d.style, { left: x - r + 'px', top: y - r + 'px', width: 2 * r + 'px', height: 2 * r + 'px', zIndex: 1500 }); d.dataset.p = Math.random() * 6; world.appendChild(d); }
+  start();
+});
+let water = () => {};
+// 큰 물건(나무·집) 뒤에 주인공이 가려지면 그 물건을 반쯤 투명하게(위치브룩처럼)
+const TALL = [];
+function fadeTall() {
+  for (const t of TALL) { const w = t.im.naturalWidth, h = t.im.naturalHeight; if (h < 150 || w < 100) continue;   // 가로등처럼 가는 것은 그대로
+    const behind = hero.y < t.base && hero.y > t.y + h * 0.15 && hero.x > t.x + 8 && hero.x < t.x + w - 8 && hero.y - 110 < t.y + h;
+    const o = behind ? '0.55' : ''; if (t.im.style.opacity !== o) t.im.style.opacity = o; } }
+
+// 날리는 것: 반딧불·나뭇잎(캔버스 하나에 그림)
+const fx = mk(W, H, 'left:0;top:0;z-index:2000;pointer-events:none'), fg = fx.getContext('2d'); world.appendChild(fx);
+const flies = Array.from({ length: 24 }, () => ({ x: Math.random() * W, y: 40 + Math.random() * (H - 80), p: Math.random() * 99 }));
+const leaves = [], LC = ['#d9822b', '#b85c23', '#c9a23a', '#7d9a3a'];
+function particles(t, dt) {
+  fg.clearRect(0, 0, W, H);
+  for (const f of flies) { const x = f.x + 16 * Math.sin(t / 2100 + f.p), y = f.y + 10 * Math.sin(t / 1400 + f.p * 2), a = .5 + .5 * Math.sin(t / 650 + f.p);
+    fg.fillStyle = `rgba(255,220,120,${(a * .35).toFixed(2)})`; fg.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3); fg.fillStyle = `rgba(255,240,170,${a.toFixed(2)})`; fg.fillRect(Math.round(x), Math.round(y), 1, 1); }
+  if (leaves.length < 10 && Math.random() < .03) leaves.push({ x: Math.random() * W, y: -4, vx: 6 + Math.random() * 10, vy: 12 + Math.random() * 10, p: Math.random() * 9, c: LC[Math.random() * 4 | 0] });
+  for (let k = leaves.length - 1; k >= 0; k--) { const l = leaves[k]; l.x += (l.vx + 14 * Math.sin(t / 500 + l.p)) * dt; l.y += l.vy * dt; if (l.y > H + 4) { leaves.splice(k, 1); continue; }
+    fg.fillStyle = l.c; const s = Math.sin(t / 300 + l.p) > 0; fg.fillRect(Math.round(l.x), Math.round(l.y), s ? 2 : 1, s ? 1 : 2); }
+}
+
+// 주인공(픽셀랩 원래 크기 그대로: 칸 100x130, 발 50,125. 걷기 그림 한 장에 0~3줄 대각선, 4줄 아래, 5줄 위)
+const ROW = { SE: 0, SW: 1, NW: 2, NE: 3, S: 4, N: 5 };
+const hero = { x: 150, y: 320, dir: 'SE', dist: 0, moving: false };
+const el = document.createElement('div'); el.style.cssText = 'position:absolute;left:0;top:0';
+el.innerHTML = '<div class="sh"></div><div class="spr"></div>'; world.appendChild(el);
+const spr = el.lastChild; let lastBp = ''; window.__hero = hero;   // 시험 도구용
+function drawHero(t) {
+  const ns = hero.dir === 'S' || hero.dir === 'N';
+  let c = hero.moving ? Math.floor(((hero.dist / 116) % 1) * 8) * 2 : (ns ? 16 : ((t % 2600) < 1100 ? 17 : 16));
+  const bp = `${-c * 100}px ${-ROW[hero.dir] * 130}px`;
+  if (bp !== lastBp) { spr.style.backgroundPosition = bp; lastBp = bp; }
+  el.style.transform = `translate(${Math.round(hero.x)}px,${Math.round(hero.y)}px)`; el.style.zIndex = Math.round(hero.y);
+}
+function face(dx, dy) { if (Math.abs(dx) < Math.abs(dy) * 0.42) hero.dir = dy > 0 ? 'S' : 'N'; else hero.dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW'); }
+
+// 누른 곳까지 길 찾기(4칸 격자)
+const C = 4, GW = Math.ceil(W / C), GH = Math.ceil(H / C);
+function path(x0, y0, x1, y1) {
+  const ok = (i) => can((i % GW + .5) * C, ((i / GW | 0) + .5) * C);
+  let t = (y1 / C | 0) * GW + (x1 / C | 0);
+  if (!ok(t)) { let best = -1, bd = 1e9; for (let i = 0; i < GW * GH; i++) if (ok(i)) { const d = Math.hypot((i % GW + .5) * C - x1, ((i / GW | 0) + .5) * C - y1); if (d < bd) { bd = d; best = i; } } if (best < 0 || bd > 90) return null; t = best; }
+  const s = (y0 / C | 0) * GW + (x0 / C | 0), from = new Int32Array(GW * GH).fill(-2), q = [s]; from[s] = -1;
+  for (let h = 0; h < q.length && from[t] === -2; h++) { const i = q[h], x = i % GW, y = i / GW | 0;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const j = ny * GW + nx; if (from[j] !== -2 || !ok(j)) continue; from[j] = i; q.push(j); } }
+  if (from[t] === -2) return null;
+  const pts = []; for (let i = t; i >= 0; i = from[i]) pts.push([(i % GW + .5) * C, ((i / GW | 0) + .5) * C]); pts.reverse(); pts[0] = [x0, y0];
+  const los = (p, q) => { const L = Math.hypot(q[0] - p[0], q[1] - p[1]), n = Math.ceil(L / 3); for (let k = 1; k < n; k++) if (!can(p[0] + (q[0] - p[0]) * k / n, p[1] + (q[1] - p[1]) * k / n)) return false; return true; };
+  const out = [pts[0]]; let a = 0;
+  while (a < pts.length - 1) { let b = pts.length - 1; while (b > a + 1 && !los(pts[a], pts[b])) b--; out.push(pts[b]); a = b; }
+  return out;
+}
+let route = null; const keys = {};
+addEventListener('keydown', e => { keys[e.key] = 1; route = null; });
+addEventListener('keyup', e => { keys[e.key] = 0; });
+view.addEventListener('pointerdown', e => { const x = (e.clientX - cam.x) / S, y = (e.clientY - cam.y) / S; const p = path(hero.x, hero.y, x, y); if (p) { route = p; route.i = 1; } });
+
+let S = 2; const cam = { x: 0, y: 0 };
+// 기본은 본게임처럼 멀리(주인공 키 = 화면 높이의 약 9%), 단추로 두 배 가까이
+let near = 0;
+function fit() { const b = Math.max(.5, Math.round(Math.min(innerHeight, innerWidth * 1.4) * .09 / 130 * 4) / 4); S = near ? b * 2 : b; }
+addEventListener('resize', fit); fit();
+const SP = 150;
+function start() {
+  let last = performance.now(), wt = 0;
+  const glows = [...world.querySelectorAll('.glow')];
+  function frame(t) {
+    const dt = Math.min(.05, (t - last) / 1000); last = t;
+    let dx = (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0), dy = (keys.ArrowDown || keys.s ? 1 : 0) - (keys.ArrowUp || keys.w ? 1 : 0);
+    hero.moving = false;
+    if (dx || dy) { const L = Math.hypot(dx, dy); dx /= L; dy /= L; const nx = hero.x + dx * SP * dt, ny = hero.y + dy * SP * dt;
+      if (can(nx, ny)) { hero.x = nx; hero.y = ny; } else if (can(nx, hero.y)) hero.x = nx; else if (can(hero.x, ny)) hero.y = ny;
+      face(dx, dy); hero.moving = true; hero.dist += SP * dt; }
+    else if (route) { const p = route[route.i], ddx = p[0] - hero.x, ddy = p[1] - hero.y, L = Math.hypot(ddx, ddy), st = SP * dt;
+      if (L <= st) { hero.x = p[0]; hero.y = p[1]; if (++route.i >= route.length) route = null; } else { hero.x += ddx / L * st; hero.y += ddy / L * st; face(ddx, ddy); }
+      hero.moving = true; hero.dist += Math.min(L, st); }
+    drawHero(t); fadeTall();
+    water(t, dt);
+    particles(t, dt);
+    for (const g of glows) g.style.opacity = (0.85 + 0.15 * Math.sin(t / 260 + +g.dataset.p) * Math.sin(t / 97 + +g.dataset.p)).toFixed(3);
+    const vw = innerWidth, vh = innerHeight;
+    let cx = vw / 2 - hero.x * S, cy = vh / 2 - (hero.y - 50) * S;
+    cx = W * S <= vw ? (vw - W * S) / 2 : Math.min(0, Math.max(vw - W * S, cx));
+    cy = H * S <= vh ? (vh - H * S) / 2 : Math.min(0, Math.max(vh - H * S, cy));
+    cam.x = Math.round(cx); cam.y = Math.round(cy);
+    world.style.transform = `translate(${cam.x}px,${cam.y}px) scale(${S})`;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+for (const b of document.querySelectorAll('#bar button')) b.addEventListener('pointerdown', e => e.stopPropagation());
+const bWalk = document.getElementById('bWalk'), bStar = document.getElementById('bStar'), bZoom = document.getElementById('bZoom');
+const bRamp = document.getElementById('bRamp'); let rampOn = false;
+const setRamp = () => { for (const i of world.querySelectorAll('img')) if (i.src.includes('o_ramp')) i.style.display = rampOn ? '' : 'none'; bRamp.textContent = rampOn ? '문턱의 별 이전 보기' : '문턱의 별 이후 보기'; bRamp.classList.toggle('on', rampOn); };
+bRamp.onclick = () => { rampOn = !rampOn; setRamp(); }; setTimeout(setRamp, 1500); setTimeout(setRamp, 4000);   // 경사로는 문턱의 별을 올린 뒤에 생김
+bZoom.onclick = () => { near = 1 - near; fit(); bZoom.textContent = near ? '멀리 보기' : '가까이 보기'; };
+bWalk.onclick = () => { bWalk.classList.toggle('on'); walk.style.display = bWalk.classList.contains('on') ? '' : 'none'; };
+// 별 찾기: 주인공 자리에서 빛이 퍼지며 색과 밝기를 되찾음. 다시 누르면 먹색으로
+const burst = document.getElementById('burst');
+bStar.onclick = () => {
+  const ink = world.classList.toggle('ink');
+  bStar.textContent = ink ? '별 찾기 (색 되찾기)' : '다시 먹색으로';
+  if (ink) return;
+  burst.width = innerWidth; burst.height = innerHeight; const g = burst.getContext('2d'), x = cam.x + hero.x * S, y = cam.y + (hero.y - 60) * S, t0 = performance.now();
+  burst.style.opacity = 1;
+  (function f(t) { const a = Math.min(1, (t - t0) / 1600), R = 40 + a * Math.hypot(innerWidth, innerHeight);
+    g.clearRect(0, 0, burst.width, burst.height);
+    const gr = g.createRadialGradient(x, y, 0, x, y, R); gr.addColorStop(0, `rgba(255,236,170,${(.55 * (1 - a)).toFixed(2)})`); gr.addColorStop(.7, `rgba(255,210,120,${(.25 * (1 - a)).toFixed(2)})`); gr.addColorStop(1, 'rgba(255,200,100,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, burst.width, burst.height);
+    for (let k = 0; k < 40; k++) { const an = k * 2.399, r = R * (0.3 + 0.7 * ((k * 37) % 100) / 100); g.fillStyle = `rgba(255,245,200,${(1 - a).toFixed(2)})`; g.fillRect(Math.round(x + Math.cos(an) * r), Math.round(y + Math.sin(an) * r * .7), 3, 3); }
+    if (a < 1) requestAnimationFrame(f); else burst.style.opacity = 0; })(t0);
+};
+setTimeout(() => document.getElementById('tip').style.display = 'none', 6000);
+})();
+</script></body></html>
