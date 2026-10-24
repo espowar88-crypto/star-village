@@ -1222,7 +1222,7 @@ G.mapView = (parent, o = {}) => {
     c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'destination-in'; c.drawImage(w.om, 0, 0);
     // 가려진 부분에 인물을 흐리게
     const sh = sheets[w.src] || (sheets[w.src] = Object.assign(new Image(), { src: G.asset(w.src) }));
-    if (sh.complete && sh.naturalWidth) { const k = sh.naturalWidth / (w.live ? 43 : 9) / 100; c.globalCompositeOperation = 'source-atop'; c.globalAlpha = 0.35; c.imageSmoothingEnabled = false; c.drawImage(sh, (w.c ?? w.frame) * 100 * k, (w.r ?? ROW[w.dir]) * 130 * k, 100 * k, 130 * k, 0, 0, 100, 130); }
+    if (sh.complete && sh.naturalWidth) { const k = sh.naturalWidth / (w.live ? 43 : 9) / 100; c.globalCompositeOperation = 'source-atop'; c.globalAlpha = w.el.classList.contains('hero') ? 0.4 : 0.35;   /* 10/24 col1024: 주인공은 지붕 뒤에서도 윤곽이 잘 보이게 */ c.imageSmoothingEnabled = false; c.drawImage(sh, (w.c ?? w.frame) * 100 * k, (w.r ?? ROW[w.dir]) * 130 * k, 100 * k, 130 * k, 0, 0, 100, 130); }
     c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
     cv.style.display = ''; w.hid = true;
   }
@@ -2548,25 +2548,27 @@ G.map = (() => {
   }
   function freeStep(dt) {   // 10/24 선생님: 1~2초 걸으면 달리기로 부드럽게, 손을 떼면 천천히 느려지며 섬
     const f = FR, kv = f.kv(); let ix = kv ? kv[0] : f.vx, iy = kv ? kv[1] : f.vy, mag = Math.min(1, Math.hypot(ix, iy));
-    if (mag >= 0.15) freeTapEnd(); else if (f.path && hero) {   // 땅을 눌러 걷기: 다음 길 점으로(조이스틱·방향키를 쓰면 그만둠)
+    const manual = mag >= 0.15;
+    if (manual) freeTapEnd(); else if (f.path && hero) {   // 땅을 눌러 걷기: 다음 길 점으로(조이스틱·방향키를 쓰면 그만둠)
       while (f.path.length > 1 && Math.hypot(f.path[0][0] - hero.x, f.path[0][1] - hero.y) < 14) f.path.shift();
       const q = f.path[0], ddx = q[0] - hero.x, ddy = q[1] - hero.y, dd = Math.hypot(ddx, ddy);
       if (f.path.length === 1 && dd < 10) freeTapEnd(); else { ix = ddx / (dd || 1); iy = ddy / (dd || 1); mag = 1; }
     }
     const can = hero && f.mask && !walking && G.busy === 0 && !G.paused && G.screen === 'map' && G.st.done.includes('meet_lumi') && !G.$('#game').classList.contains('talking') && !G.overlayUp(dt);   // 대화·퍼즐 창이 떠 있으면 안 움직임(키보드)
+    if (manual) { const a = Math.atan2(iy, ix); let b = DIR8[0], bd = 9; for (const d of DIR8) { const e = Math.abs(Math.atan2(Math.sin(a - d), Math.cos(a - d))); if (e < bd) { bd = e; b = d; } } ix = Math.cos(b) * mag; iy = Math.sin(b) * mag; }   // 8방향으로 맞춤
     const go = can && mag >= 0.15, W = FREE_W;
     if (!can) { f.cx = f.cy = 0; f.run = f.hold = 0; }
     f.hold = go && mag > 0.5 ? f.hold + dt : go ? Math.max(0, f.hold - dt) : 0;
     f.run = f.hold > 2 ? Math.min(1, f.run + dt / 1.2) : Math.max(0, f.run - dt / (go ? 0.8 : 0.5));   // 1.2초 뒤 0.8초에 걸쳐 달리기로
     const sp = go ? W.speed * mag * (1 + (W.runMax - 1) * f.run) : 0, tx = go ? ix / mag * sp : 0, ty = go ? iy / mag * sp : 0;
-    const k = Math.min(1, dt * (go ? 7 : 3.2)); f.cx = (f.cx || 0) + (tx - (f.cx || 0)) * k; f.cy = (f.cy || 0) + (ty - (f.cy || 0)) * k;   // 출발은 빨리, 멈춤은 천천히(약 0.6초)
+    const k = Math.min(1, dt * (go ? 9 : 25)); f.cx = (f.cx || 0) + (tx - (f.cx || 0)) * k; f.cy = (f.cy || 0) + (ty - (f.cy || 0)) * k;   // 출발은 빨리, 멈춤은 천천히(약 0.6초)
     const v = Math.hypot(f.cx, f.cy);
-    if (v < 25 && !go) {
+    if (v < 40 && !go) {
       f.cx = f.cy = 0;
       if (f.moved && hero) { f.moved = false; hero.frame = 8; hero.rc = -1; hero.draw(); freeNear(); }
       return;
     }
-    if (!f.moved) { f.moved = true; f.used = true; f.gt = gait(hero); clearHint(); Mp.userCam = false; }
+    if (!f.moved) { f.moved = true; f.used = true; f.gt = gait(hero, FREE_GAIT); clearHint(); Mp.userCam = false; }
     let dx = f.cx * dt, dy = f.cy * dt; const ux = f.cx / (v || 1), uy = f.cy / (v || 1);
     if (!freeOk(hero.x + dx, hero.y + dy)) for (const a of [0.45, -0.45, 0.9, -0.9, 1.3, -1.3]) {   // 10/24 move1024: 비스듬히 막히면 조금씩 꺾어 벽을 따라 미끄러짐(빠르기는 꺾인 만큼 줄임)
       const c = Math.cos(a), sn = Math.sin(a), rx = (dx * c - dy * sn) * c, ry = (dx * sn + dy * c) * c;
@@ -2574,8 +2576,11 @@ G.map = (() => {
     }
     if (!freeOk(hero.x + dx, hero.y + dy)) { if (freeOk(hero.x + dx, hero.y)) { dy = 0; f.cy *= 0.5; } else if (freeOk(hero.x, hero.y + dy)) { dx = 0; f.cx *= 0.5; } else { dx = dy = 0; f.cx = f.cy = 0; } }   // 벽을 따라 미끄러짐
     const dm = Math.hypot(dx, dy);
-    if (dm > 0) { hero.set(hero.x + dx, hero.y + dy); hero.face(dx, dy); } else if (go) hero.face(ix, iy);
-    f.gt.adv(dm || 0.0001, go ? 1e9 : Math.max(0.001, v * 0.3), Math.min(1, f.run * (v / Math.max(1, W.speed))), ux, uy); hero.draw();   // 멈출 때는 남은 거리를 알려 두 발을 모으며 섬
+    const fc = (x, y) => {   // 10/24 col1024: 그림은 대각선 4방향뿐 → 똑바로 위·아래·옆으로 갈 때는 앞서 보던 쪽을 이어 봄(방향 깜빡임 없음)
+      const e = Math.abs(x) > 1e-3 ? Math.sign(x) : (/E$/.test(hero.dir) ? 1 : -1), n = Math.abs(y) > 1e-3 ? Math.sign(y) : (/^S/.test(hero.dir) ? 1 : -1); hero.face(e, n); };
+    if (go) fc(ix, iy);
+    if (dm > 0) hero.set(hero.x + dx, hero.y + dy);
+    f.gt.adv(dm || 0.0001, go ? 1e9 : Math.max(0.001, v * 0.06), Math.min(1, f.run * (v / Math.max(1, W.speed))), ux, uy); hero.draw();   // 멈출 때는 남은 거리를 알려 두 발을 모으며 섬
     freeNear();
   }
   function freeNear() {   // 멈춰 선 곳 가까이 열린 장소가 있으면 [들어가기] (걷는 동안은 숨김)
@@ -2589,7 +2594,9 @@ G.map = (() => {
     if (best === FR.near) return;
     FR.near = best; if (best) showEnter(best); else clearEnter();
   }
-  const FREE_W = { speed: 250, runMax: 1.6 };   // 10/24 선생님 move1024: 자유 이동 걷기 250, 달리기 최고 400(2초 넘게 끝까지 밀 때 천천히)
+  const FREE_W = { speed: 250, runMax: 1.28 };   // 10/24 선생님 move1024: 자유 이동 걷기 250 → col1024: 달리기 최고 320(2초 넘게 끝까지 밀 때 천천히)
+  const FREE_GAIT = { walk: 70, run: 80, runMax: 1.28, end: 30 };   // 10/24 col1024: 한 걸음 거리를 줄여 발이 덜 미끄러지게(걷기 94→70)
+  const DIR8 = [0, Math.atan2(1, 2), Math.PI / 2, Math.PI - Math.atan2(1, 2), Math.PI, -Math.PI + Math.atan2(1, 2), -Math.PI / 2, -Math.atan2(1, 2)];   // 10/24 col1024: 8방향(대각선 = 쿼터뷰 길 기울기 1:2)
   function freeTapEnd() { const f = FR; if (!f) return; f.path = null; if (f.ring) { f.ring.remove(); f.ring = null; } }
   function freeTap(mx, my) {   // 10/24 move1024: 누른 곳(또는 가장 가까운 걸을 수 있는 곳)까지 칸 지도로 길 찾기(8방향 BFS)
     const f = FR, k = f && f.mask; if (!k || !hero) return false;
@@ -2618,10 +2625,12 @@ G.map = (() => {
     const s = G.stage.ws * V.cam.z, vw = G.stage.W / s, vh = G.stage.H / s, m = 70 / s;
     const tx = np && np.marker[0], ty = np && np.marker[1] - 40, out = np && (Math.abs(tx - V.cam.x) > vw / 2 - m || Math.abs(ty - V.cam.y) > vh / 2 - m);
     if (!out) { if (f.arrow) { f.arrow.remove(); f.arrow = null; } return; }
-    if (!f.arrow) { f.arrow = G.el('div', 'np-arrow', V.fx); f.arrow.setAttribute('aria-hidden', 'true');
-      Object.assign(f.arrow.style, { position: 'absolute', left: 0, top: 0, width: '0', height: '0', borderTop: '22px solid transparent', borderBottom: '22px solid transparent', borderLeft: '40px solid #ffd75e', filter: 'drop-shadow(0 0 4px rgba(0,0,0,.6))', pointerEvents: 'none', transformOrigin: '0 0' }); }
+    const AI = G.D.places.map.arrowImg;   // 10/24 선생님: 픽셀랩 화살표 그림(오른쪽을 가리키게 그린 것)
+    if (!f.arrow) { f.arrow = G.el(AI ? 'img' : 'div', 'np-arrow', V.fx); f.arrow.setAttribute('aria-hidden', 'true');
+      if (AI) { f.arrow.src = G.asset(AI); f.arrow.alt = ''; Object.assign(f.arrow.style, { position: 'absolute', left: 0, top: 0, width: '40px', height: '40px', imageRendering: 'pixelated', filter: 'drop-shadow(0 0 3px rgba(0,0,0,.55))', pointerEvents: 'none', transformOrigin: '0 0' }); }
+      else Object.assign(f.arrow.style, { position: 'absolute', left: 0, top: 0, width: '0', height: '0', borderTop: '22px solid transparent', borderBottom: '22px solid transparent', borderLeft: '40px solid #ffd75e', filter: 'drop-shadow(0 0 4px rgba(0,0,0,.6))', pointerEvents: 'none', transformOrigin: '0 0' }); }
     const a = Math.atan2(ty - V.cam.y, tx - V.cam.x), hw = vw / 2 - m, hh = vh / 2 - m, t = Math.min(hw / Math.abs(Math.cos(a) || 1e-6), hh / Math.abs(Math.sin(a) || 1e-6));
-    f.arrow.style.transform = `translate(${(V.cam.x + Math.cos(a) * t).toFixed(1)}px,${(V.cam.y + Math.sin(a) * t).toFixed(1)}px) scale(${(1 / s).toFixed(3)}) rotate(${a.toFixed(3)}rad) translate(-20px,-22px)`;
+    f.arrow.style.transform = `translate(${(V.cam.x + Math.cos(a) * t).toFixed(1)}px,${(V.cam.y + Math.sin(a) * t).toFixed(1)}px) scale(${(1 / s).toFixed(3)}) rotate(${a.toFixed(3)}rad) translate(-20px,${AI ? -20 : -22}px)`;
   }
   function freeGuide(dt) {   // 루미가 다음 갈 곳까지 길을 따라 앞서 날기 (조이스틱을 쓴 뒤에만)
     const f = FR; if (!f.used || !hero || walking || G.reduced()) return null;
@@ -2646,7 +2655,7 @@ G.map = (() => {
   //  남는 미끄러짐 비율은 걷기 약 2.3배·달리기 약 3배(전에는 5.6배·6배 넘음, 주민은 1.3~2.2배). 그림을 바꾸지 않고 줄일 수 있는 한계(검토/가림_길_걷기_1016/수정/걷기)
   //  발소리·발자국은 앞발이 땅에 닿는 칸(걷기 1·5칸, 달리기 1·4칸)을 지날 때마다. 멈출 때는 마지막 60px 안에서 위상을 살짝 당기거나 늦춰 두 발이 모이는 칸(0·4)에서 서게 함
   const GAIT = Mp.GAIT = { walk: 94, run: 108, runMax: 1.93, end: 60 };   // 10/16 선생님: 걷기 360→300→280(더 차분하게), 달리기 최고는 540px/초 그대로(280×1.93). 한 주기 거리 94(초당 약 24칸, 미끄러짐 약 2배)·달리기 108(약 2.4배)
-  function gait(w) {
+  function gait(w, GAIT = Mp.GAIT) {
     const g = { u: 0, lock: null, n: 0 };
     // dist = 이번에 간 거리, rem = 남은 거리, a = 달리기 정도(0~1), (ux, uy) = 가는 방향
     g.adv = (dist, rem, a, ux, uy) => {
@@ -2919,6 +2928,15 @@ G.map = (() => {
     if (trailEl || !V || !hero) return;
     const names = G.mapPath(Mp.node(G.st.place), p.node); const pts = names.map(n => G.D.places.nodes[n]);
     pts[0] = [hero.x, hero.y]; pts.push([p.marker[0], p.marker[1] + 70]);
+    const TI = G.D.places.map.trailImg;   // 10/24 선생님: 길 점을 픽셀랩 그림으로 (정해진 간격마다, 차례로 반짝임)
+    if (TI) {
+      trailEl = G.el('div', 'trail-px', V.fx); trailEl.style.zIndex = 2998; let left = 0, n = 0;
+      for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]), ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+        let d = left; for (; d < L; d += TI.gap) { const e = G.el('img', '', trailEl); e.src = G.asset(TI.src); e.alt = '';
+          Object.assign(e.style, { position: 'absolute', left: (a[0] + (b[0] - a[0]) * d / L - TI.size / 2) + 'px', top: (a[1] + (b[1] - a[1]) * d / L - TI.size / 2) + 'px', width: TI.size + 'px', height: TI.size + 'px', imageRendering: 'pixelated', animationDelay: (n++ * 0.12) + 's', transform: TI.turn ? `rotate(${(ang + Math.PI / 2).toFixed(3)}rad)` : '' }); }
+        left = d - L; }
+      V.fx.appendChild(trailEl); if (V.markers[p.id]) V.markers[p.id].m.style.transform = 'scale(1.25)'; return;
+    }
     const ns = 'http://www.w3.org/2000/svg';
     trailEl = document.createElementNS(ns, 'svg'); trailEl.setAttribute('class', 'trail'); trailEl.setAttribute('width', V.W); trailEl.setAttribute('height', V.H); trailEl.style.zIndex = 2998;
     const path = document.createElementNS(ns, 'path'); path.setAttribute('d', 'M' + pts.map(q => q[0] + ' ' + q[1]).join(' L')); trailEl.appendChild(path);
@@ -12960,8 +12978,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-24)';
-G.BUILT = '2026-10-24 21:44';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-25)';
+G.BUILT = '2026-10-25 03:24';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false };
 G.applySettings = () => {
   const s = G.settings;
