@@ -1036,17 +1036,20 @@ G.mapView = (parent, o = {}) => {
     const sync = () => {
       const vis = col.style.visibility !== 'hidden', op = col.style.opacity === '' ? 1 : +col.style.opacity, mk = col.style.maskImage || col.style.webkitMaskImage, full = !mk || mk === 'none';
       const zs = MOOD.zones.filter(z => (V.alpha[z.id] || 0) >= 0.003);
+      // 10/25 선생님(지도도 장소 안만큼 선명하게): 큰 그림 조각은 화면 둘레(0.3 화면 여유)에 닿는 것만 켜고, 한 화면 넘게 멀어져야 끔 → 메모리는 화면 몇 장 몫, 걸어갈 때 빈칸 없음
+      const near = V.camRect(0.3), far = V.camRect(1), hit = (t, R) => !R || (t.x < R[2] && t.x + t.w > R[0] && t.y < R[3] && t.y + t.h > R[1]);
+      const inV = (t) => hit(t, near) || (t.on && hit(t, far));
       col.tiles.forEach((t, i) => {
-        const cn = vis && op > 0.003 && (full || zs.some(z => box(z, t)));
+        const cn = vis && op > 0.003 && (full || zs.some(z => box(z, t))) && inV(t);
         let mn = true;
         if (cn && op >= 0.999) { mn = !full; if (mn) { mn = false; for (let a = 0; a <= 8 && !mn; a++) for (let b = 0; b <= 8; b++) if (V.colorAlphaAt(t.x + t.w * a / 8, t.y + t.h * b / 8) < 0.999) { mn = true; break; } } }
-        col.need(i, cn); mono.need(i, mn);
+        col.need(i, cn); mono.need(i, mn && inV(mono.tiles[i]));
       });
       if (readyRes) { const r = readyRes; readyRes = null; Promise.all([mono.decode(), col.decode()]).then(r); }
     };
     let raf = 0; const later = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; sync(); }); };
     new MutationObserver(later).observe(col, { attributes: true, attributeFilter: ['style'] }); later();
-    V.tileSync = sync;
+    V.tileSync = sync; V.tileLater = later;
   }
   if (M.thumb) { const th = new Image(); th.onload = () => { V.colorThumb = th; }; th.src = G.asset(M.thumb); }   // 땅 색 읽기(mapfx)용 아주 작은 컬러 그림
 
@@ -1215,8 +1218,8 @@ G.mapView = (parent, o = {}) => {
     if (!D || !w.el.isConnected || w.el.style.display === 'none') { cv.style.display = 'none'; w.hid = false; return; }
     if (!V.inCam(w.x, w.y, 300)) { cv.style.display = 'none'; w.hid = false; w.occLater = true; occFree(w); return; }   // 10/16 휴대폰 끊김: 화면 밖 인물은 가림 계산을 미룸(화면에 들어오면 V.cull이 다시)
     w.occLater = false;
-    const a = w.age || 1, fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50 * a, y0 = fy - 125 * a;   // 10/15: 줄어든 인물은 발 둘레의 더 좁은 땅을 봄
-    const okey = fx + ',' + fy + ',' + a;
+    const a = (w.age || 1) * (M.charK || 1), fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50 * a, y0 = fy - 125 * a;   // 10/15: 줄어든 인물은 발 둘레의 더 좁은 땅을 봄
+    const okey = fx + ',' + fy + ',' + a;   // 10/25 a = 연령 × 지도 인물 배율(css .occ scale과 같게. 전에는 연령만이라 가림 조각이 어긋나 모자이크처럼 보였음)
     if (w.okey !== okey) {
       w.okey = okey;
       // 10/10 선생님(전망대): 발밑이 언덕 윗면이면 언덕 아래 땅 높이를 발 높이로 (위에 선 인물을 언덕·언덕 위 집이 가리지 않게)
@@ -1278,7 +1281,8 @@ G.mapView = (parent, o = {}) => {
   };
   // 10/16 선생님(꽃집 앞 휴대폰 끊김): 지도 인물 31명을 늘 다 그리던 것 → 화면 밖(여유 250)은 숨기고, 가림 계산을 미뤄 둔 인물은 들어올 때 다시
   V.inCam = (x, y, m) => { if (!V.cam) return true; const s = G.stage.ws * V.cam.z; if (!s || !G.stage.W) return true; return Math.abs(x - V.cam.x) < G.stage.W / 2 / s + m && Math.abs(y - V.cam.y) < G.stage.H / 2 / s + m; };
-  V.cull = () => { if (!V.walkers) return; for (const w of V.walkers) { const on = V.inCam(w.x, w.y, 250), v = on ? '' : 'hidden'; if (w.el.style.visibility !== v) w.el.style.visibility = v; if (on && w.occLater) V.occDirty(w); } };
+  V.camRect = (m) => { const s = V.cam && G.stage.ws * V.cam.z; if (!s || !G.stage.W) return null; const hw = G.stage.W / 2 / s * (1 + 2 * m), hh = G.stage.H / 2 / s * (1 + 2 * m); return [V.cam.x - hw, V.cam.y - hh, V.cam.x + hw, V.cam.y + hh]; };   // 화면에 보이는 지도 칸(+여유 m 화면)
+  V.cull = () => { const c = V.cam, q = V._tc; if (V.tileLater && (!q || Math.abs(c.x - q.x) > 160 || Math.abs(c.y - q.y) > 160 || c.z !== q.z)) { V._tc = { ...c }; V.tileLater(); }   /* 조각 다시 고르기는 카메라가 조금 움직였을 때만 */ if (!V.walkers) return; for (const w of V.walkers) { const on = V.inCam(w.x, w.y, 250), v = on ? '' : 'hidden'; if (w.el.style.visibility !== v) w.el.style.visibility = v; if (on && w.occLater) V.occDirty(w); } };
   V.toScreen = (x, y) => { const s = G.stage.ws * V.cam.z; return [G.stage.W / 2 + (x - V.cam.x) * s, G.stage.H / 2 + (y - V.cam.y) * s]; };
   return V;
 };
@@ -1289,7 +1293,7 @@ G.mapTiles = (V, T, key, cls) => {
   const px = (T.pxOf && T.pxOf[key]) || T.px, tw = V.W / T.cols, th = V.H / T.rows, pw = px[0] / T.cols, ph = px[1] / T.rows;   // pxOf: 흑백만 반 크기 조각 등
   d.tiles = []; d.naturalWidth = px[0]; d.naturalHeight = px[1]; d.ver = 0; d.src = 'tiles:' + T[key]; d.complete = true;
   for (let r = 0; r < T.rows; r++) for (let c = 0; c < T.cols; c++) {
-    const im = G.el('img', '', d); im.alt = ''; im.draggable = false; Object.assign(im.style, { position: 'absolute', left: c * tw + 'px', top: r * th + 'px', width: tw + 'px', height: th + 'px', display: 'block' });
+    const im = G.el('img', '', d); im.alt = ''; im.draggable = false; im.decoding = 'async'; Object.assign(im.style, { position: 'absolute', left: c * tw + 'px', top: r * th + 'px', width: tw + 'px', height: th + 'px', display: 'block' });
     im.onload = () => { d.ver++; }; d.tiles.push({ im, x: c * tw, y: r * th, w: tw, h: th, sx: c * pw, sy: r * ph, sw: pw, sh: ph, url: G.asset(T[key] + r + c + T.ext), on: false });
   }
   d.need = (i, on) => { const t = d.tiles[i]; if (t.on === on) return; t.on = on; clearTimeout(t.tm); if (on) { if (!t.im.getAttribute('src')) t.im.src = t.url; } else t.tm = setTimeout(() => { if (!t.on) t.im.removeAttribute('src'); }, 700); };
@@ -2402,6 +2406,7 @@ G.map = (() => {
     }
     // 주인공과 루미
     hero = V.walker('assets/chars/walk_hero.png', 'hero');
+    fitGait();
     const n = G.D.places.nodes[Mp.node(G.st.place)]; hero.set(n[0], n[1]); hero.frame = 8; hero.dir = 'SE'; hero.draw();
     lumi = G.el('div', 'lumi-f', V.fx); const li = G.el('img', '', lumi); li.src = G.asset('assets/chars/lumi.png'); li.alt = '';
     if (G.deco) G.deco.dress(lumi);   // 10/11 루미 꾸미기 장식
@@ -2412,6 +2417,8 @@ G.map = (() => {
     for (const d of G.D.mood.villagers) if (d.from <= stage && !(G.settings.light && vills.length >= 2)) vills.push(Object.assign(makeVillager(d, stage), { id: d.id }));
     // 10/12 선생님(동물 5종 시안 통과): 지도 곳곳 동물 (data/animals.json 지도 그림 이름별, 그림 assets/chars/ani_<그림>.png = 검토/픽셀랩128_1012/원본/도구/anisheet.py). 가벼운 모드면 없음
     if (G.D.places.map.sceneMap) placeNpcs();   // 10/24 A안: 할 일이 남은 야외 장소의 사람을 지도에도 그 자리에
+    if (G.D.places.map.fountains && !G.settings.light && !G.reduced()) fountains(G.D.places.map.fountains);   // 10/25 선생님(분수대 물이 지도에서 안 흐름)
+    if (G.D.places.map.envFx && !G.settings.light && !G.reduced()) envFx(G.D.places.map.envFx);   // 10/25 선생님(장소 안처럼 나무 흔들림·굴뚝 연기도 지도에서)
     if (!G.settings.light) for (const a of (G.D.animals || {})[((/(map2?)(?:_px)?_color/.exec(G.D.places.map.color) || [])[1] || '') + '_color'] || []) anis.push(makeAnimal(a));
     // 카메라는 주인공을 따라감 (갈 곳 쪽으로 조금 치우침)
     // 10/10 선생님(지도 생동감 1): 1.4배 가까이 보기 (V.zBase = 예전 보기, 휠·두 손가락으로 예전만큼 멀리까지 뺄 수 있음)
@@ -2476,7 +2483,7 @@ G.map = (() => {
   // ---- 10/2 선생님: 지도를 끌면 시점만 옮김 (장소를 누르면 다시 주인공을 따라감) ----
   Mp.userCam = false;
   // 10/9 수정안 3단계: 지도 확대 (휠, 두 손가락). 1배~2배. 확대하면 모두의 지도 표시가 보임
-  const ZDEF = 2.1, ZMAX = 2 * ZDEF;   // 10/25 선생님: 1.5배 더 가까이(1.4 → 2.1). 10/10: 처음 보기가 이만큼이라 확대 끝·모두의 지도 표시도 그만큼 (표시는 처음 보기보다 1.3배 더 가까이)
+  const ZDEF = 1.96, ZMAX = 2 * ZDEF;   // 10/25 선생님: 장소 안과 같은 배율로(2.1 → 1.96, 인물은 charK로 장소 안 크기). 그 전 1.5배 더 가까이(1.4 → 2.1). 10/10: 처음 보기가 이만큼이라 확대 끝·모두의 지도 표시도 그만큼 (표시는 처음 보기보다 1.3배 더 가까이)
   // 10/10 선생님: 휴대폰에서 지도를 멀리 빼면 메모리가 모자라 페이지가 다시 켜짐(이어서 하기 화면) → 휴대폰은 처음 보기보다 멀리 못 뺌(확대는 그대로, PC·태블릿·전자칠판은 그대로)
   const PHONE = /iPhone|iPod/.test(navigator.userAgent) || /Android.*Mobile/.test(navigator.userAgent);
   function zoomTo(z) { if (!V) return; const z0 = V.zBase || (V.zBase = V.cam.z), zt = z0 * ZDEF * 1.3; V.setCam(V.cam.x, V.cam.y, Math.max(PHONE ? z0 * ZDEF : z0, Math.min(z0 * ZMAX, z))); V.fx.classList.toggle('zoomed', V.cam.z >= zt); Mp.userCam = true; if (V.cam.z < zt) V.fx.querySelectorAll('.acc-tip').forEach(t => t.remove()); }
@@ -2540,6 +2547,67 @@ G.map = (() => {
   }
   Mp.snapFade = snapFade; Mp.toMapCam = toMapCam;
   // 할 일이 남은(열린) 야외 장소: 장면 속 사람 그림을 지도의 같은 자리·같은 크기로 세움(확대해 들어가면 그대로 이어짐). 같은 사람이 주민으로 걷고 있으면 그 주민은 숨김
+  // 10/25 선생님(장소 안의 나무 흔들림 같은 것도 지도에서, 최대한 가볍게): 장면(scene.js G.sceneEnvFx)과 같은 나무 그림(fx_v2_*)을 같은 자리에 겹쳐 흔듦.
+  //  나무는 800개 남짓이라 화면 둘레에 있는 것만 만들고(0.4초마다 다시 고름) 멀어지면 지움. 색은 그 자리 색이 돌아온 만큼(colorAlphaAt). 굴뚝 연기는 CSS 움직임만(화면 밖이면 멈춤)
+  function envFx(F) {
+    if (!document.getElementById('map-fx-css')) { const st = document.createElement('style'); st.id = 'map-fx-css';
+      st.textContent = '.mfxu{position:absolute;left:0;top:0;pointer-events:none}.mfxu .tw{position:absolute;transform-origin:50% 100%;animation:mfxsway 4.2s ease-in-out infinite;will-change:transform}.mfxu .tw i{position:absolute;inset:0;background-size:100% 100%;image-rendering:pixelated}'
+        + '@keyframes mfxsway{0%,100%{transform:skewX(-.9deg)}50%{transform:skewX(.9deg)}}.mfxu .sm{position:absolute;width:22px;height:22px;margin:-11px;border-radius:50%;background:radial-gradient(rgba(225,225,232,.8),rgba(225,225,232,0) 70%);animation:mfxsmoke 5.4s linear infinite;opacity:0}'
+        + '@keyframes mfxsmoke{0%{transform:translate(0,0) scale(.5);opacity:.45}100%{transform:translate(34px,-110px) scale(2.4);opacity:0}}.mfxu .off .sm,.mfxu.pause .tw,.mfxu.pause .sm{animation-play-state:paused}';
+      document.head.appendChild(st); }
+    const D0 = V, U = G.el('div', 'mfxu', null); V.el.insertBefore(U, V.fx); const live = new Map(), SP = F.sprite;
+    const smoke = F.chim.map(([x, y]) => { const g = G.el('div', '', U); for (let i = 0; i < 3; i++) { const p = G.el('div', 'sm', g); Object.assign(p.style, { left: x + 'px', top: y + 'px', animationDelay: (-i * 1.8).toFixed(1) + 's' }); } return { g, x, y }; });
+    // 느린 기기는 저절로 가볍게(장면 G.sceneEnvFx와 같은 생각): 지도가 뜬 뒤 3초 평균이 초당 45장 밑이면 나무 흔들림을 끄고 분수는 1초 10번
+    { let n = 0, t0 = 0; const probe = (t) => { if (V !== D0) return; if (!t0) t0 = t; n++; if (t - t0 < 3000) return requestAnimationFrame(probe); if (n * 1000 / (t - t0) < 45) { Mp.fxLite = true; for (const [, d] of live) d.e.remove(); live.clear(); } }; setTimeout(() => requestAnimationFrame(probe), 2000); }   // 처음 2초(조각 그림 풀기)는 빼고 잼
+    const MAXT = 28, tint = () => { for (const [t, d] of live) { const m = V.colorAlphaAt(t[1] + t[3] / 2, t[2] + t[4] * .8) < 0.5 ? '_m' : ''; if (d.m !== m) { d.m = m; d.c.style.backgroundImage = `url("${G.asset(SP + t[0] + m + '.png')}")`; } } };
+    let tq = 0; new MutationObserver(() => { if (!tq) tq = requestAnimationFrame(() => { tq = 0; tint(); }); }).observe(V.colorImg, { attributes: true, attributeFilter: ['style'] });
+    const pick = () => {
+      if (V !== D0 || !U.isConnected) return; setTimeout(pick, 400);
+      U.classList.toggle('pause', G.screen !== 'map' || !!G.paused || document.hidden);
+      const R = V.camRect(0.05), R2 = V.camRect(0.4); if (!R) return; const inR = (t, Q) => t[1] < Q[2] && t[1] + t[3] > Q[0] && t[2] < Q[3] && t[2] + t[4] > Q[1];
+      for (const [t, d] of live) if (!inR(t, R2)) { d.e.remove(); live.delete(t); }
+      // 측정(휴대폰 크기, 느린 그래픽): 흔드는 나무가 100개 넘으면 초당 장면 수가 절반 → 화면 안 나무 가운데 가까운 MAXT개만, 그림도 한 장(색이 반 넘게 돌았으면 컬러, 아니면 흑백)
+      const cx = V.cam.x, cy = V.cam.y, want = F.trees.filter(t => !t[0].startsWith('bush') && inR(t, R)).sort((a, b) => Math.hypot(a[1] + a[3] / 2 - cx, a[2] + a[4] - cy) - Math.hypot(b[1] + b[3] / 2 - cx, b[2] + b[4] - cy)).slice(0, MAXT);
+      for (const t of Mp.fxLite ? [] : want) {
+        if (live.has(t) || live.size >= MAXT + 8) continue;
+        const e = G.el('div', 'tw', U); Object.assign(e.style, { left: t[1] + 'px', top: t[2] + 'px', width: t[3] + 'px', height: t[4] + 'px', animationDelay: (-Math.random() * 4.2).toFixed(2) + 's', animationDuration: (4.2 + Math.random()) + 's' });
+        const c = G.el('i', '', e); live.set(t, { e, c, m: null });
+      }
+      tint();
+      for (const s of smoke) s.g.classList.toggle('off', !(s.x > R2[0] && s.x < R2[2] && s.y > R2[1] && s.y < R2[3]));
+    };
+    pick();
+  }
+  // 10/25 선생님(광장 분수 물이 지도에서는 멈춰 있음): 시안(preview-plaza-topdown)의 물줄기·물결·반짝임을 지도에도. 분수 그림(512x448) 칸 위에 캔버스, 화면 안일 때만 1초 20번, 캔버스는 반 크기(측정: 무거움을 줄임)
+  function fountains(F) {
+    const [FW, FH] = F.size, BP = F.bpix, D0 = V;
+    const STREAMS = [[222, 124, 158], [294, 124, 158], [258, 126, 160], [182, 208, 282], [334, 208, 282], [212, 210, 300], [304, 210, 300]];
+    const FS = F.at.map(([x, y, mir]) => { const c = G.el('canvas', 'map-fountain', V.fx); c.width = FW / 2; c.height = FH / 2; const g = c.getContext('2d'); g.scale(.5, .5);
+      Object.assign(c.style, { position: 'absolute', left: x + 'px', top: y + 'px', width: FW * F.k + 'px', height: FH * F.k + 'px', zIndex: Math.round(y + FH * F.k) + 2, pointerEvents: 'none', imageRendering: 'pixelated' });
+      return { c, g, x: x + FW * F.k / 2, y: y + FH * F.k / 2, mir, drops: [], rings: [], sparks: [] }; });
+    let last = 0, acc = 0;
+    const step = (t) => {
+      if (V !== D0 || !FS[0].c.isConnected) return;
+      requestAnimationFrame(step); const dt = Math.min(0.1, last ? (t - last) / 1000 : 0); last = t; acc += dt; if (acc < (Mp.fxLite ? 1 / 10 : 1 / 20)) return; const d = acc; acc = 0;
+      for (const S of FS) {
+        if (!V.inCam(S.x, S.y, 200)) { if (S.drops.length) { S.drops.length = 0; S.g.clearRect(0, 0, FW, FH); } continue; }
+        const g = S.g, X = (x) => Math.round(S.mir ? FW - 1 - x : x); g.clearRect(0, 0, FW, FH);
+        for (let k = 0; k < 2; k++) S.drops.push({ x: 258 + (Math.random() * 4 - 2), y: 86, vx: Math.random() * 56 - 28, vy: -45 - Math.random() * 28, end: 112 });
+        for (const [sx, sy, ey] of STREAMS) if (Math.random() < .55) S.drops.push({ x: sx + (Math.random() * 3 - 1.5), y: sy, vx: (sx - 258) * .05, vy: 15 + Math.random() * 10, end: ey });
+        for (let k = S.drops.length - 1; k >= 0; k--) { const p = S.drops[k]; p.vy += 260 * d; p.x += p.vx * d; p.y += p.vy * d;
+          if (p.vy > 0 && p.y > p.end) { S.drops.splice(k, 1); continue; }
+          g.fillStyle = 'rgba(225,244,255,.9)'; g.fillRect(X(p.x), Math.round(p.y), 2, 3); g.fillStyle = 'rgba(200,230,255,.35)'; g.fillRect(X(p.x), Math.round(p.y - p.vy * .03), 2, 3); }
+        if (S.sparks.length < 18 && Math.random() < .6) { const [x, y] = BP[Math.random() * BP.length | 0]; S.sparks.push({ x, y, t0: t }); }
+        for (let k = S.sparks.length - 1; k >= 0; k--) { const s = S.sparks[k], a = (t - s.t0) / 800; if (a > 1) { S.sparks.splice(k, 1); continue; }
+          g.fillStyle = `rgba(235,248,255,${(Math.sin(a * Math.PI) * .85).toFixed(2)})`; g.fillRect(X(s.x), s.y, 3, 2); }
+        if (S.rings.length < 6 && Math.random() < .08) { const [x, y] = BP[Math.random() * BP.length | 0]; S.rings.push({ x, y, t0: t }); }
+        for (let k = S.rings.length - 1; k >= 0; k--) { const r = S.rings[k], a = (t - r.t0) / 1400; if (a > 1) { S.rings.splice(k, 1); continue; }
+          const rx = 2 + a * 8, ry = rx * .42; g.fillStyle = `rgba(210,235,255,${((1 - a) * .6).toFixed(2)})`;
+          for (let q = 0; q < 24; q++) { const an = q / 24 * Math.PI * 2; g.fillRect(X(r.x + Math.cos(an) * rx), Math.round(r.y + Math.sin(an) * ry), 2, 1); } }
+      }
+    };
+    requestAnimationFrame(step);
+  }
   function placeNpcs() {
     const SM = G.D.places.map.sceneMap, d = (m) => G.st.done.includes(m), shown = new Set(), npcs = [];
     for (const p of G.D.places.places) {
@@ -2551,7 +2619,7 @@ G.map = (() => {
         if (sp.awayBetween && d(sp.awayBetween[0]) && !d(sp.awayBetween[1])) continue;
         const r = sp.at2 && d(sp.at2.after) ? sp.at2.rect : sp.rect, k = zm[2], x = zm[0] + r[0] * k, y = zm[1] + r[1] * k, w = r[2] * k, h = r[3] * k;
         const im = G.el('img', 'map-npc', V.fx); im.src = G.asset(sp.img); im.alt = ''; im.draggable = false;
-        Object.assign(im.style, { position: 'absolute', left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', zIndex: Math.round(y + h), imageRendering: 'pixelated', cursor: 'pointer' });
+        Object.assign(im.style, { position: 'absolute', left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', zIndex: Math.round(y + h), imageRendering: 'pixelated', cursor: 'pointer', objectFit: 'contain', objectPosition: '50% 100%' });   // 10/25 선생님(지도에서 윤슬·누리가 옆으로 늘어남): 장면 칸보다 그림이 좁아도 늘이지 않고 발 기준 그대로
         G.onTap(im, () => tapPlace(p)); shown.add(sp.id); npcs.push({ im, x: x + w / 2, y: y + h, h });
       }
     }
@@ -2712,6 +2780,16 @@ G.map = (() => {
   //  남는 미끄러짐 비율은 걷기 약 2.3배·달리기 약 3배(전에는 5.6배·6배 넘음, 주민은 1.3~2.2배). 그림을 바꾸지 않고 줄일 수 있는 한계(검토/가림_길_걷기_1016/수정/걷기)
   //  발소리·발자국은 앞발이 땅에 닿는 칸(걷기 1·5칸, 달리기 1·4칸)을 지날 때마다. 멈출 때는 마지막 60px 안에서 위상을 살짝 당기거나 늦춰 두 발이 모이는 칸(0·4)에서 서게 함
   const GAIT = Mp.GAIT = { walk: 94, run: 108, runMax: 1.93, end: 60 };   // 10/16 선생님: 걷기 360→300→280(더 차분하게), 달리기 최고는 540px/초 그대로(280×1.93). 한 주기 거리 94(초당 약 24칸, 미끄러짐 약 2배)·달리기 108(약 2.4배)
+  // 10/25 선생님(아직 미끄러지는 느낌): 한 걸음 주기를 그림 속 실제 보폭에 맞춤 = 장면(scene.js SCENE_GAIT)과 같은 셈 116 × 1.15 × 그림 배율(charK/2, 반 크기 칸) × 연령 배율.
+  //  옛 값(걷기 70)은 인물이 0.75일 때도 실제 보폭의 1.6배라 발이 땅 위를 미끄러졌음. 걷기 빠르기는 다리가 초당 3.5주기를 넘지 않게(그 위는 발이 흐려 보임)
+  const GAIT0 = { ...Mp.GAIT }, FREE_W0 = { ...FREE_W }, FREE_GAIT0 = { ...FREE_GAIT };
+  function fitGait() {
+    const M = G.D.places.map; Object.assign(GAIT, GAIT0); Object.assign(FREE_W, FREE_W0); Object.assign(FREE_GAIT, FREE_GAIT0);
+    if (!M.charK || !M.gait) return;
+    const cyc = 116 * 1.15 * M.charK / 2 * G.ageScale('assets/chars/walk_hero.png');
+    Object.assign(FREE_GAIT, { walk: cyc, run: cyc * 1.14 }); FREE_W.speed = M.gait.free;
+    const ws = G.D.places.walk.speed; Object.assign(GAIT, { walk: Math.max(cyc, ws / M.gait.cad), run: Math.max(cyc * 1.14, ws * GAIT.runMax / M.gait.cad / 1.4) });
+  }
   function gait(w, GAIT = Mp.GAIT) {
     const g = { u: 0, lock: null, n: 0 };
     // dist = 이번에 간 거리, rem = 남은 거리, a = 달리기 정도(0~1), (ux, uy) = 가는 방향
@@ -2988,9 +3066,10 @@ G.map = (() => {
     const TI = G.D.places.map.trailImg;   // 10/24 선생님: 길 점을 픽셀랩 그림으로 (정해진 간격마다, 차례로 반짝임)
     if (TI) {
       trailEl = G.el('div', 'trail-px', V.fx); trailEl.style.zIndex = 2998; let left = 0, n = 0;
+      const grp = [0, 1, 2, 3].map(i => { const g = G.el('div', 'tg', trailEl); g.style.animationDelay = (i * 0.4) + 's'; return g; });   // 10/25 선생님(길 안내 때 끊김): 점마다 깜빡이지 않고 네 묶음만 깜빡임(차례로 반짝이는 느낌은 그대로)
       for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]), ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
-        let d = left; for (; d < L; d += TI.gap) { const e = G.el('img', '', trailEl); e.src = G.asset(TI.src); e.alt = '';
-          Object.assign(e.style, { position: 'absolute', left: (a[0] + (b[0] - a[0]) * d / L - TI.size / 2) + 'px', top: (a[1] + (b[1] - a[1]) * d / L - TI.size / 2) + 'px', width: TI.size + 'px', height: TI.size + 'px', imageRendering: 'pixelated', animationDelay: (n++ * 0.12) + 's', transform: TI.turn ? `rotate(${(ang + Math.PI / 2).toFixed(3)}rad)` : '' }); }
+        let d = left; for (; d < L; d += TI.gap) { const e = G.el('img', '', grp[n++ % 4]); e.src = G.asset(TI.src); e.alt = '';
+          Object.assign(e.style, { position: 'absolute', left: (a[0] + (b[0] - a[0]) * d / L - TI.size / 2) + 'px', top: (a[1] + (b[1] - a[1]) * d / L - TI.size / 2) + 'px', width: TI.size + 'px', height: TI.size + 'px', imageRendering: 'pixelated', transform: TI.turn ? `rotate(${(ang + Math.PI / 2).toFixed(3)}rad)` : '' }); }
         left = d - L; }
       V.fx.appendChild(trailEl); if (V.markers[p.id]) V.markers[p.id].m.style.transform = 'scale(1.25)'; return;
     }
@@ -9767,6 +9846,22 @@ G.s4 = (() => {
       bs.forEach(place);
       let sel = null, arrs = [], fin = false;
       const clearArr = () => { arrs.forEach(a => a.remove()); arrs = []; };
+      // 10/25 선생님(아이폰에서 상자가 안 움직임): 손가락이 조금만 움직여도 사파리가 누르기를 끌기로 보고 놓침 → 상자를 길게 놓인 쪽으로 끌어도 한 칸씩 밀림 (화살표 누르기도 그대로)
+      S.B.style.touchAction = 'none';   // 판 위에서는 화면 밀기 없음 → 화살표 누르기도 놓치지 않음
+      bs.forEach(b => {
+        let st = null; b.e.style.touchAction = 'none';
+        b.e.addEventListener('pointerdown', (e) => { if (fin || G.dialog.active || G.paused) return; st = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false }; try { b.e.setPointerCapture(e.pointerId); } catch (_) { } });
+        b.e.addEventListener('pointermove', (e) => {
+          if (!st || e.pointerId !== st.id || fin) return;
+          const k = S.B.getBoundingClientRect().width / S.W, v = b.o === 'v', d = (v ? e.clientY - st.y : e.clientX - st.x) / k;
+          if (Math.abs(d) < CS * 0.45) return;
+          const dir = d > 0 ? 1 : -1; if (!canMove(b, dir)) return;
+          if (sel !== b) select(b);
+          move(b, dir); st.moved = true; if (v) st.y += dir * CS * k; else st.x += dir * CS * k;
+        });
+        const up = (e) => { if (!st || e.pointerId !== st.id) return; if (st.moved) { G._suppressClick = true; setTimeout(() => G._suppressClick = false, 60); } st = null; };
+        b.e.addEventListener('pointerup', up); b.e.addEventListener('pointercancel', up);
+      });
       function select(b) {
         if (fin || G.dialog.active) return; G.help.poke(); G.audio.sfx('sfx_tap', 0.4);
         if (sel) sel.e.classList.remove('sel'); sel = b; b.e.classList.add('sel'); clearArr();
@@ -13129,7 +13224,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-25)';
-G.BUILT = '2026-10-25 20:26';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-25 22:38';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
