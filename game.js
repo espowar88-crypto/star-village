@@ -1026,6 +1026,7 @@ G.mapView = (parent, o = {}) => {
   // 10/23 선생님 '두 장 겹치지 말고 구역별로': M.tiles가 있으면(새 마을 지도) 흑백·컬러를 조각으로 나눠, 보이는 데 필요한 조각만 불러옴
   //  컬러 조각 = 색이 도는 구역이 닿는 조각만, 흑백 조각 = 색이 다 덮지 못한 조각만 → 늘 지도 한 장 남짓. 조각 묶음(div)은 img처럼 style·mask를 그대로 받음
   const T = M.tiles;
+  const LOW = matchMedia('(pointer: coarse)').matches;
   const mono = T ? G.mapTiles(V, T, 'mono', 'bg map-mono') : G.el('img', 'bg', V.imgs), col = V.colorImg = T ? G.mapTiles(V, T, 'color', 'bg map-color') : G.el('img', 'bg map-color', V.imgs);
   if (!T) { mono.src = G.asset(M.mono); mono.width = V.W; mono.height = V.H; mono.alt = ''; col.src = G.asset(M.color); col.width = V.W; col.height = V.H; col.alt = ''; }
   V.fx = G.el('div', 'layer', el);        // 불빛, 표시, 인물 (위치는 지도 px)
@@ -1036,8 +1037,9 @@ G.mapView = (parent, o = {}) => {
     const sync = () => {
       const vis = col.style.visibility !== 'hidden', op = col.style.opacity === '' ? 1 : +col.style.opacity, mk = col.style.maskImage || col.style.webkitMaskImage, full = !mk || mk === 'none';
       const zs = MOOD.zones.filter(z => (V.alpha[z.id] || 0) >= 0.003);
+      // 10/25 아이폰 꽃집 들어가다 멈춤(메모리): 손가락 기기는 여유를 줄여 한꺼번에 풀린 조각 수를 줄임
       // 10/25 선생님(지도도 장소 안만큼 선명하게): 큰 그림 조각은 화면 둘레(0.3 화면 여유)에 닿는 것만 켜고, 한 화면 넘게 멀어져야 끔 → 메모리는 화면 몇 장 몫, 걸어갈 때 빈칸 없음
-      const near = V.camRect(0.3), far = V.camRect(1), hit = (t, R) => !R || (t.x < R[2] && t.x + t.w > R[0] && t.y < R[3] && t.y + t.h > R[1]);
+      const near = V.camRect(LOW ? 0.15 : 0.3), far = V.camRect(LOW ? 0.5 : 1), hit = (t, R) => !R || (t.x < R[2] && t.x + t.w > R[0] && t.y < R[3] && t.y + t.h > R[1]);
       const inV = (t) => hit(t, near) || (t.on && hit(t, far));
       col.tiles.forEach((t, i) => {
         const cn = vis && op > 0.003 && (full || zs.some(z => box(z, t))) && inV(t);
@@ -1049,7 +1051,7 @@ G.mapView = (parent, o = {}) => {
     };
     let raf = 0; const later = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; sync(); }); };
     new MutationObserver(later).observe(col, { attributes: true, attributeFilter: ['style'] }); later();
-    V.tileSync = sync; V.tileLater = later;
+    V.tileSync = sync; V.tileLater = later; V.tileSets = [mono, col];
   }
   if (M.thumb) { const th = new Image(); th.onload = () => { V.colorThumb = th; }; th.src = G.asset(M.thumb); }   // 땅 색 읽기(mapfx)용 아주 작은 컬러 그림
 
@@ -2383,7 +2385,7 @@ G.map = (() => {
   Mp.hide = () => {
     offs.forEach(f => f()); offs = []; vills = []; anis = [];
     G.resizers.delete(onResize);
-    if (V) { V.gone = true; V.el.remove(); V = null; Mp.V = null; }   // 10/15 메모리: 장면에 있는 동안 지난 지도 전체가 남던 것
+    if (V) { V.gone = true; V.el.querySelectorAll('img').forEach(i => i.removeAttribute('src')); V.el.remove(); V = null; Mp.V = null; }   // 10/25 아이폰 멈춤: 큰 지도 조각을 GC 기다리지 않고 바로 놓음   // 10/15 메모리: 장면에 있는 동안 지난 지도 전체가 남던 것
     walking = null; hero = null; lumi = null; trailEl = null; arrowEl = null; clearEnter();
     G.help.off();
   };
@@ -2535,7 +2537,7 @@ G.map = (() => {
     return new Promise(res => { let t = 0; const off = G.every(dt => { if (V !== v0) { off(); res(); return; } t = Math.min(1, t + dt / dur); const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; V.setCam(a.x + (to.x - a.x) * e, a.y + (to.y - a.y) * e, a.z * Math.pow(to.z / a.z, e)); if (t >= 1) { off(); res(); } }); offs.push(off); });
   }
   function snapFade(snap) {   // 새 화면 그림이 다 풀린 뒤 지난 화면 사본을 흐리게 지움
-    let n = 0; const go = () => { const imgs = [...G.$('#world').querySelectorAll('img.bg')].filter(i => !snap.contains(i)); if (n++ < 40 && imgs.some(i => i.getAttribute('src') && !i.complete)) return setTimeout(go, 60); snap.style.transition = 'opacity .35s'; snap.style.opacity = 0; setTimeout(() => snap.remove(), 400); };
+    let n = 0; const go = () => { const imgs = [...G.$('#world').querySelectorAll('img.bg')].filter(i => !snap.contains(i)); if (n++ < 40 && imgs.some(i => i.getAttribute('src') && !i.complete)) return setTimeout(go, 60); snap.style.transition = 'opacity .35s'; snap.style.opacity = 0; setTimeout(() => { snap.querySelectorAll('img').forEach(i => i.removeAttribute('src')); snap.remove(); }, 400); };
     setTimeout(go, 60);
   }
   async function zoomIntoScene(sc, zm) {
@@ -2543,6 +2545,9 @@ G.map = (() => {
     try { await camTween(toMapCam(zm, sceneStartCam(sc)), 0.9); } finally { G.busy = Math.max(0, G.busy - 1); Mp.camFree = false; }
     if (!V) return;
     const snap = V.el.cloneNode(true); snap.style.pointerEvents = 'none'; snap.style.zIndex = 50;
+    { const R = V.camRect(0.02), hit = (t) => R && t.x < R[2] && t.x + t.w > R[0] && t.y < R[3] && t.y + t.h > R[1];   // 10/25 아이폰 멈춤: 사본에는 화면에 보이는 조각만 남기고 나무 흔들림·분수는 뺌(장면 그림이 풀리는 동안 지도 몇 장 몫이 겹치지 않게)
+      (V.tileSets || []).forEach((d, k) => { const cs = snap.querySelectorAll(k ? '.map-color > img' : '.map-mono > img'); d.tiles.forEach((t, i) => { if (cs[i] && !hit(t)) cs[i].removeAttribute('src'); }); });
+      snap.querySelectorAll('.mfxu, canvas').forEach(e => e.remove()); }
     G.scene.enter(sc); G.$('#world').appendChild(snap); snapFade(snap);
   }
   Mp.snapFade = snapFade; Mp.toMapCam = toMapCam;
@@ -2551,7 +2556,7 @@ G.map = (() => {
   //  나무는 800개 남짓이라 화면 둘레에 있는 것만 만들고(0.4초마다 다시 고름) 멀어지면 지움. 색은 그 자리 색이 돌아온 만큼(colorAlphaAt). 굴뚝 연기는 CSS 움직임만(화면 밖이면 멈춤)
   function envFx(F) {
     if (!document.getElementById('map-fx-css')) { const st = document.createElement('style'); st.id = 'map-fx-css';
-      st.textContent = '.mfxu{position:absolute;left:0;top:0;pointer-events:none}.mfxu .tw{position:absolute;transform-origin:50% 100%;animation:mfxsway 4.2s ease-in-out infinite;will-change:transform}.mfxu .tw i{position:absolute;inset:0;background-size:100% 100%;image-rendering:pixelated}'
+      st.textContent = '.mfxu{position:absolute;left:0;top:0;pointer-events:none}.mfxu .tw{position:absolute;transform-origin:50% 100%;animation:mfxsway 4.2s ease-in-out infinite}.mfxu .tw i{position:absolute;inset:0;background-size:100% 100%;image-rendering:pixelated}'
         + '@keyframes mfxsway{0%,100%{transform:skewX(-.9deg)}50%{transform:skewX(.9deg)}}.mfxu .sm{position:absolute;width:22px;height:22px;margin:-11px;border-radius:50%;background:radial-gradient(rgba(225,225,232,.8),rgba(225,225,232,0) 70%);animation:mfxsmoke 5.4s linear infinite;opacity:0}'
         + '@keyframes mfxsmoke{0%{transform:translate(0,0) scale(.5);opacity:.45}100%{transform:translate(34px,-110px) scale(2.4);opacity:0}}.mfxu .off .sm,.mfxu.pause .tw,.mfxu.pause .sm{animation-play-state:paused}';
       document.head.appendChild(st); }
@@ -2559,7 +2564,7 @@ G.map = (() => {
     const smoke = F.chim.map(([x, y]) => { const g = G.el('div', '', U); for (let i = 0; i < 3; i++) { const p = G.el('div', 'sm', g); Object.assign(p.style, { left: x + 'px', top: y + 'px', animationDelay: (-i * 1.8).toFixed(1) + 's' }); } return { g, x, y }; });
     // 느린 기기는 저절로 가볍게(장면 G.sceneEnvFx와 같은 생각): 지도가 뜬 뒤 3초 평균이 초당 45장 밑이면 나무 흔들림을 끄고 분수는 1초 10번
     { let n = 0, t0 = 0; const probe = (t) => { if (V !== D0) return; if (!t0) t0 = t; n++; if (t - t0 < 3000) return requestAnimationFrame(probe); if (n * 1000 / (t - t0) < 45) { Mp.fxLite = true; for (const [, d] of live) d.e.remove(); live.clear(); } }; setTimeout(() => requestAnimationFrame(probe), 2000); }   // 처음 2초(조각 그림 풀기)는 빼고 잼
-    const MAXT = 28, tint = () => { for (const [t, d] of live) { const m = V.colorAlphaAt(t[1] + t[3] / 2, t[2] + t[4] * .8) < 0.5 ? '_m' : ''; if (d.m !== m) { d.m = m; d.c.style.backgroundImage = `url("${G.asset(SP + t[0] + m + '.png')}")`; } } };
+    const MAXT = matchMedia('(pointer: coarse)').matches ? 14 : 28, tint = () => { for (const [t, d] of live) { const m = V.colorAlphaAt(t[1] + t[3] / 2, t[2] + t[4] * .8) < 0.5 ? '_m' : ''; if (d.m !== m) { d.m = m; d.c.style.backgroundImage = `url("${G.asset(SP + t[0] + m + '.png')}")`; } } };
     let tq = 0; new MutationObserver(() => { if (!tq) tq = requestAnimationFrame(() => { tq = 0; tint(); }); }).observe(V.colorImg, { attributes: true, attributeFilter: ['style'] });
     const pick = () => {
       if (V !== D0 || !U.isConnected) return; setTimeout(pick, 400);
@@ -3304,6 +3309,8 @@ G.sceneView = (parent, id, o = {}) => {
   V.setMood = (stage) => {
     const z = G.D.mood.zones.find(q => q.id === (S.zone || id)); const a = z ? z.alpha[Math.max(0, Math.min(5, stage))] : 0;
     col.style.opacity = a; col.style.visibility = a > 0.003 ? '' : 'hidden';
+    // 10/25 메모리 4번: 색이 다 돌아온 장소는 밑에 깔린 흑백 바탕을 비움(색이 바뀌는 .8초 뒤). 다시 흐려지면 되불러옴
+    clearTimeout(V._monoT); if (a >= 1) V._monoT = setTimeout(() => (col.decode ? col.decode() : Promise.resolve()).then(() => { if (!V.gone && +col.style.opacity >= 1 && col.naturalWidth) { mono.style.visibility = 'hidden'; mono.removeAttribute('src'); } }, () => { }), 1000); else if (!mono.getAttribute('src')) { mono.src = G.asset(S.image.mono); mono.style.visibility = ''; }
     for (const l of V.lamps) l.el.classList.toggle('on', l.from <= stage);
     if (V.lamps.length && V.occs) for (const q of V.occs) V.occDirty(q);   // 10/16 가림 조각 속 등불 빛도
   };
@@ -3908,6 +3915,8 @@ G.scene = (() => {
       const zm = G.D.places.map.sceneMap && G.D.places.map.sceneMap[id] && !(G.townFrom && G.townFrom.id === id);
       if (zm) {   // 10/24 선생님 A안: 야외 장소에서 나오면 어두워지지 않고 지도가 그 자리에서 멀어짐(worldmap.js)
         const snap = V.el.cloneNode(true), cam = { ...V.cam }; snap.style.pointerEvents = 'none'; snap.style.zIndex = 50;
+        { const ms = snap.querySelector('img.bg'), c = V.colorImg; if (ms && c && c.style.visibility !== 'hidden' && (c.style.opacity === '' || +c.style.opacity >= 0.999)) ms.remove();   // 10/25 메모리 1번: 사본에서 가려져 안 보이는 흑백 바탕·누를 곳 빛·캔버스는 뺌(나오는 동안 지도 그림과 겹치는 몫 줄임)
+          snap.querySelectorAll('.hot-glow, canvas').forEach(e => e.remove()); }
         const pr = G.map.show({ fromScene: { id, cam } }); G.$('#world').appendChild(snap); G.map.snapFade(snap); await pr; return;
       }
       G.$('#fade').classList.add('on'); await G.wait(0.45);
@@ -13223,8 +13232,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-25)';
-G.BUILT = '2026-10-25 22:38';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-26)';
+G.BUILT = '2026-10-26 07:46';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
@@ -13273,6 +13282,7 @@ G.flow = (() => {
     }
     G.st = st; G.save.write();
     try { sessionStorage.setItem('bs_play', String(st.slot)); } catch (_) { }   // 10/4: 놀던 중 화면이 새로 켜지면 처음 화면 대신 바로 이어 하기
+    G.$('#overlay').querySelectorAll('img').forEach(i => i.removeAttribute('src'));   // 10/25 메모리 2번: 제목 그림(약 19MB)을 GC 기다리지 않고 바로 놓음
     G.$('#overlay').innerHTML = '';
     if (!st.done.includes('meet_lumi')) F.intro();
     else F.resume();
