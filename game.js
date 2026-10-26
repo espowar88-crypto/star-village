@@ -47,6 +47,9 @@ G.litPath = (p) => {
 // 10/26 선생님 결정 g2: 장소·지도 그림은 AVIF(약 3분의 1 크기). 이 기기가 AVIF를 풀 수 있는지 처음에 한 번 봄(못 풀면 지금 그림)
 G.avif = false;
 try { const t = new Image(); t.onload = () => { G.avif = t.naturalWidth === 2; }; t.src = 'data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAADrbWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAAAAAAAOcGl0bQAAAAAAAQAAAB5pbG9jAAAAAEQAAAEAAQAAAAEAAAETAAAAKAAAAChpaW5mAAAAAAABAAAAGmluZmUCAAAAAAEAAGF2MDFDb2xvcgAAAABqaXBycAAAAEtpcGNvAAAAFGlzcGUAAAAAAAAAAgAAAAIAAAAQcGl4aQAAAAADCAgIAAAADGF2MUOBAAwAAAAAE2NvbHJuY2x4AAEADQAGgAAAABdpcG1hAAAAAAAAAAEAAQQBAoMEAAAAMG1kYXQSAAoIGAA2iAhoNCAyGhlHh4Yhh5555oAAAJBAyRxhSytNj1FFTqSg'; } catch (_) { }
+// 10/26 밤 선생님(아이폰 꽃집 사파리 멈춤): 사파리(아이폰·아이패드·맥, 아이폰 크롬도 속은 사파리)는 큰 그림에 필터·가림·섞기를 얹으면 화면 메모리를 몇 배로 씀
+//  → 흑백을 색 그림에서 만드는 방식(G.dusk)은 크롬·엣지·안드로이드만, 사파리는 흑백 그림을 그대로
+G.duskOK = !(/Safari\//.test(navigator.userAgent) && !/Chrome\/|Chromium\/|Edg\//.test(navigator.userAgent)) && !/iPhone|iPad|iPod/.test(navigator.userAgent) && !(/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 G.asset = (p) => { p = G.litPath(p); return (G.avif && window.AVIF && window.AVIF[p]) || (window.EMBED && window.EMBED[p]) || p; };
 // 10/20 선생님(PC·전자칠판에서 픽셀 인물 뭉개짐): 반 크기 걷기 그림(_h)은 휴대폰·메모리 적은 기기만. 픽셀랩 인물은 잔 점이라 반으로 줄이면 점 3/4이 사라짐
 G.halfSheet = /iPhone|iPod|Android.*Mobile/.test(navigator.userAgent) || (navigator.deviceMemory > 0 && navigator.deviceMemory < 4);
@@ -1122,7 +1125,7 @@ G.mapView = (parent, o = {}) => {
   //  컬러 조각 = 색이 도는 구역이 닿는 조각만, 흑백 조각 = 색이 다 덮지 못한 조각만 → 늘 지도 한 장 남짓. 조각 묶음(div)은 img처럼 style·mask를 그대로 받음
   const T = M.tiles;
   const LOW = matchMedia('(pointer: coarse)').matches;
-  const DW = T && /map2_mono_h_t$/.test(T.mono || '') ? T.mono.replace(/map2_mono_h_t$/, 'map2_warm.png') : null;   // 10/26 g3: 흑백 조각 대신 색 조각 + 저녁빛
+  const DW = G.duskOK && T && /map2_mono_h_t$/.test(T.mono || '') ? T.mono.replace(/map2_mono_h_t$/, 'map2_warm.png') : null;   // 10/26 g3: 흑백 조각 대신 색 조각 + 저녁빛
   const mono = T ? G.mapTiles(V, T, DW ? 'color' : 'mono', 'bg map-mono') : G.el('img', 'bg', V.imgs), col = V.colorImg = T ? G.mapTiles(V, T, 'color', 'bg map-color') : G.el('img', 'bg map-color', V.imgs);
   if (!T) { mono.src = G.asset(M.mono); mono.width = V.W; mono.height = V.H; mono.alt = ''; col.src = G.asset(M.color); col.width = V.W; col.height = V.H; col.alt = ''; }
   if (DW) { const wt = G.mapTiles(V, T, 'color', ''); const n0 = mono.need; mono.need = (i, on) => { n0(i, on); wt.need(i, on); }; G.dusk(mono, V.W, V.H, G.asset(DW), wt); }
@@ -3298,7 +3301,7 @@ G.sceneView = (parent, id, o = {}) => {
   V.home = () => (S.fest && !did(S.fest.until)) ? S.fest.cam : (S.cam || [W / 2, H / 2]);
   const el = V.el = G.el('div', 'world', parent); el.style.width = W + 'px'; el.style.height = H + 'px';
   if (S.pixel) el.classList.add('pix');   // 10/15 선생님(픽셀 배경 통합): 픽셀 장면만 점 그대로(css .world.pix)
-  const DW = /_v2_px_mono\.png$/.test(S.image.mono) ? S.image.mono.replace(/_px_mono\.png$/, '_warm.png') : null, MONO = DW ? S.image.color : S.image.mono;   // 10/26 g3: 흑백 그림 대신 색 그림 + 저녁빛
+  const DW = G.duskOK && /_v2_px_mono\.png$/.test(S.image.mono) ? S.image.mono.replace(/_px_mono\.png$/, '_warm.png') : null, MONO = DW ? S.image.color : S.image.mono;   // 10/26 g3: 흑백 그림 대신 색 그림 + 저녁빛
   const mono = V.monoImg = G.el('img', 'bg', el); mono.src = G.asset(MONO); mono.width = W; mono.height = H; mono.alt = '';
   const col = V.colorImg = G.el('img', 'bg', el); col.src = G.asset(S.image.color); col.width = W; col.height = H; col.alt = ''; col.style.transition = 'opacity .8s';
   if (DW) G.dusk(mono, W, H, G.asset(DW), G.asset(S.image.color));
@@ -13394,7 +13397,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-26)';
-G.BUILT = '2026-10-26 15:03';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-26 19:39';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
