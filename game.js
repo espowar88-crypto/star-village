@@ -29,9 +29,12 @@ G.CHAR_AGE = {
 };
 //  그림 자체가 다른 인물보다 작게 그려진 것(채이: 점 하나=시트 한 칸, 다른 인물 키 238px의 117px) → 연령 배율을 낼 때 나눠서 맞춤
 G.CHAR_ART_HEIGHT = { chaei: 117 / 238 };
+// 10/26 선생님(키 지침): 휠체어에 앉은 사람은 자기 선 키의 0.8 (앉은 머리 높이 = 바퀴의자 자리 + 앉은 키). 한결(v2, 어른) 0.8
+//  누리(아이)는 선생님이 한결과 같은 크기로(주인공의 0.94 = 0.85 × 0.94)
+G.CHAR_SEATED = { nuri: 0.94, v2: 0.8 };
 //  id 또는 그림 주소(walk_<id>.png, 장면 인물 id 'g_v4'·'bauFar'·'suhyeon2')로 배율을 냄
 G.charId = (s) => { if (!s) return ''; const m = /walk_([a-z0-9]+)/.exec(s); if (m) return m[1]; const id = String(s).replace(/^g_/, ''); return G.CHAR_AGE[id] ? id : id.replace(/(Far|\d)$/, ''); };
-G.ageScale = (s) => { const id = G.charId(s), a = G.CHAR_AGE[id]; return a ? G.CHARACTER_AGE_SCALE[a] / (G.CHAR_ART_HEIGHT[id] || 1) : 1; };
+G.ageScale = (s) => { const id = G.charId(s), a = G.CHAR_AGE[id]; return a ? G.CHARACTER_AGE_SCALE[a] / (G.CHAR_ART_HEIGHT[id] || 1) * (G.CHAR_SEATED[id] || 1) : 1; };
 // 10/15 선생님(픽셀 배경 통합): 화면 배율(그림 1점 → 기기 점)이 정수에서 15% 안이면 정수로 맞춤. 더 멀면 그대로(화면 구성이 크게 바뀌지 않게)
 G.pixSnap = (ws, z) => { const d = window.devicePixelRatio || 1, sd = ws * z * d, n = Math.round(sd); return n >= 1 && Math.abs(n - sd) <= sd * 0.15 ? n / (d * ws) : z; };
 G.lit = (id) =>((G.st && G.st.stars) || 0) >= (G.LIT[id] || 99);
@@ -2497,6 +2500,7 @@ G.map = (() => {
     fitGait();
     const n = G.D.places.nodes[Mp.node(G.st.place)]; hero.set(n[0], n[1]); hero.frame = 8; hero.dir = 'SE'; hero.draw();
     lumi = G.el('div', 'lumi-f', V.fx); const li = G.el('img', '', lumi); li.src = G.asset('assets/chars/lumi.png'); li.alt = '';
+    { const ls = 64 * G.ageScale('hero') * (G.D.places.map.charK || 1); Object.assign(lumi.style, { width: ls + 'px', height: ls + 'px', margin: `${-ls / 2}px 0 0 ${-ls / 2}px` }); }   // 10/26 선생님(키 지침): 루미·길별 점 하나 = 지도 주인공 점 하나(키가 주인공의 절반)
     if (G.deco) G.deco.dress(lumi);   // 10/11 루미 꾸미기 장식
     lumiPos.x = hero.x + 60; lumiPos.y = hero.y - 150; lumi.style.display = o.noLumi ? 'none' : '';
     placeLumi();
@@ -2711,6 +2715,10 @@ G.map = (() => {
         const r = sp.at2 && d(sp.at2.after) ? sp.at2.rect : sp.rect, k = zm[2], x = zm[0] + r[0] * k, y = zm[1] + r[1] * k, w = r[2] * k, h = r[3] * k;
         const im = G.el('img', 'map-npc', V.fx); im.src = G.asset(sp.img); im.alt = ''; im.draggable = false;
         Object.assign(im.style, { position: 'absolute', left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', zIndex: Math.round(y + h), imageRendering: 'pixelated', cursor: 'pointer', objectFit: 'contain', objectPosition: '50% 100%' });   // 10/25 선생님(지도에서 윤슬·누리가 옆으로 늘어남): 장면 칸보다 그림이 좁아도 늘이지 않고 발 기준 그대로
+        // 10/26 선생님(키 지침): 장소 안과 같은 키로. 장소(G.fitTall)는 칸보다 길쭉한 그림을 칸 너비에 맞춰 위로 늘려 그리므로 지도도 같게, 나이·휠체어 배율도 발 기준으로
+        const a = G.ageScale(sp.id); if (a !== 1) { im.style.scale = a; im.style.transformOrigin = '50% 100%'; }
+        const tall = () => { const nw = im.naturalWidth, nh = im.naturalHeight; if (!nw || !nh || nh / nw <= (h / w) * 1.04) return; const th = w * nh / nw; im.style.height = th + 'px'; im.style.top = (parseFloat(im.style.top) + h - th) + 'px'; };
+        if (im.complete) tall(); else im.addEventListener('load', tall, { once: true });
         G.onTap(im, () => tapPlace(p)); shown.add(sp.id); npcs.push({ im, x: x + w / 2, y: y + h, h });
       }
     }
@@ -3282,10 +3290,11 @@ G.sceneView = (parent, id, o = {}) => {
     if (sp.back) { v.back = addImg(sp.back.img, sp.back.rect, sp.id); v.back.style.transition = v.img.style.transition = 'opacity .5s'; }
     if (sp.lumi) {
       const l = V.lumi = G.el('div', 'scene-sprite', V.chars);   // 10/26 픽셀 루미: 64칸 그림을 장면 점 2칸으로 128
+      V.lh = 64 * G.ageScale('hero') * (S.roam ? S.roam.k : 1);   // 10/26 선생님(키 지침): 루미·길별 점 하나 = 주인공 점 하나 → 키가 주인공의 절반. V.lh = 루미 칸의 반
       l.style.zIndex = 9999; const li = G.el('img', '', l); li.src = G.asset('assets/chars/lumi.png'); li.alt = '';
       const la = G.ageScale(sp.id), r = sp.rect;   // 10/15: 주인공이 작아진 만큼 루미도 발 쪽으로
       V.lumiOff = [r[2] / 2 + (sp.lumi[0] - r[0] - r[2] / 2) * la, r[3] - (r[1] + r[3] - sp.lumi[1]) * la]; V.lumiAt = [r0[0] + V.lumiOff[0], r0[1] + V.lumiOff[1]];
-      Object.assign(l.style, { left: (V.lumiAt[0] - 64) + 'px', top: (V.lumiAt[1] - 64) + 'px', width: '128px', height: '128px' });
+      Object.assign(l.style, { left: (V.lumiAt[0] - V.lh) + 'px', top: (V.lumiAt[1] - V.lh) + 'px', width: 2 * V.lh + 'px', height: 2 * V.lh + 'px' });
       li.style.cssText = 'width:100%;height:100%;animation:bob 2.4s ease-in-out infinite';
     }
   }
@@ -3423,7 +3432,7 @@ G.sceneView = (parent, id, o = {}) => {
     const v = V.spr[k]; if (!v) return Promise.resolve(); const a = v.rect, dh = G.tallDh(v.img, a), dh2 = Math.max(0, (parseFloat(v.img.style.height) || a[3]) - rect[3]);
     const lu = k === 'hero' && V.lumi ? V.lumi : null;
     const set = (t) => { const x = a[0] + (rect[0] - a[0]) * t, y = a[1] - dh + (rect[1] - dh2 - a[1] + dh) * t; v.img.style.left = x + 'px'; v.img.style.top = y + 'px';
-      if (lu) { lu.style.left = (x + V.lumiOff[0] - 64) + 'px'; lu.style.top = (y + dh + V.lumiOff[1] - 64) + 'px'; } };
+      if (lu) { lu.style.left = (x + V.lumiOff[0] - V.lh) + 'px'; lu.style.top = (y + dh + V.lumiOff[1] - V.lh) + 'px'; } };
     v.rect = rect; if (lu) V.lumiAt = [rect[0] + V.lumiOff[0], rect[1] + V.lumiOff[1]];
     if (G.reduced() || !d) { set(1); return Promise.resolve(); }
     return G.tween(0, 1, d, set, 'io');
@@ -3469,7 +3478,7 @@ G.sceneView = (parent, id, o = {}) => {
       el.style.backgroundPosition = `${-f * cw}px ${-ROW[dir] * ch}px`;
       if (ws) { const g = wf[ROW[dir]], q = 2 * kk; Object.assign(ws.style, { left: (x - w.fx * kk + (g[0] - g[2] / 2) * q) + 'px', top: (y + w.foot - w.fy * kk + (g[1] - g[3] / 2) * q) + 'px', width: g[2] * q + 'px', height: g[3] * q + 'px', zIndex: el.style.zIndex, display: el.style.display }); }
       wx = x; wy = y; if (wo) V.occDirty(wo); if (V.onStep && k === 'hero') V.onStep(x, y);
-      if (lu) { lu.style.left = (x - rect[2] / 2 + V.lumiOff[0] - 64) + 'px'; lu.style.top = (y + 18 - rect[3] + V.lumiOff[1] - 64) + 'px'; } };
+      if (lu) { lu.style.left = (x - rect[2] / 2 + V.lumiOff[0] - V.lh) + 'px'; lu.style.top = (y + 18 - rect[3] + V.lumiOff[1] - V.lh) + 'px'; } };
     const hide = (on) => { v.img.style.visibility = on ? 'hidden' : ''; if (v.back) v.back.style.visibility = on ? 'hidden' : ''; };
     // 10/8 선생님: 걷기 그림이 다 불러지기 전에 서 있는 그림을 숨기면 잠깐 사라져 보임 → 그림이 준비된 뒤 바꿈
     const im = V.sheet(sheet);
@@ -3492,7 +3501,7 @@ G.sceneView = (parent, id, o = {}) => {
     const put = (f) => { el.style.left = (wx - w.fx * kk) + 'px'; el.style.top = (wy + w.foot - w.fy * kk) + 'px'; el.style.zIndex = Math.round(wy + w.foot); el.style.backgroundPosition = `${-f * cw}px ${-ROW[dir] * ch}px`;
       if (ws) { const g = wf[ROW[dir]], q = 2 * kk; Object.assign(ws.style, { left: (wx - w.fx * kk + (g[0] - g[2] / 2) * q) + 'px', top: (wy + w.foot - w.fy * kk + (g[1] - g[3] / 2) * q) + 'px', width: g[2] * q + 'px', height: g[3] * q + 'px', zIndex: el.style.zIndex }); }
       if (wo) V.occDirty(wo); if (V.onStep) V.onStep(wx, wy);
-      if (lu) { lu.style.left = (wx - rect[2] / 2 + V.lumiOff[0] - 64) + 'px'; lu.style.top = (wy + 18 - rect[3] + V.lumiOff[1] - 64) + 'px'; } };
+      if (lu) { lu.style.left = (wx - rect[2] / 2 + V.lumiOff[0] - V.lh) + 'px'; lu.style.top = (wy + 18 - rect[3] + V.lumiOff[1] - V.lh) + 'px'; } };
     v.img.style.visibility = 'hidden'; if (v.back) v.back.style.visibility = 'hidden'; put(lv ? 16 : 8);
     return {
       at: () => [wx, wy],
@@ -3848,7 +3857,7 @@ G.scene = (() => {
   }
   // 10/9 선생님: 인물을 누르면 주인공이 그 옆까지 픽셀 걸음으로 걸어감 (장면 걷기와 같은 빠르기, 빠르게 모드·움직임 줄이기면 바로 옆에 섬)
   // 10/23 선생님: 대화하는 두 사람이 서로 바라봄. 걷기 그림이 있는 사람은 그 서 있는 칸, 없으면 그림을 좌우로 뒤집음(S.faceL: 원래 왼쪽을 보는 그림)
-  const NPCW = { miru: 1.1111, duri: 1.1033, chief: 1, daon: 1 };   // 걷기 그림 배율(옛 장면 기준, 광장 gatherWalk와 같음)
+  const NPCW = { miru: 1, duri: 1, chief: 1, daon: 1 };   // 걷기 그림 배율(옛 장면 기준, 광장 gatherWalk와 같음). 10/26 키 지침: 미루 1.11·두리 1.10 → 1(걷기 그림 키가 다른 인물과 같아서)
   function faceEach(id) {
     const hs = V.spr.hero, ns = V.spr[id]; if (!hs || !ns || ns.img.style.display === 'none') return;
     const ft = (r) => [r[0] + r[2] / 2, r[1] + r[3]], fa = ft(hs.rect), fb = ft(ns.rect);
@@ -13325,7 +13334,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-26)';
-G.BUILT = '2026-10-26 10:00';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-26 12:33';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
