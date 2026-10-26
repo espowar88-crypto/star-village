@@ -804,7 +804,7 @@ G.hud = (() => {
     const q = H.questEl, e = q && q.isConnected && q.offsetParent && q.querySelector('.q1'), m = e && e.textContent.match(/^(.*?)(\d+)\/\d+/);
     if (!m) return;
     const k = m[1], n = +m[2];
-    if (qLast && qLast.k === k && n > qLast.n) { q.classList.remove('qup'); void q.offsetWidth; q.classList.add('qup'); G.audio.sfx('sfx_chime', 0.45); }
+    if (qLast && qLast.k === k && n > qLast.n) { q.classList.remove('qup'); void q.offsetWidth; q.classList.add('qup'); G.audio.sfx('sfx_chime', 0.45); if (G.face) G.face.flash('02'); }
     qLast = { k, n };
   });
   H.refreshQuest = () => { if (H.questEl && H.questEl.isConnected) { const n = questCard(); H.questEl.replaceWith(n); H.questEl = n; } };
@@ -924,6 +924,89 @@ G.hud = (() => {
     if (img) { if (img.complete) fit(); else img.onload = fit; G.resizers.add(fit); const mo = new MutationObserver(() => { if (!m.isConnected) { G.resizers.delete(fit); mo.disconnect(); } }); mo.observe(ov, { childList: true }); }
   };
   return H;
+})();
+
+// ---- 10/25 선생님 결정(장소 로딩 빠르게) r1 로딩 창 · r2 미리 받기 · r3 처음 한 번 게임 준비 ----
+(() => {
+  let box = null, bar = null, txt = null, gen = 0, skipBtn = null;
+  const show = (k, msg) => {
+    if (!box) {
+      box = G.el('div', 'loadwait', document.body); box.setAttribute('role', 'status');
+      const im = G.el('img', 'lw-lumi', box); im.src = G.asset('assets/chars/lumi.png'); im.alt = '';
+      txt = G.el('div', 'lw-txt', box); bar = G.el('div', 'lw-bar', G.el('div', 'lw-track', box));
+    }
+    txt.textContent = msg || '준비하고 있어요'; bar.style.width = Math.round(Math.max(0.04, Math.min(1, k)) * 100) + '%';
+  };
+  const hide = () => { if (box) { box.remove(); box = bar = txt = skipBtn = null; } };
+  // r1: 화면 바탕 그림(장면 bg·지도 조각, 퍼즐 그림)이 0.3초 안에 다 안 뜨면 로딩 창을 덮고, 다 뜨면 걷음(반쯤 뜬 그림·버벅임을 안 보이게). 30초 넘으면 그냥 걷음
+  G.loadWatch = (sel = '#world img.bg, #world .map-color > img, #world .map-mono > img, #overlay img, #closeup img') => {
+    const my = ++gen, t0 = performance.now();
+    const step = () => {
+      if (my !== gen) return;
+      const im = [...document.querySelectorAll(sel)].filter(i => i.getAttribute('src') && !/^data:/.test(i.src));
+      const left = im.filter(i => !i.complete).length, dt = performance.now() - t0;
+      if (!left || dt > 30000) { hide(); return; }
+      if (dt > 300) show(1 - left / im.length);
+      setTimeout(step, 100);
+    };
+    setTimeout(step, 30);
+  };
+  // 퍼즐·확대 그림처럼 화면 위에 새로 그림이 붙을 때도 같은 창(덜 뜬 그림이 있을 때만)
+  new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && (n.tagName === 'IMG' ? !n.complete : n.querySelector && n.querySelector('img'))) { G.loadWatch(); return; } })
+    .observe(document.body, { childList: true, subtree: true });
+  // r2: 장소로 걸어가기 시작하면 그 장면 그림을 미리 받아 둠(받기만, 풀지는 않아 메모리는 그대로). 서비스워커가 기기에 저장
+  const got = new Set();
+  G.prefetchScene = (sc) => {
+    const S = sc && G.D.scenes[sc]; if (!S) return;
+    const urls = []; const walk = (o) => { if (typeof o === 'string') { if (/^assets\/.+\.(png|webp|jpe?g)$/.test(o)) urls.push(o); } else if (o && typeof o === 'object') for (const k in o) walk(o[k]); };
+    walk(S);
+    for (const u of urls) { const a = G.asset(u); if (got.has(a) || /^data:/.test(a)) continue; got.add(a); fetch(a, { priority: 'low' }).then(r => r.blob()).catch(() => got.delete(a)); }
+  };
+  // r3: 처음 열 때·새 판일 때 서비스워커가 그림을 받는 동안 '게임 준비' 화면(공통 그림부터). 4초 뒤 [기다리지 않고 시작] 단추
+  G.prep = (go) => {
+    let done = false; const fin = () => { if (done) return; done = true; try { bc.close(); } catch (_) { } hide(); go(); };
+    if (!('serviceWorker' in navigator) || location.protocol !== 'https:' || !window.BroadcastChannel) return fin();
+    const bc = new BroadcastChannel('sv-prep'); let seen = false, t0 = performance.now();
+    bc.onmessage = (e) => {
+      const P = e.data || {}; if (!P.run || P.total < 30) { if (seen || !P.run) fin(); return; }
+      seen = true; show(P.done / P.total, `게임 준비 중 ${Math.floor(P.done / P.total * 100)}% (처음 한 번만, 그림 ${P.total}개)`);
+      if (!skipBtn && performance.now() - t0 > 4000) { skipBtn = G.btn('pill lw-skip', '기다리지 않고 시작', box, fin, '기다리지 않고 시작'); }
+      if (P.done >= P.total) fin();
+    };
+    const ask = () => { if (!done) { try { bc.postMessage('ask'); } catch (_) { } setTimeout(ask, 1000); } };
+    ask();
+    // 이미 다 받아 둔 기기는 0.4초, 처음 여는 기기는 서비스워커가 깔릴 때까지 3초 기다림
+    setTimeout(() => { if (!seen) fin(); }, navigator.serviceWorker.controller ? 400 : 3000);
+  };
+})();
+
+// ---- 10/26 선생님(루미·길별 픽셀 결정판): 왼쪽 아래 루미 단추·지도와 장면의 작은 루미가 표정을 지음 ----
+// 표정 번호는 대화 얼굴 그림과 같음: 01 보통 02 기쁨 03 씩씩 04 궁금 05 놀람 06 활짝 07 슬픔 08 차분 (그림 assets/chars/px/<lumi|gil>_<번호>.png)
+// 대화 중에는 말하는 루미(길별) 얼굴을 따라가고, 지도에서는 할 일이 늘거나 별을 받으면 잠깐 기뻐함. 가끔 눈을 깜빡임
+G.face = (() => {
+  const F = {}, SEL = '.lumi-btn > img:not(.ld-deco), .lumi-f > img:not(.ld-deco), #world .scene-sprite > img[src*="chars/"]';
+  let cur = '01', hold = '01', until = 0, blinkAt = 3, t = 0;
+  const who = () => (G.story && G.story.buddy) ? G.story.buddy() : 'lumi';
+  const src = (q, hat) => G.asset(hat ? `assets/chars/px/lumi_${q}_nh.png` : q === '01' ? `assets/chars/${who()}.png` : `assets/chars/px/${who()}_${q}.png`);
+  const mine = (im) => /chars\/(px\/)?(lumi|gil)[._]/.test(im.getAttribute('src') || '');
+  function paint(q) {
+    const hat = who() === 'lumi';   // 모자 장식(lumideco.js ld-hat)을 쓰면 고리 없는 얼굴
+    document.querySelectorAll(SEL).forEach(im => { const s = src(q, hat && im.parentElement.classList.contains('ld-hat')); if (mine(im) && im.getAttribute('src') !== s) im.src = s; });
+  }
+  F.repaint = () => paint(cur);
+  F.set = (q) => { hold = q || '01'; if (!until) { cur = hold; paint(cur); } };   // 계속 이 얼굴 (대화 중)
+  F.flash = (q, sec = 1.6) => { cur = q; until = t + sec; paint(q); };   // 잠깐 이 얼굴, 끝나면 원래대로
+  G.every(dt => {
+    t += dt;
+    if (until && t > until) { until = 0; cur = hold; paint(cur); }
+    if (!until && cur === hold && hold === '01' && !G.reduced() && t > blinkAt) {
+      paint('blink'); setTimeout(() => { if (!until && cur === '01') paint('01'); }, 140); blinkAt = t + 3 + Math.random() * 3;
+    }
+  });
+  // 별을 받는 소리·별 올리는 소리에 활짝
+  const sfx = G.audio.sfx;
+  G.audio.sfx = (name, ...a) => { if (name === 'sfx_star' || name === 'sfx_starfall') F.flash('06', 2); return sfx(name, ...a); };
+  return F;
 })();
 
 /* ---- help.js ---- */
@@ -1424,7 +1507,8 @@ G.dialog = (() => {
     const P = G.D.portraits[img.dataset.who], face = (P.faces || {})[q] || P.face || 'L', M = (P.mirror || {})[q];
     let src = (P.poses && P.poses[q]) || P.img, flip = face === img.dataset.side;
     if (flip && M) { src = M; flip = false; }   // 10/3: 글자가 든 그림(루미 물음표)은 CSS로 뒤집지 않고 미리 뒤집어 둔 그림을 씀
-    if (img.dataset.who === 'lumi' && G.deco) src = G.deco.ptSrc(src);   // 10/11 장식을 쓴 루미 그림
+    if (img.dataset.who === 'lumi' && G.deco) src = G.deco.ptSrc(src);
+    if ((img.dataset.who === 'lumi' || img.dataset.who === 'gil') && G.face) G.face.set(q);   // 10/26 작은 픽셀 루미도 같은 표정   // 10/11 장식을 쓴 루미 그림
     if (img.dataset.src !== src) { img.dataset.src = src; img.src = G.asset(src); }
     img.classList.toggle('flip', flip);
   }
@@ -1500,6 +1584,7 @@ G.dialog = (() => {
     G.$('#dialog').innerHTML = ''; G.$('#game').classList.remove('talking');
     const pr = G.$('#portraits'); pr.innerHTML = ''; pr.classList.remove('on');
     if (Dl.onSpeaker) Dl.onSpeaker(null);
+    if (G.face) G.face.set('01');
   };
 
   // ---- 선택지 (U6): 처음 누르면 읽어 주고 테두리, 한 번 더 누르면 선택. 버튼이 하나면 바로 선택 ----
@@ -2398,6 +2483,7 @@ G.map = (() => {
     G.screen = 'map';
     const world = G.$('#world'); world.innerHTML = '';
     V = Mp.V = G.mapView(world, {});
+    G.loadWatch();   // 10/25 r1: 지도 조각이 늦으면 로딩 창
     V.setMood(o.mood ?? G.st.mood);
     V.addMarkers(); Mp.refresh(o.lockedOverride);
     // 장소 누르는 곳
@@ -2537,7 +2623,7 @@ G.map = (() => {
     return new Promise(res => { let t = 0; const off = G.every(dt => { if (V !== v0) { off(); res(); return; } t = Math.min(1, t + dt / dur); const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; V.setCam(a.x + (to.x - a.x) * e, a.y + (to.y - a.y) * e, a.z * Math.pow(to.z / a.z, e)); if (t >= 1) { off(); res(); } }); offs.push(off); });
   }
   function snapFade(snap) {   // 새 화면 그림이 다 풀린 뒤 지난 화면 사본을 흐리게 지움
-    let n = 0; const go = () => { const imgs = [...G.$('#world').querySelectorAll('img.bg')].filter(i => !snap.contains(i)); if (n++ < 40 && imgs.some(i => i.getAttribute('src') && !i.complete)) return setTimeout(go, 60); snap.style.transition = 'opacity .35s'; snap.style.opacity = 0; setTimeout(() => { snap.querySelectorAll('img').forEach(i => i.removeAttribute('src')); snap.remove(); }, 400); };
+    let n = 0; const go = () => { const imgs = [...G.$('#world').querySelectorAll('img.bg, .map-color > img, .map-mono > img')].filter(i => !snap.contains(i)); /* 10/25 PC 나올 때 지도가 잠깐 빔: 지도 조각(img.bg 아님)도 다 뜰 때까지 사본을 둠 */ if (n++ < 100 && imgs.some(i => i.getAttribute('src') && !i.complete)) return setTimeout(go, 60); snap.style.transition = 'opacity .35s'; snap.style.opacity = 0; setTimeout(() => { snap.querySelectorAll('img').forEach(i => i.removeAttribute('src')); snap.remove(); }, 400); };
     setTimeout(go, 60);
   }
   async function zoomIntoScene(sc, zm) {
@@ -2812,6 +2898,7 @@ G.map = (() => {
     return g;
   }
   Mp.walkTo = async (p, o = {}) => {
+    G.prefetchScene(Mp.sceneOf(p));   // 10/25 r2: 걸어가는 동안 그 장소 그림을 미리 받아 둠
     Mp.userCam = false;   // 장소를 누르면 시점이 다시 주인공을 따라감
     clearHint(); clearEnter();
     const from = Mp.node(G.st.place), to = p.node, g = G.gen;
@@ -3194,10 +3281,11 @@ G.sceneView = (parent, id, o = {}) => {
     if (sp.flat) v.img.classList.remove('idle');
     if (sp.back) { v.back = addImg(sp.back.img, sp.back.rect, sp.id); v.back.style.transition = v.img.style.transition = 'opacity .5s'; }
     if (sp.lumi) {
-      const l = V.lumi = G.el('div', 'scene-sprite', V.chars); l.style.zIndex = 9999; const li = G.el('img', '', l); li.src = G.asset('assets/chars/lumi.png'); li.alt = '';
+      const l = V.lumi = G.el('div', 'scene-sprite', V.chars);   // 10/26 픽셀 루미: 64칸 그림을 장면 점 2칸으로 128
+      l.style.zIndex = 9999; const li = G.el('img', '', l); li.src = G.asset('assets/chars/lumi.png'); li.alt = '';
       const la = G.ageScale(sp.id), r = sp.rect;   // 10/15: 주인공이 작아진 만큼 루미도 발 쪽으로
       V.lumiOff = [r[2] / 2 + (sp.lumi[0] - r[0] - r[2] / 2) * la, r[3] - (r[1] + r[3] - sp.lumi[1]) * la]; V.lumiAt = [r0[0] + V.lumiOff[0], r0[1] + V.lumiOff[1]];
-      Object.assign(l.style, { left: (V.lumiAt[0] - 55) + 'px', top: (V.lumiAt[1] - 55) + 'px', width: '110px', height: '110px' });
+      Object.assign(l.style, { left: (V.lumiAt[0] - 64) + 'px', top: (V.lumiAt[1] - 64) + 'px', width: '128px', height: '128px' });
       li.style.cssText = 'width:100%;height:100%;animation:bob 2.4s ease-in-out infinite';
     }
   }
@@ -3335,7 +3423,7 @@ G.sceneView = (parent, id, o = {}) => {
     const v = V.spr[k]; if (!v) return Promise.resolve(); const a = v.rect, dh = G.tallDh(v.img, a), dh2 = Math.max(0, (parseFloat(v.img.style.height) || a[3]) - rect[3]);
     const lu = k === 'hero' && V.lumi ? V.lumi : null;
     const set = (t) => { const x = a[0] + (rect[0] - a[0]) * t, y = a[1] - dh + (rect[1] - dh2 - a[1] + dh) * t; v.img.style.left = x + 'px'; v.img.style.top = y + 'px';
-      if (lu) { lu.style.left = (x + V.lumiOff[0] - 55) + 'px'; lu.style.top = (y + dh + V.lumiOff[1] - 55) + 'px'; } };
+      if (lu) { lu.style.left = (x + V.lumiOff[0] - 64) + 'px'; lu.style.top = (y + dh + V.lumiOff[1] - 64) + 'px'; } };
     v.rect = rect; if (lu) V.lumiAt = [rect[0] + V.lumiOff[0], rect[1] + V.lumiOff[1]];
     if (G.reduced() || !d) { set(1); return Promise.resolve(); }
     return G.tween(0, 1, d, set, 'io');
@@ -3381,7 +3469,7 @@ G.sceneView = (parent, id, o = {}) => {
       el.style.backgroundPosition = `${-f * cw}px ${-ROW[dir] * ch}px`;
       if (ws) { const g = wf[ROW[dir]], q = 2 * kk; Object.assign(ws.style, { left: (x - w.fx * kk + (g[0] - g[2] / 2) * q) + 'px', top: (y + w.foot - w.fy * kk + (g[1] - g[3] / 2) * q) + 'px', width: g[2] * q + 'px', height: g[3] * q + 'px', zIndex: el.style.zIndex, display: el.style.display }); }
       wx = x; wy = y; if (wo) V.occDirty(wo); if (V.onStep && k === 'hero') V.onStep(x, y);
-      if (lu) { lu.style.left = (x - rect[2] / 2 + V.lumiOff[0] - 55) + 'px'; lu.style.top = (y + 18 - rect[3] + V.lumiOff[1] - 55) + 'px'; } };
+      if (lu) { lu.style.left = (x - rect[2] / 2 + V.lumiOff[0] - 64) + 'px'; lu.style.top = (y + 18 - rect[3] + V.lumiOff[1] - 64) + 'px'; } };
     const hide = (on) => { v.img.style.visibility = on ? 'hidden' : ''; if (v.back) v.back.style.visibility = on ? 'hidden' : ''; };
     // 10/8 선생님: 걷기 그림이 다 불러지기 전에 서 있는 그림을 숨기면 잠깐 사라져 보임 → 그림이 준비된 뒤 바꿈
     const im = V.sheet(sheet);
@@ -3404,7 +3492,7 @@ G.sceneView = (parent, id, o = {}) => {
     const put = (f) => { el.style.left = (wx - w.fx * kk) + 'px'; el.style.top = (wy + w.foot - w.fy * kk) + 'px'; el.style.zIndex = Math.round(wy + w.foot); el.style.backgroundPosition = `${-f * cw}px ${-ROW[dir] * ch}px`;
       if (ws) { const g = wf[ROW[dir]], q = 2 * kk; Object.assign(ws.style, { left: (wx - w.fx * kk + (g[0] - g[2] / 2) * q) + 'px', top: (wy + w.foot - w.fy * kk + (g[1] - g[3] / 2) * q) + 'px', width: g[2] * q + 'px', height: g[3] * q + 'px', zIndex: el.style.zIndex }); }
       if (wo) V.occDirty(wo); if (V.onStep) V.onStep(wx, wy);
-      if (lu) { lu.style.left = (wx - rect[2] / 2 + V.lumiOff[0] - 55) + 'px'; lu.style.top = (wy + 18 - rect[3] + V.lumiOff[1] - 55) + 'px'; } };
+      if (lu) { lu.style.left = (wx - rect[2] / 2 + V.lumiOff[0] - 64) + 'px'; lu.style.top = (wy + 18 - rect[3] + V.lumiOff[1] - 64) + 'px'; } };
     v.img.style.visibility = 'hidden'; if (v.back) v.back.style.visibility = 'hidden'; put(lv ? 16 : 8);
     return {
       at: () => [wx, wy],
@@ -3554,6 +3642,7 @@ G.scene = (() => {
     const first = !G.st.seenCutscenes.includes(def.arrive);
     const world = G.$('#world'); world.innerHTML = '';
     V = G.sceneView(world, id, { chiefBack: false });   // 돌아보는 모습은 연출 C2가 따로 그림
+    G.loadWatch();   // 10/25 r1: 장면 그림이 늦으면 로딩 창
     V.setMood(G.st.mood);
     // 누를 곳: 별빛 테두리 + 할 일에는 ☆
     for (const h of def.hotspots) {
@@ -12580,13 +12669,16 @@ G.deco = (() => {
   let uid = 0;
   const codeSvg = (id, part) => { const d = CODE[id]; if (!d || !d[part]) return ''; const n = ++uid; return `<svg class="ld-deco ld-${part}" viewBox="0 0 256 256"><defs>${SOFT.replace('id="soft"', `id="lds${n}"`)}</defs><g filter="url(#lds${n})">${d[part].replace(/sst/g, 'sst' + n)}</g></svg>`; };
   // 루미 그림이 든 요소(왼쪽 아래 단추·지도 루미)에 장식을 씌움
+  const HAT = ['crownf', 'leaf', 'wizard', 'crown'];
   D.dress = (el) => {
     if (!el || !G.st) return;
-    el.querySelectorAll('.ld-deco').forEach(e => e.remove());
-    if (G.story && G.story.gone()) return;   // 10/12 루미가 떠난 뒤에는 옆의 길별에 장식을 씌우지 않음 (장식은 루미에게 줄 선물)
+    el.querySelectorAll('.ld-deco').forEach(e => e.remove()); el.classList.remove('ld-hat');
+    if (G.story && G.story.gone()) { if (G.face) G.face.repaint(); return; }   // 10/12 루미가 떠난 뒤에는 옆의 길별에 장식을 씌우지 않음 (장식은 루미에게 줄 선물)
     const w = st().wear, im = el.querySelector('img:not(.ld-deco)');
     if (w === 'badge') el.insertAdjacentHTML('beforeend', badgeSvg('ld-deco'));
-    else if (CODE[w]) { if (im) im.insertAdjacentHTML('beforebegin', codeSvg(w, 'back')); el.insertAdjacentHTML('beforeend', codeSvg(w, 'front')); }
+    // 10/26 선생님(꾸미기 결정판 lumi_slot_deco_1026): 작은 픽셀 루미에는 픽셀 장식 그림(assets/chars/px/deco_<장식>.png, 장식만 그려 어떤 표정에도 맞음). 모자를 쓰면 머리 위 고리를 뺀 얼굴(_nh)로
+    else if (CODE[w]) { el.insertAdjacentHTML('beforeend', `<img class="ld-deco" src="${G.asset('assets/chars/px/deco_' + w + '.png')}" alt="">`); if (HAT.includes(w)) el.classList.add('ld-hat'); }
+    if (G.face) G.face.repaint();
     // 루미와 장식이 같은 박자로 떠다니게 움직임을 함께 다시 시작 (따로 시작하면 장식이 떨어져 보임)
     const all = [im, ...el.querySelectorAll('.ld-deco')].filter(Boolean);
     all.forEach(e => { e.style.animation = 'none'; }); void el.offsetWidth; all.forEach(e => { e.style.animation = ''; });
@@ -13233,7 +13325,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-26)';
-G.BUILT = '2026-10-26 07:46';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-26 10:00';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
@@ -13402,5 +13494,5 @@ G.flow = (() => {
   // 다른 탭으로 가면 소리를 멈춤
   document.addEventListener('visibilitychange', () => { if (document.hidden) G.audio.pause(); else if (!G.paused) G.audio.resume(); });
   const ld = G.$('#loading'); if (ld) ld.remove();
-  if (!G.flow.quick()) G.flow.title();
+  G.prep(() => { if (!G.flow.quick()) G.flow.title(); });   // 10/25 r3: 처음·새 판이면 그림을 받는 동안 '게임 준비' 화면
 })();
