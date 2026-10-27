@@ -1999,7 +1999,7 @@ G.cut = (() => {
   //      3초 안에 못 열면(한 파일 판·느린 인터넷·영상 못 트는 기기) false → 부른 곳이 옛 연출로 대신
   // 10/24 선생님(개선 S4): 말 없는 영상에 자막만 (목소리 없음). [시작 초, 끝 초, 문장, 말하는 이]. 루미 떠남은 옛 대사 네 줄(TD08) 그대로
   const VSUB = {
-    intro: [[2.4, 7.4, '옛날, 이 마을 하늘에는 별 아홉 개가 반짝였어요.'], [8.0, 15.0, '별빛 아래에서 마을 사람들은 서로 다른 모습 그대로 함께 지냈지요.'], [16.5, 22.5, '그런데 어느 밤, 별이 하나둘 사라지고 마을은 빛을 잃었어요.']],
+    intro: [[1.0, 5.4, '옛날, 이 마을 하늘에는 별 아홉 개가 반짝였어요.'], [12.8, 18.8, '별빛 아래에서 마을 사람들은 서로 다른 모습 그대로 함께 지냈지요.'], [22.6, 28.4, '그런데 어느 밤, 별이 하나둘 사라지고 마을은 빛을 잃었어요.']],   // 10/27 새 인트로(40초): 별 하늘 · 잔치 · 별이 흩어짐에 맞춤
     lumi_leave: [[0.8, 4.6, 'TD08_nar_01'], [4.8, 8.8, 'TD08_rumi_01', '루미'], [9.0, 12.0, 'TD08_nar_02'], [12.2, 17.5, 'TD08_rumi_02', '루미']],
   };
   async function playVideo(c, root, name, o = {}) {
@@ -2051,7 +2051,8 @@ G.cut = (() => {
   };
   // 별 올리기: 영상을 보면 옛 연출 끝 모습(가로등·색)만 맞추고 true. 엔딩은 C.raised로 영상 속 되풀이 문장을 다시 말하지 않음
   // 10/25 N21: 별 올리기 영상이 있는 별만 영상을 부름(속도의 별은 아직 영상이 없어 옛 연출, 없는 파일을 부르지 않음). 영상을 넣으면 여기에 더함
-  const RAISE_VID = ['road', 'sound', 'word', 'door', 'heart'];
+  // 10/27 선생님 컷신 시안 4 통과: 여섯 편 모두 새 영상(게임 효과·분수·놀람/기쁨, 별 2~6은 그 별을 얻은 동네가 밝아짐). 속도의 별도 영상
+  const RAISE_VID = ['road', 'sound', 'word', 'door', 'heart', 'speed'];
   C.raised = '';
   C.raise = async (id, V, layer) => {
     if (!RAISE_VID.includes(id) || !await C.video('raise_' + id)) return false;
@@ -13396,8 +13397,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-26)';
-G.BUILT = '2026-10-26 19:39';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-27)';
+G.BUILT = '2026-10-27 19:11';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
@@ -13483,7 +13484,7 @@ G.flow = (() => {
     if (g !== G.gen) return;
     await G.cut.play('CH:intro', { key: 'intro', cover: !!G.art('parchment_open') });   // 9/30 장 제목 "제 1 장 별이 사라진 밤"
     if (g !== G.gen) return;
-    if (!await G.cut.video('intro', { dark: true, fade: 1.0, start: 1.6 })) await G.cut.play('C1');   // 10/17 선생님: 동화풍 오프닝 영상이 C1 대신 (못 열면 C1)
+    if (!await G.cut.video('intro', { dark: true, fade: 1.0 })) await G.cut.play('C1');   // 10/17 선생님: 오프닝 영상이 C1 대신 (못 열면 C1). 10/27 새 40초 영상은 처음부터
     if (g !== G.gen) return;
     G.st.place = 'home';
     await G.map.show({ noLumi: true });
