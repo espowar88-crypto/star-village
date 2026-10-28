@@ -44,10 +44,10 @@ if (mode === 'img') {
       PIXI.setKTXTranscoderPath({ jsUrl: new URL('libktx.js', location.href).href, wasmUrl: new URL('libktx.wasm', location.href).href });
       PIXI.extensions.add(PIXI.loadKTX2, PIXI.detectCompressed, PIXI.resolveCompressedTextureUrl);   // 압축 그림 불러오기는 따로 켜야 함
       const app = new PIXI.Application();
-      await app.init({ resizeTo: window, background: '#1d2420', antialias: false, preference: 'webgl' });
+      await app.init({ resizeTo: window, background: '#1d2420', antialias: false, preference: 'webgl', resolution: Math.min(devicePixelRatio || 1, 2), autoDensity: true });   // 10/28 휴대폰 고해상도 화면에 맞춰 그림(1배로 그리면 흐리고 일렁임)
       stage.appendChild(app.canvas);
       const [c, m, h] = await Promise.all([PIXI.Assets.load('color_uastc.ktx2'), PIXI.Assets.load('mono_uastc.ktx2'), PIXI.Assets.load('hero.webp')]);
-      for (const tx of [c, m, h]) tx.source.scaleMode = 'nearest';
+      for (const tx of [c, m, h]) tx.source.scaleMode = 'linear';   // 10/28 nearest는 줄여 보일 때 움직이면 일렁임 → 지금 방식처럼 부드럽게 섞기
       const world = new PIXI.Container(); app.stage.addChild(world);
       const sc = new PIXI.Sprite(c), sm = new PIXI.Sprite(m), sh = new PIXI.Sprite(h); sm.alpha = .55; sh.position.set(HERO[0], HERO[1]); sh.width = HERO[2]; sh.height = HERO[3];
       world.addChild(sc, sm, sh);
