@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>쉼터 시험</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
+<style>
+/* 10/28 쉼터 한 곳 시험: 지금 방식(img 두 장) 과 PixiJS+압축 그림(KTX2 UASTC) 을 같은 움직임으로 비교 */
+html,body{margin:0;height:100%;background:#1d2420;color:#f2f5f1;font-family:'Jua',sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0;overflow:hidden}
+#stage img{position:absolute;left:0;top:0;transform-origin:0 0;image-rendering:pixelated;will-change:transform}
+#bar{position:fixed;left:12px;right:12px;top:max(10px,env(safe-area-inset-top));display:flex;gap:8px;flex-wrap:wrap;align-items:center;z-index:5}
+#bar a{background:#2f7d5b;color:#fff;text-decoration:none;border-radius:8px;padding:8px 14px;font-size:17px}
+#bar a.on{background:#f2f5f1;color:#1d2420}
+#info{background:rgba(0,0,0,.55);border-radius:8px;padding:6px 10px;font-size:16px}
+</style></head><body>
+<div id="stage"></div>
+<div id="bar"><a href="?mode=img" id="m-img">지금 방식</a><a href="?mode=pixi" id="m-pixi">PixiJS + 압축 그림</a><span id="info">준비 중</span></div>
+<script src="pixi.min.js"></script>
+<script>
+const W = 3500, H = 2440, HERO = [819, 1684, 48, 130];
+const mode = new URLSearchParams(location.search).get('mode') || 'img';
+document.getElementById('m-' + mode).classList.add('on');
+const info = document.getElementById('info'), stage = document.getElementById('stage');
+let t0 = performance.now(), frames = 0, worst = 0, last = 0, ready = 0;
+window.__stat = { mode, fps: 0, worst: 0, ready: 0, err: '' };
+// 화면 높이에 그림 높이의 절반이 보이게, 좌우로 천천히 오감(장면 안 걷기 흉내)
+const cam = (t) => { const k = Math.max(innerHeight / (H * 0.5), innerWidth / (W * 0.5)), vw = innerWidth / k, vh = innerHeight / k; const u = (Math.sin(t / 2500) + 1) / 2; return { k, x: -(u * (W - vw)), y: -((H - vh) * 0.6) }; };
+const tick = (t) => {
+  if (ready) { frames++; if (last) worst = Math.max(worst, t - last); last = t;
+    if (t - t0 > 1000) { __stat.fps = Math.round(frames * 1000 / (t - t0)); __stat.worst = Math.round(worst); info.textContent = (mode === 'img' ? '지금 방식' : 'PixiJS') + ` · ${__stat.fps}fps · 가장 긴 멈춤 ${__stat.worst}ms · 준비 ${__stat.ready}ms`; frames = 0; worst = 0; t0 = t; } }
+  requestAnimationFrame(tick);
+};
+requestAnimationFrame(tick);
+const t00 = performance.now();
+if (mode === 'img') {
+  const mk = (src, op) => { const i = new Image(); i.src = src; i.width = W; i.height = H; i.style.opacity = op; stage.appendChild(i); return i; };
+  const ims = [mk('color.webp', 1), mk('mono.webp', .55), mk('hero.webp', 1)];
+  ims[2].width = HERO[2]; ims[2].height = HERO[3];
+  Promise.all(ims.map((i) => i.decode())).then(() => { ready = 1; __stat.ready = Math.round(performance.now() - t00); });
+  const move = (t) => { const c = cam(t); ims[0].style.transform = ims[1].style.transform = `scale(${c.k}) translate(${c.x}px,${c.y}px)`; ims[2].style.transform = `scale(${c.k}) translate(${c.x + HERO[0]}px,${c.y + HERO[1]}px)`; requestAnimationFrame(move); };
+  requestAnimationFrame(move);
+} else {
+  (async () => {
+    try {
+      PIXI.setKTXTranscoderPath({ jsUrl: new URL('libktx.js', location.href).href, wasmUrl: new URL('libktx.wasm', location.href).href });
+      PIXI.extensions.add(PIXI.loadKTX2, PIXI.detectCompressed, PIXI.resolveCompressedTextureUrl);   // 압축 그림 불러오기는 따로 켜야 함
+      const app = new PIXI.Application();
+      await app.init({ resizeTo: window, background: '#1d2420', antialias: false, preference: 'webgl' });
+      stage.appendChild(app.canvas);
+      const [c, m, h] = await Promise.all([PIXI.Assets.load('color_uastc.ktx2'), PIXI.Assets.load('mono_uastc.ktx2'), PIXI.Assets.load('hero.webp')]);
+      for (const tx of [c, m, h]) tx.source.scaleMode = 'nearest';
+      const world = new PIXI.Container(); app.stage.addChild(world);
+      const sc = new PIXI.Sprite(c), sm = new PIXI.Sprite(m), sh = new PIXI.Sprite(h); sm.alpha = .55; sh.position.set(HERO[0], HERO[1]); sh.width = HERO[2]; sh.height = HERO[3];
+      world.addChild(sc, sm, sh);
+      __stat.fmt = c.source.format; ready = 1; __stat.ready = Math.round(performance.now() - t00);
+      app.ticker.add(() => { const k = cam(performance.now()); world.scale.set(k.k); world.position.set(k.x * k.k, k.y * k.k); });
+    } catch (e) { __stat.err = String(e && e.message || e); info.textContent = '오류: ' + __stat.err; }
+  })();
+}
+</script></body></html>
