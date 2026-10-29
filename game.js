@@ -970,8 +970,18 @@ G.hud = (() => {
     const S = sc && G.D.scenes[sc]; if (!S) return;
     const urls = []; const walk = (o) => { if (typeof o === 'string') { if (/^assets\/.+\.(png|webp|jpe?g)$/.test(o)) urls.push(o); } else if (o && typeof o === 'object') for (const k in o) walk(o[k]); };
     walk(S);
-    for (const u of urls) { const a = G.asset(u); if (got.has(a) || /^data:/.test(a)) continue; got.add(a); fetch(a, { priority: 'low' }).then(r => r.blob()).catch(() => got.delete(a)); }
+    //  10/28 선생님(그림 미리 풀기): 받은 그림을 화면 밖 Image로 미리 풀어 둠(decode) — 들어가는 순간 <img>가 그 자리에서 풀며 멈칫하던 것.
+    //  붙잡는 것은 다음 장소 하나뿐(다른 장소로 가면 앞 것은 놓음), 장면이 열리고 3초 뒤 놓음(G.warmDrop) — 지도로 돌아왔을 때 메모리가 늘지 않게
+    const keep = [];
+    for (const u of urls) {
+      const a = G.asset(u); if (/^data:/.test(a)) continue;
+      if (!got.has(a)) { got.add(a); fetch(a, { priority: 'low' }).then(r => r.blob()).catch(() => got.delete(a)); }
+      const im = new Image(); im.decoding = 'async'; im.src = a; if (im.decode) im.decode().catch(() => { }); keep.push(im);
+    }
+    clearTimeout(warmT); warm = keep;
   };
+  let warm = [], warmT = 0;
+  G.warmDrop = () => { clearTimeout(warmT); warmT = setTimeout(() => { warm = []; }, 3000); };
   // r3: 처음 열 때·새 판일 때 서비스워커가 그림을 받는 동안 '게임 준비' 화면(공통 그림부터). 4초 뒤 [기다리지 않고 시작] 단추
   // 10/26 선생님(게임 시작 전에 한 번에 받아 두기): 그림을 다 받을 때까지 기다림(새 판이 깔리는 중이면 옛 판의 '다 됨' 대답은 무시), 15초 뒤에야 [기다리지 않고 시작]
   G.prep = (go) => {
@@ -2783,6 +2793,7 @@ G.map = (() => {
   let enterEl = null;
   const clearEnter = () => { if (enterEl) enterEl.remove(); enterEl = null; };
   function showEnter(p) {
+    G.prefetchScene(Mp.sceneOf(p));   // 10/28: 자유 이동으로 장소 앞에 멈춰 서면 그때부터 미리 받고 풀어 둠
     clearEnter();
     enterEl = G.btn('pill gold enter-btn', G.icon('icon_next') + ' ' + p.name + ' 들어가기', G.$('#hud'), () => { clearEnter(); Mp.walkTo(p); }, p.name + ' 들어가기');
     G.audio.voice(p.voice.replace('.mp3', ''));
@@ -3709,6 +3720,7 @@ G.scene = (() => {
     const world = G.$('#world'); world.innerHTML = '';
     V = G.sceneView(world, id, { chiefBack: false });   // 돌아보는 모습은 연출 C2가 따로 그림
     G.loadWatch();   // 10/25 r1: 장면 그림이 늦으면 로딩 창
+    G.warmDrop();   // 10/28: 미리 풀어 둔 그림은 장면이 쓰기 시작하면 놓음
     V.setMood(G.st.mood);
     { // 10/26 선생님(장소 안 광장 분수가 안 움직임): 지도 분수 자리를 이 장면 좌표로 옮겨 같은 물줄기를 얹음
       const M = G.D.places.map, F = M && M.fountains, z = M && M.sceneMap && M.sceneMap[id], [sw, sh] = def.size || [0, 0];
@@ -13397,8 +13409,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-28)';
-G.BUILT = '2026-10-28 00:46';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-29)';
+G.BUILT = '2026-10-29 15:13';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
