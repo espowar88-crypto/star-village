@@ -52,7 +52,8 @@ try { const t = new Image(); t.onload = () => { G.avif = t.naturalWidth === 2; }
 G.duskOK = !(/Safari\//.test(navigator.userAgent) && !/Chrome\/|Chromium\/|Edg\//.test(navigator.userAgent)) && !/iPhone|iPad|iPod/.test(navigator.userAgent) && !(/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 G.asset = (p) => { p = G.litPath(p); return (G.avif && window.AVIF && window.AVIF[p]) || (window.EMBED && window.EMBED[p]) || p; };
 // 10/20 선생님(PC·전자칠판에서 픽셀 인물 뭉개짐): 반 크기 걷기 그림(_h)은 휴대폰·메모리 적은 기기만. 픽셀랩 인물은 잔 점이라 반으로 줄이면 점 3/4이 사라짐
-G.halfSheet = /iPhone|iPod|Android.*Mobile/.test(navigator.userAgent) || (navigator.deviceMemory > 0 && navigator.deviceMemory < 4);
+// 10/30 메모리 예산: 아이패드(사파리는 맥처럼 자기를 알려 iPad 글자가 없고 deviceMemory도 없음)가 빠져 지도 걷기 그림을 원래 크기로 받던 것(지도 인물·동물만 약 230MB) → 아이패드도 반 크기
+G.halfSheet = /iPhone|iPad|iPod|Android.*Mobile/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) || (navigator.deviceMemory > 0 && navigator.deviceMemory < 4);
 G.voiceUrl = (id) => G.asset('assets/voice/' + id + '.mp3');
 
 // ---------- DOM 도구 ----------
@@ -253,6 +254,36 @@ window.addEventListener('keydown', (e) => {
 document.addEventListener('gesturestart', e => e.preventDefault());
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+
+/* ---- memmeter.js ---- */
+// 10/30 선생님 결정(메모리 예산 1단계): 지금 화면이 쓰는 그림 메모리를 숨김없이 셈.
+//  옛 셈(qa memory.spec)은 <img>·캔버스만 세서 CSS 바탕 그림(걷기 그림)·mask(저녁빛)·PixiJS 그래픽 칩 그림이 빠졌음.
+//  풀린 크기 = 가로 x 세로 x 4 (압축 그림 ASTC·BC7·ETC2는 1). 같은 주소는 한 번만. 주소 끝에 ?mem=1 이면 왼쪽 위에 계기판
+(() => {
+  const dim = new Map();   // CSS 그림 주소 → [가로, 세로] (처음 볼 때 한 번 재 둠, 같은 주소라 브라우저 캐시에서 옴)
+  const area = (u) => { let d = dim.get(u); if (!d) { d = [0, 0]; dim.set(u, d); const i = new Image(); i.onload = () => { d[0] = i.naturalWidth; d[1] = i.naturalHeight; }; i.src = u; } return d[0] * d[1]; };
+  const urls = (s) => { const r = []; if (s && s !== 'none') s.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/g, (_, u) => { r.push(u); }); return r; };
+  const abs = (u) => { if (u.startsWith('data:')) return u; try { return new URL(u, location.href).href; } catch (_) { return u; } };
+  G.memNow = () => {
+    const o = { img: 0, bg: 0, canvas: 0, gpu: 0 }, seen = new Set();
+    for (const i of document.querySelectorAll('img')) if (i.getAttribute('src') && i.complete && i.naturalWidth && !seen.has(i.currentSrc)) { seen.add(i.currentSrc); o.img += i.naturalWidth * i.naturalHeight * 4; }
+    for (const e of document.querySelectorAll('[style*="url("]')) {
+      const st = e.style;
+      for (const u of [...urls(st.backgroundImage), ...urls(st.maskImage || st.webkitMaskImage)]) { const a = abs(u); if (seen.has(a)) continue; seen.add(a); o.bg += area(a) * 4; }
+    }
+    for (const c of document.querySelectorAll('canvas')) o.canvas += c.width * c.height * 4;
+    if (G.pxMem) o.gpu = G.pxMem(seen);
+    for (const k in o) o[k] = Math.round(o[k] / 1e6);
+    o.total = o.img + o.bg + o.canvas + o.gpu; return o;
+  };
+  if (!/[?&]mem=1/.test(location.search)) return;
+  const box = document.createElement('div');
+  Object.assign(box.style, { position: 'fixed', left: '4px', top: '4px', zIndex: 99999, font: '12px/1.3 monospace', color: '#fff', background: 'rgba(0,0,0,.65)', padding: '3px 6px', borderRadius: '4px', pointerEvents: 'none', whiteSpace: 'pre' });
+  let top = 0;
+  const tick = () => { if (!document.body) return; if (!box.parentNode) document.body.appendChild(box); const m = G.memNow(); top = Math.max(top, m.total);
+    box.textContent = `그림 ${m.total}MB (최고 ${top})\n사진 ${m.img} 바탕 ${m.bg} 판 ${m.canvas} 칩 ${m.gpu}`; box.style.background = m.total > 150 ? 'rgba(170,20,20,.8)' : 'rgba(0,0,0,.65)'; };
+  setInterval(tick, 1000);
+})();
 
 /* ---- audio.js ---- */
 // audio.js — 소리 (GDD 10장): 대사 100%, 효과음 60%, 환경음 30%, 음악 35% → 대사 중 20%
@@ -1232,8 +1263,12 @@ G.mapView = (parent, o = {}) => {
   const LIVE = /\/walk_[^/]+\.png$/;
   V.walkers = [];
   V.walker = (sheet, cls) => {
-    const live = LIVE.test(sheet), src = live ? sheet.replace(/\.png$/, G.halfSheet ? '_live_h.png' : '_live.png') : sheet;   // 10/20: PC·전자칠판은 원래 크기(core.js G.halfSheet)   // 10/15 메모리: 지도에서는 반 크기(_h, 4300x520 → 2150x260. 지도 인물은 칸 높이의 0.4배 이하로 보여서 화질 그대로, 채이는 8600x1040 → 4300x520)
-    const w = { x: 0, y: 0, dir: 'SE', frame: 8, rc: -1, live, src, ph: Math.random() * 2600, nb: 1500 + Math.random() * 3000, nl: 5000 + Math.random() * 5000, bu: 0, lu: 0, st: 0, ws: -1e9, lf: -1, lt: 0 };
+    const live = LIVE.test(sheet);
+    // 10/30 선생님 결정(메모리 예산 2단계, 화질 그대로): 빈칸을 잘라 묶은 그림(도구/그림만들기/gen_atlas.py, data/atlas.json)이 있으면 모든 기기에서 그것.
+    //  원래 크기 그림과 점 하나 다르지 않고, 풀린 크기는 반 크기 그림(_h) 정도(마을 사람 8.9→약 2MB, 채이 36→2.6MB, 동물 7.5→0.4MB). 칸마다 묶음 자리로 옮기고 clip-path로 그 칸만 보임
+    const at = (G.D.atlas || {})[G.litPath(live ? sheet.replace(/\.png$/, '_live.png') : sheet.replace(/_h\.png$/, '.png'))];
+    let src = at ? 'assets/chars/' + at.a : live ? sheet.replace(/\.png$/, G.halfSheet ? '_live_h.png' : '_live.png') : sheet;   // 10/20: PC·전자칠판은 원래 크기(core.js G.halfSheet)   // 10/15 메모리: 지도에서는 반 크기(_h, 4300x520 → 2150x260. 지도 인물은 칸 높이의 0.4배 이하로 보여서 화질 그대로, 채이는 8600x1040 → 4300x520)
+    const w = { x: 0, y: 0, dir: 'SE', frame: 8, rc: -1, live, src, at, ph: Math.random() * 2600, nb: 1500 + Math.random() * 3000, nl: 5000 + Math.random() * 5000, bu: 0, lu: 0, st: 0, ws: -1e9, lf: -1, lt: 0 };
     w.el = G.el('div', 'walker' + (cls ? ' ' + cls : ''), V.fx);
     // 10/15 선생님(연령별 키): 그림·그림자·가림 캔버스만 발(이 칸의 0,0)을 기준으로 줄임 (css .walker > * scale). 누르는 단추(walker-hit)는 그대로
     w.age = G.ageScale(sheet); if (w.age !== 1) w.el.style.setProperty('--age', w.age);
@@ -1242,8 +1277,9 @@ G.mapView = (parent, o = {}) => {
     const fm = /\/walk_([^/]+)\.png$/.exec(sheet), FT = fm && ((G.D.feet || {}).walk || {})[fm[1]];
     if (FT) w.sh.className = 'shadow feet';
     w.spr = G.el('div', 'sprite', w.el); w.spr.style.backgroundImage = `url("${G.asset(src)}")`;
-    if (live) { w.spr.style.backgroundSize = '4300px 520px';   // 살아 있는 그림이 없으면 예전 9칸 그림으로
-      const t = new Image(); t.onerror = () => { w.live = false; w.src = sheet; w.spr.style.backgroundImage = `url("${G.asset(sheet)}")`; w.spr.style.backgroundSize = ''; w.bp = ''; w.draw(); }; t.src = G.asset(src); }
+    if (at) w.spr.style.backgroundSize = `${at.w * at.s}px ${at.h * at.s}px`;
+    else if (live) { w.spr.style.backgroundSize = '4300px 520px';   // 살아 있는 그림이 없으면 예전 9칸 그림으로
+      const t = new Image(); t.onerror = () => { w.live = false; w.src = sheet; w.spr.style.backgroundImage = `url("${G.asset(sheet)}")`; w.spr.style.backgroundSize = ''; w.bk = ''; w.draw(); }; t.src = G.asset(src); }
     w.occ = G.el('canvas', 'occ', w.el); w.occ.width = 100; w.occ.height = 130; w.occ.style.display = 'none';
     w.set = (x, y) => { w.x = x; w.y = y; w.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`; const z = Math.round(y); if (z !== w.z) { w.z = z; w.el.style.zIndex = z; } const v = V.inCam(x, y, 250) ? '' : 'hidden'; if (w.el.style.visibility !== v) w.el.style.visibility = v; V.occDirty(w); };   // 10/4 폰 끊김: 바뀔 때만 씀
     w.col = () => {
@@ -1270,7 +1306,9 @@ G.mapView = (parent, o = {}) => {
       if (w.lu && now > w.lu) w.lu = 0;
       return ROW[w.lu ? LOOK[w.dir] : w.dir];
     };
-    w.draw = () => { const c = w.col(), r = w.row(); const bp = `${-c * 100}px ${-r * 130}px`; if (bp !== w.bp) { w.bp = bp; w.c = c; if (FT && r !== w.r && FT[r]) { const f = FT[r]; const l = f[0] - 50 - f[2] / 2, t = f[1] - 125 - f[3] / 2; Object.assign(w.sh.style, { left: l + 'px', top: t + 'px', width: f[2] + 'px', height: f[3] + 'px', transformOrigin: `${-l}px ${-t}px` }); } w.r = r; w.spr.style.backgroundPosition = bp; if (w.hid) V.occDirty(w); } };
+    w.draw = () => { const c = w.col(), r = w.row(); let bp = `${-c * 100}px ${-r * 130}px`, cl = '';
+      if (w.at) { const A = w.at, e = A.f[r * A.n + c], k = A.s; if (e) { bp = `${(e[2] - e[0]) * k}px ${(e[3] - e[1]) * k}px`; cl = `inset(${e[3] * k}px ${100 - (e[2] + e[4]) * k}px ${130 - (e[3] + e[5]) * k}px ${e[2] * k}px)`; } else { bp = '-9999px 0px'; cl = 'inset(50%)'; } }
+      if (bp + cl !== w.bk) { w.bk = bp + cl; w.bp = bp; w.clip = cl; w.spr.style.clipPath = cl; w.c = c; if (FT && r !== w.r && FT[r]) { const f = FT[r]; const l = f[0] - 50 - f[2] / 2, t = f[1] - 125 - f[3] / 2; Object.assign(w.sh.style, { left: l + 'px', top: t + 'px', width: f[2] + 'px', height: f[3] + 'px', transformOrigin: `${-l}px ${-t}px` }); } w.r = r; w.spr.style.backgroundPosition = bp; if (w.hid) V.occDirty(w); } };
     w.face = (dx, dy) => { w.dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW'); };
     w.draw();
     V.walkers.push(w);
@@ -1370,7 +1408,9 @@ G.mapView = (parent, o = {}) => {
     c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'destination-in'; c.drawImage(w.om, 0, 0);
     // 가려진 부분에 인물을 흐리게
     const sh = sheets[w.src] || (sheets[w.src] = Object.assign(new Image(), { src: G.asset(w.src) }));
-    if (sh.complete && sh.naturalWidth) { const k = sh.naturalWidth / (w.live ? 43 : 9) / 100; c.globalCompositeOperation = 'source-atop'; c.globalAlpha = w.el.classList.contains('hero') ? 0.4 : 0.35;   /* 10/24 col1024: 주인공은 지붕 뒤에서도 윤곽이 잘 보이게 */ c.imageSmoothingEnabled = false; c.drawImage(sh, (w.c ?? w.frame) * 100 * k, (w.r ?? ROW[w.dir]) * 130 * k, 100 * k, 130 * k, 0, 0, 100, 130); }
+    if (sh.complete && sh.naturalWidth) { const k = sh.naturalWidth / (w.live ? 43 : 9) / 100; c.globalCompositeOperation = 'source-atop'; c.globalAlpha = w.el.classList.contains('hero') ? 0.4 : 0.35;   /* 10/24 col1024: 주인공은 지붕 뒤에서도 윤곽이 잘 보이게 */ c.imageSmoothingEnabled = false;
+      if (w.at) { const A = w.at, e = A.f[(w.r ?? ROW[w.dir]) * A.n + (w.c ?? w.frame)], q = A.s; if (e) c.drawImage(sh, e[0], e[1], e[4], e[5], e[2] * q, e[3] * q, e[4] * q, e[5] * q); }   // 10/30 묶음 그림
+      else c.drawImage(sh, (w.c ?? w.frame) * 100 * k, (w.r ?? ROW[w.dir]) * 130 * k, 100 * k, 130 * k, 0, 0, 100, 130); }
     c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
     cv.style.display = ''; w.hid = true;
   }
@@ -12441,7 +12481,7 @@ G.s6 = (() => {
         d0();
         const u = w.spr.style.backgroundImage;   // 밝은 표정(G.asset _lit)·살아 있는 그림이 바뀌어도 그대로 따라감
         if (w.tsrc !== u) { w.tsrc = u; const sz = w.spr.style.backgroundSize || '900px 520px'; for (const e of [w.tint, w.gt]) { const s = e.style; s.webkitMaskImage = s.maskImage = u; s.webkitMaskSize = s.maskSize = sz; } w.cst.style.backgroundImage = u; w.cst.style.backgroundSize = sz; }
-        if (w.tbp !== w.bp) { w.tbp = w.bp; for (const e of [w.tint, w.gt]) e.style.webkitMaskPosition = e.style.maskPosition = w.bp; w.cst.style.backgroundPosition = w.bp; }
+        if (w.tbp !== w.bk) { w.tbp = w.bk; for (const e of [w.tint, w.gt]) e.style.webkitMaskPosition = e.style.maskPosition = w.bp; w.cst.style.backgroundPosition = w.bp; for (const e of [w.tint, w.gt, w.cst]) e.style.clipPath = w.clip || ''; }   // 10/30 묶음 그림: 그 칸만 보이게(clip)
       };
       w.draw(); w.lit = -1;
       return w;
@@ -13409,8 +13449,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-10-29)';
-G.BUILT = '2026-10-29 15:13';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-10-31)';
+G.BUILT = '2026-10-31 01:44';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
