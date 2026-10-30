@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>메모리 미리보기</title>
+<body style="background:#1b1a24;color:#eee;font:18px sans-serif;display:grid;place-items:center;height:100vh;margin:0">준비하는 중…
+<script>
+const go = () => location.replace('game.html' + location.search);
+if (!('serviceWorker' in navigator)) document.body.textContent = '이 브라우저에서는 열 수 없어요';
+else navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready).then(() => navigator.serviceWorker.controller ? go() : navigator.serviceWorker.addEventListener('controllerchange', go)).catch((e) => document.body.textContent = '열기 실패: ' + e);
+setTimeout(() => { if (navigator.serviceWorker && navigator.serviceWorker.controller) go(); }, 4000);
+</script>
