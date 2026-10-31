@@ -1674,8 +1674,13 @@ const pxLamp = (K, parent, el, size) => { const s = new K.P.Sprite(); s.anchor.s
 const pxWorld = (V, X, root) => {
   const K = pxKit(V, X, false), { P } = K, el = V.el, S = V.S, col = V.colorImg;
   const top = new P.Container(), under = new P.Container(), chars = new P.Container(); chars.sortableChildren = true;
-  top.addChild(under, chars); root.addChild(top);
+  const fnt = new P.Container(); top.addChild(under, chars, fnt); root.addChild(top);
   let sig = 0, clock = 0, lastT = performance.now();
+  // 10/30 선생님(분수가 멈춰 있을 때가 있음): 장면 분수 물줄기 캔버스(worldmap.js G.fountainFx, V.fx 안)는 .pxw가 숨기므로 여기서 인물 위에 그림
+  const founts = new Map();
+  const syncFount = () => { for (const c of V.fx.querySelectorAll(':scope > canvas.map-fountain')) { let f = founts.get(c);
+      if (!f) { f = new P.Texture({ source: new P.CanvasSource({ resource: c, scaleMode: 'nearest' }) }); const sp = new P.Sprite(f), st = c.style; sp.position.set(pxNum(st.left), pxNum(st.top)); sp.width = pxNum(st.width); sp.height = pxNum(st.height); fnt.addChild(sp); founts.set(c, f); }
+      f.source.update(); sig++; } };
   // 가림 기준: scene.js occDraw와 같은 셈(발 둘레가 올라설 수 있는 곳이면 그 아래 땅을 발 높이로)
   const occOf = (b) => { const D = V.depth; if (!D || !b || b.hide) return null; const k = D.k, gy = D.gy; let up = false, lim = b.fy + 4;
     const xa = Math.max(0, Math.floor((b.fx - b.w * 0.2) / k)), xb = Math.min(D.w - 1, Math.floor((b.fx + b.w * 0.2) / k)), ya = Math.max(0, Math.floor((b.fy - 12) / k)), yb = Math.min(D.h - 1, Math.floor((b.fy + 4) / k));
@@ -1756,10 +1761,10 @@ const pxWorld = (V, X, root) => {
     const run = !el.classList.contains('fxpause') && !document.hidden, lite = !!V.lite || el.classList.contains('fxlite');
     if (run) clock += dt;
     if (!K.hasDepth() && V.depth) K.depth();
-    pxFollow(V.el, root); syncChars(now); syncUnder(now, run, lite);
+    pxFollow(V.el, root); syncChars(now); syncUnder(now, run, lite); syncFount();
     return sig + '|' + (run && !G.reduced() ? Math.floor(clock * G.pxAmb) : 0); };
   el.classList.add('pxw'); X.cv.style.display = ''; G.pxDirty = true; G.pxTick.add(tick);
-  const dispose = () => { G.pxTick.remove(tick); top.destroy({ children: true }); K.dispose(); items.clear(); };
+  const dispose = () => { G.pxTick.remove(tick); for (const f of founts.values()) f.destroy(true); founts.clear(); top.destroy({ children: true }); K.dispose(); items.clear(); };
   return { dispose };
 };
 // 지도 세상 판: 밤 덧칠·구름·빛 캔버스(mapfx.js) → 나무·굴뚝 연기(worldmap.js mfxu) → [등불 → 발자국 → 걷는 사람·장소 앞 사람·분수를 발 y 순서로]
@@ -3094,9 +3099,9 @@ G.map = (() => {
     fitGait();
     const n = G.D.places.nodes[Mp.node(G.st.place)]; hero.set(n[0], n[1]); hero.frame = 8; hero.dir = 'SE'; hero.draw();
     lumi = G.el('div', 'lumi-f', V.fx); const li = G.el('img', '', lumi); li.src = G.asset('assets/chars/lumi.png'); li.alt = '';
-    { const ls = 64 * G.ageScale('hero') * (G.D.places.map.charK || 1); Object.assign(lumi.style, { width: ls + 'px', height: ls + 'px', margin: `${-ls / 2}px 0 0 ${-ls / 2}px` }); }   // 10/26 선생님(키 지침): 루미·길별 점 하나 = 지도 주인공 점 하나(키가 주인공의 절반)
+    { const ls = 52 * G.ageScale('hero') * (G.D.places.map.charK || 1); Object.assign(lumi.style, { width: ls + 'px', height: ls + 'px', margin: `${-ls / 2}px 0 0 ${-ls / 2}px` }); }   // 10/26 선생님(키 지침): 루미·길별 점 하나 = 지도 주인공 점 하나(키가 주인공의 절반). 10/30 선생님: 조금 더 작게(64→52)
     if (G.deco) G.deco.dress(lumi);   // 10/11 루미 꾸미기 장식
-    lumiPos.x = hero.x + 60; lumiPos.y = hero.y - 150; lumi.style.display = o.noLumi ? 'none' : '';
+    lumiPos.x = hero.x + 16; lumiPos.y = hero.y - 140 * (hero.age || 1); LF.f = LF.to = 1; LF.px = null; lumi.style.display = o.noLumi ? 'none' : '';
     placeLumi();
     // 배경 주민
     const stage = G.st.mood;
@@ -3132,15 +3137,21 @@ G.map = (() => {
     if (G.p4 && G.p4.accessMarks) G.p4.accessMarks(V);   // 10/9 수정안 3단계: 모두의 지도
   };
 
-  function placeLumi() { if (lumi) lumi.style.transform = `translate(${lumiPos.x.toFixed(1)}px,${lumiPos.y.toFixed(1)}px)`; }
+  // 10/30 선생님(지도 루미가 한 방향만 봄): 날아가는 쪽을 보게 좌우로 돌아섬(그림은 오른쪽을 봄). 돌 때는 납작해졌다 펴지며 뒤집힘
+  const LF = { f: 1, to: 1, px: null };
+  function placeLumi() { if (lumi) lumi.style.transform = `translate(${lumiPos.x.toFixed(1)}px,${lumiPos.y.toFixed(1)}px) scaleX(${LF.f.toFixed(2)})`; }
+  function faceLumi(dt) {
+    if (LF.px != null && dt > 0) { const vx = (lumiPos.x - LF.px) / dt; if (Math.abs(vx) > 12) LF.to = vx > 0 ? 1 : -1; }
+    LF.px = lumiPos.x; const d = LF.to - LF.f; LF.f = Math.abs(d) < 0.01 ? LF.to : LF.f + d * Math.min(1, dt * 9);
+  }
   function update(dt) {
     if (!V) return;
     if (FR) freeStep(dt);
     // 루미는 주인공 오른쪽 위를 살짝 늦게 따라옴
     if (hero && lumi && !Mp.lumiFree) {
       const lt = (FR && freeGuide(dt)) || (V.lumiTarget && V.lumiTarget(hero, dt));   // 10/10 A1: 주인공 둘레를 날고, 가끔 갈 곳을 알려 줌 (mapfx.js)
-      const tx = lt ? lt[0] : hero.x + 60, ty = lt ? lt[1] : hero.y - 150, k = Math.min(1, dt * (lt ? lt[2] : 4));
-      lumiPos.x += (tx - lumiPos.x) * k; lumiPos.y += (ty - lumiPos.y) * k; placeLumi();
+      const tx = lt ? lt[0] : hero.x + 16, ty = lt ? lt[1] : hero.y - 140 * (hero.age || 1), k = Math.min(1, dt * (lt ? lt[2] : 4));
+      lumiPos.x += (tx - lumiPos.x) * k; lumiPos.y += (ty - lumiPos.y) * k; faceLumi(dt); placeLumi();
     }
     for (const v of vills) v.update(dt);
     for (const a of anis) a(dt);
@@ -3277,9 +3288,10 @@ G.map = (() => {
     const FS = F.at.map(([x, y, mir]) => { const c = G.el('canvas', 'map-fountain', V.fx); c.width = FW / 2; c.height = FH / 2; const g = c.getContext('2d'); g.scale(.5, .5);
       Object.assign(c.style, { position: 'absolute', left: x + 'px', top: y + 'px', width: FW * F.k + 'px', height: FH * F.k + 'px', zIndex: Math.round(y + FH * F.k) + 2, pointerEvents: 'none', imageRendering: 'pixelated' });
       return { c, g, x: x + FW * F.k / 2, y: y + FH * F.k / 2, mir, drops: [], rings: [], sparks: [] }; });
-    let last = 0, acc = 0;
+    let last = 0, acc = 0, wait = 600;
     const step = (t) => {
-      if (V.gone || !FS[0].c.isConnected) return;
+      if (V.gone) return;
+      if (!FS[0].c.isConnected) { if (wait-- > 0 && !last) requestAnimationFrame(step); return; }   // 10/30: 화면에 붙기 전에 첫 박자가 오면 멈춰 버리던 것(분수가 가끔 멈춤) → 붙을 때까지 10초 기다림
       requestAnimationFrame(step); const dt = Math.min(0.1, last ? (t - last) / 1000 : 0); last = t; acc += dt; if (acc < (lite() ? 1 / 10 : 1 / 20)) return; const d = acc; acc = 0;
       for (const S of FS) {
         if (V.inCam && !V.inCam(S.x, S.y, 200)) { if (S.drops.length) { S.drops.length = 0; S.g.clearRect(0, 0, FW, FH); } continue; }
@@ -4144,6 +4156,14 @@ G.sceneView = (parent, id, o = {}) => {
       return GW[k] ? V.walkPath(k, r1, GW[k], d) : V.walk(k, r1, G.reduced() ? 0 : 1.6); }));
   };
   if (S.fx && G.sceneEnvFx) G.sceneEnvFx(V);   // 10/23 새 마을 환경 효과(scenes_v2만 S.fx가 있음)
+  { // 10/26 선생님(장소 안 광장 분수가 안 움직임): 지도 분수 자리를 이 장면 좌표로 옮겨 같은 물줄기를 얹음
+    //  10/30 선생님(분수가 어떨 땐 멈춤): 장소에 들어갈 때만이 아니라 도착 연출 등 이 장면을 쓰는 모든 화면에서
+    const M = G.D.places.map, F = M && M.fountains, z = M && M.sceneMap && M.sceneMap[id];
+    if (F && z && G.fountainFx && !G.settings.light && !G.reduced()) {
+      const at = F.at.map(([x, y, m]) => [(x - z[0]) / z[2], (y - z[1]) / z[2], m]).filter(([x, y]) => x > -F.size[0] && y > -F.size[1] && x < W && y < H);
+      if (at.length) G.fountainFx(V, { ...F, k: F.k / z[2], at });
+    }
+  }
   if (V.pxw) PX.world();
   return V;
 };
@@ -4283,13 +4303,6 @@ G.scene = (() => {
     G.loadWatch();   // 10/25 r1: 장면 그림이 늦으면 로딩 창
     G.warmDrop();   // 10/28: 미리 풀어 둔 그림은 장면이 쓰기 시작하면 놓음
     V.setMood(G.st.mood);
-    { // 10/26 선생님(장소 안 광장 분수가 안 움직임): 지도 분수 자리를 이 장면 좌표로 옮겨 같은 물줄기를 얹음
-      const M = G.D.places.map, F = M && M.fountains, z = M && M.sceneMap && M.sceneMap[id], [sw, sh] = def.size || [0, 0];
-      if (F && z && G.fountainFx && !G.settings.light && !G.reduced()) {
-        const at = F.at.map(([x, y, m]) => [(x - z[0]) / z[2], (y - z[1]) / z[2], m]).filter(([x, y]) => x > -F.size[0] && y > -F.size[1] && x < sw && y < sh);
-        if (at.length) G.fountainFx(V, { ...F, k: F.k / z[2], at });
-      }
-    }
     // 누를 곳: 별빛 테두리 + 할 일에는 ☆
     for (const h of def.hotspots) {
       const glow = G.el('img', 'hot-glow', V.fx); glow.src = G.asset(h.img); glow.alt = '';
@@ -13058,7 +13071,7 @@ G.s6 = (() => {
     };
 
     // ---- A1 루미: 주인공 둘레를 돌고, 가끔 갈 곳 쪽으로 날아가 알려 줌. 지나간 자리에 별가루 ----
-    const LU = { guide: null, next: 3, trail: 0, px: null, py: null };
+    const LU = { guide: null, next: 3, trail: 0, px: null, py: null, spin: null, spinIn: 4 };
     V.lumiTarget = (hero, dt) => {
       if (off() || G.reduced()) { LU.guide = null; return null; }
       LU.next -= dt;
@@ -13068,7 +13081,15 @@ G.s6 = (() => {
         if (np) { const d = Math.hypot(np.marker[0] - hero.x, np.marker[1] - hero.y); if (d > 90 && d < 420) LU.guide = { p: np.marker, t: 0 }; }
       }
       if (LU.guide) { LU.guide.t += dt; const p = LU.guide.p; if (LU.guide.t > 2.2 || hero.frame !== 8) LU.guide = null; else return [p[0] + Math.cos(T * 4) * 16, p[1] - 90 + Math.sin(T * 4) * 10, 2.2]; }
-      return [hero.x + 10 + Math.cos(T * 1.7) * 56, hero.y - 140 * (hero.age || 1) + Math.sin(T * 1.7) * 22 + Math.sin(T * 3.1) * 5, 3.5];
+      // 10/30 선생님: 주로 주인공 머리 위에 떠 있고(좌우로 살랑), 가끔 시계·반시계 방향으로 머리 둘레를 뱅글뱅글 돎
+      const hx = hero.x + 4, hy = hero.y - 140 * (hero.age || 1);
+      LU.spinIn -= dt;
+      if (!LU.spin && LU.spinIn < 0) { LU.spinIn = 7 + Math.random() * 7; LU.spin = { t: 0, dir: Math.random() < 0.5 ? 1 : -1, laps: Math.random() < 0.4 ? 2 : 1 }; }
+      if (LU.spin) { const S = LU.spin, D = 1.5 * S.laps; S.t += dt;
+        if (S.t >= D) LU.spin = null;
+        else { const k = S.t / D, e = k < .5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k), a = -Math.PI / 2 + S.dir * e * Math.PI * 2 * S.laps, r = 46 * Math.sin(Math.min(1, k * 6, (1 - k) * 6) * Math.PI / 2);
+          return [hx + Math.cos(a) * r, hy + (1 + Math.sin(a)) * r * 0.55, 9]; } }
+      return [hx + Math.sin(T * 0.9) * 18, hy + Math.sin(T * 1.6) * 7, 3.5];
     };
     // A3: 걸음 소리는 화면 왼쪽·오른쪽 위치대로, 풀밭이면 부드럽게
     V.stepFx = (w) => ({ pan: Math.max(-1, Math.min(1, (w.x - V.cam.x) / (vw / 2 || 1))), lp: V.grassAt(w.x, w.y + 2) ? 700 : 0, vol: V.grassAt(w.x, w.y + 2) ? 0.6 : 1 });
@@ -13978,7 +13999,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-10-31)';
-G.BUILT = '2026-10-31 10:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-10-31 11:46';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
