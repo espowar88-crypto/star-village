@@ -279,14 +279,16 @@ document.addEventListener('dblclick', e => e.preventDefault(), { passive: false 
     for (const c of document.querySelectorAll('canvas')) o.canvas += c.width * c.height * 4;
     if (G.pxMem) o.gpu = G.pxMem(seen);
     for (const k in o) o[k] = Math.round(o[k] / 1e6);
-    o.total = o.img + o.bg + o.canvas + o.gpu; return o;
+    o.total = o.img + o.bg + o.canvas + o.gpu;
+    o.snd = 0; if (G.audio && G.audio.buffers) { let b = 0; for (const x of G.audio.buffers.values()) b += x.length * x.numberOfChannels * 4; o.snd = Math.round(b / 1e6); }   // 10/31 풀린 소리(그림 예산과 따로)
+    return o;
   };
   if (!/[?&]mem=1/.test(location.search)) return;
   const box = document.createElement('div');
   Object.assign(box.style, { position: 'fixed', left: '4px', top: '4px', zIndex: 99999, font: '12px/1.3 monospace', color: '#fff', background: 'rgba(0,0,0,.65)', padding: '3px 6px', borderRadius: '4px', pointerEvents: 'none', whiteSpace: 'pre' });
   let top = 0;
   const tick = () => { if (!document.body) return; if (!box.parentNode) document.body.appendChild(box); const m = G.memNow(); top = Math.max(top, m.total);
-    box.textContent = `그림 ${m.total}MB (최고 ${top})\n사진 ${m.img} 바탕 ${m.bg} 판 ${m.canvas} 칩 ${m.gpu}`; box.style.background = m.total > 150 ? 'rgba(170,20,20,.8)' : 'rgba(0,0,0,.65)'; };
+    box.textContent = `그림 ${m.total}MB (최고 ${top})\n사진 ${m.img} 바탕 ${m.bg} 판 ${m.canvas} 칩 ${m.gpu}\n소리 ${m.snd}`; box.style.background = m.total > 150 ? 'rgba(170,20,20,.8)' : 'rgba(0,0,0,.65)'; };
   setInterval(tick, 1000);
 })();
 
@@ -370,7 +372,10 @@ G.audio = (() => {
     else { const r = await fetch(url); if (!r.ok) throw new Error('없음 ' + url); ab = await r.arrayBuffer(); }
     const buf = await new Promise((ok, no) => A.ctx.decodeAudioData(ab, ok, no));
     A.buffers.set(url, buf);
-    while (A.buffers.size > 24) A.buffers.delete(A.buffers.keys().next().value);   // 오래된 것부터 버림
+    // 10/31 메모리 5단계: 풀린 소리는 1초에 약 0.35MB(44.1kHz 두 줄)라 개수(24) 대신 크기로 묶음. 음악이 길면 몇 개만 남김(지금 나는 소리는 따로 쥐고 있어 끊기지 않음)
+    const sz = (b) => b.length * b.numberOfChannels * 4;
+    let tot = 0; for (const b of A.buffers.values()) tot += sz(b);
+    while (A.buffers.size > 1 && (A.buffers.size > 24 || tot > 24e6)) { const k = A.buffers.keys().next().value; tot -= sz(A.buffers.get(k)); A.buffers.delete(k); }   // 오래된 것부터 버림
     return buf;
   }
   A.preload = (ids) => { if (!A.ready) return; for (const id of ids) loadBuf(G.voiceUrl(id)).catch(() => { }); };
@@ -1009,8 +1014,10 @@ G.hud = (() => {
     walk(S);
     //  10/28 선생님(그림 미리 풀기): 받은 그림을 화면 밖 Image로 미리 풀어 둠(decode) — 들어가는 순간 <img>가 그 자리에서 풀며 멈칫하던 것.
     //  붙잡는 것은 다음 장소 하나뿐(다른 장소로 가면 앞 것은 놓음), 장면이 열리고 3초 뒤 놓음(G.warmDrop) — 지도로 돌아왔을 때 메모리가 늘지 않게
-    const keep = [];
+    const keep = [], K = window.KTX || {}, px = G.pxwOn && G.pxwOn(sc);
     for (const u of urls) {
+      //  10/31 메모리 4단계: PixiJS가 그리는 장면은 바탕 색 그림을 압축 그림(KTX2)으로 받고 흑백 그림은 셰이더가 만듦 → 큰 옛 그림(장면 하나 약 60MB)을 미리 풀지 않음, 압축 파일만 미리 받음
+      if (px && (K[u] || /_px_mono\./.test(u))) { const k = K[u] && G.asset(K[u][0]); if (k && !got.has(k)) { got.add(k); fetch(k, { priority: 'low' }).catch(() => got.delete(k)); } continue; }
       const a = G.asset(u); if (/^data:/.test(a)) continue;
       if (!got.has(a)) { got.add(a); fetch(a, { priority: 'low' }).then(r => r.blob()).catch(() => got.delete(a)); }
       const im = new Image(); im.decoding = 'async'; im.src = a; if (im.decode) im.decode().catch(() => { }); keep.push(im);
@@ -1274,8 +1281,12 @@ G.mapView = (parent, o = {}) => {
   const LIVE = /\/walk_[^/]+\.png$/;
   V.walkers = [];
   V.walker = (sheet, cls) => {
-    const live = LIVE.test(sheet), src = live ? sheet.replace(/\.png$/, G.halfSheet ? '_live_h.png' : '_live.png') : sheet;   // 10/20: PC·전자칠판은 원래 크기(core.js G.halfSheet)   // 10/15 메모리: 지도에서는 반 크기(_h, 4300x520 → 2150x260. 지도 인물은 칸 높이의 0.4배 이하로 보여서 화질 그대로, 채이는 8600x1040 → 4300x520)
-    const w = { x: 0, y: 0, dir: 'SE', frame: 8, rc: -1, live, src, ph: Math.random() * 2600, nb: 1500 + Math.random() * 3000, nl: 5000 + Math.random() * 5000, bu: 0, lu: 0, st: 0, ws: -1e9, lf: -1, lt: 0 };
+    const live = LIVE.test(sheet);
+    // 10/30 선생님 결정(메모리 예산 2단계, 화질 그대로): 빈칸을 잘라 묶은 그림(도구/그림만들기/gen_atlas.py, data/atlas.json)이 있으면 모든 기기에서 그것.
+    //  원래 크기 그림과 점 하나 다르지 않고, 풀린 크기는 반 크기 그림(_h) 정도(마을 사람 8.9→약 2MB, 채이 36→2.6MB, 동물 7.5→0.4MB). 칸마다 묶음 자리로 옮기고 clip-path로 그 칸만 보임
+    const at = (G.D.atlas || {})[G.litPath(live ? sheet.replace(/\.png$/, '_live.png') : sheet.replace(/_h\.png$/, '.png'))];
+    let src = at ? 'assets/chars/' + at.a : live ? sheet.replace(/\.png$/, G.halfSheet ? '_live_h.png' : '_live.png') : sheet;   // 10/20: PC·전자칠판은 원래 크기(core.js G.halfSheet)   // 10/15 메모리: 지도에서는 반 크기(_h, 4300x520 → 2150x260. 지도 인물은 칸 높이의 0.4배 이하로 보여서 화질 그대로, 채이는 8600x1040 → 4300x520)
+    const w = { x: 0, y: 0, dir: 'SE', frame: 8, rc: -1, live, src, at, ph: Math.random() * 2600, nb: 1500 + Math.random() * 3000, nl: 5000 + Math.random() * 5000, bu: 0, lu: 0, st: 0, ws: -1e9, lf: -1, lt: 0 };
     w.el = G.el('div', 'walker' + (cls ? ' ' + cls : ''), V.fx);
     // 10/15 선생님(연령별 키): 그림·그림자·가림 캔버스만 발(이 칸의 0,0)을 기준으로 줄임 (css .walker > * scale). 누르는 단추(walker-hit)는 그대로
     w.age = G.ageScale(sheet); if (w.age !== 1) w.el.style.setProperty('--age', w.age);
@@ -1284,8 +1295,9 @@ G.mapView = (parent, o = {}) => {
     const fm = /\/walk_([^/]+)\.png$/.exec(sheet), FT = fm && ((G.D.feet || {}).walk || {})[fm[1]];
     if (FT) w.sh.className = 'shadow feet';
     w.spr = G.el('div', 'sprite', w.el); w.spr.style.backgroundImage = `url("${G.asset(src)}")`;
-    if (live) { w.spr.style.backgroundSize = '4300px 520px';   // 살아 있는 그림이 없으면 예전 9칸 그림으로
-      const t = new Image(); t.onerror = () => { w.live = false; w.src = sheet; w.spr.style.backgroundImage = `url("${G.asset(sheet)}")`; w.spr.style.backgroundSize = ''; w.bp = ''; w.draw(); }; t.src = G.asset(src); }
+    if (at) w.spr.style.backgroundSize = `${at.w * at.s}px ${at.h * at.s}px`;
+    else if (live) { w.spr.style.backgroundSize = '4300px 520px';   // 살아 있는 그림이 없으면 예전 9칸 그림으로
+      const t = new Image(); t.onerror = () => { w.live = false; w.src = sheet; w.spr.style.backgroundImage = `url("${G.asset(sheet)}")`; w.spr.style.backgroundSize = ''; w.bk = ''; w.draw(); }; t.src = G.asset(src); }
     w.occ = G.el('canvas', 'occ', w.el); w.occ.width = 100; w.occ.height = 130; w.occ.style.display = 'none';
     w.set = (x, y) => { w.x = x; w.y = y; w.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`; const z = Math.round(y); if (z !== w.z) { w.z = z; w.el.style.zIndex = z; } const v = V.inCam(x, y, 250) ? '' : 'hidden'; if (w.el.style.visibility !== v) w.el.style.visibility = v; V.occDirty(w); };   // 10/4 폰 끊김: 바뀔 때만 씀
     w.col = () => {
@@ -1312,7 +1324,9 @@ G.mapView = (parent, o = {}) => {
       if (w.lu && now > w.lu) w.lu = 0;
       return ROW[w.lu ? LOOK[w.dir] : w.dir];
     };
-    w.draw = () => { const c = w.col(), r = w.row(); const bp = `${-c * 100}px ${-r * 130}px`; if (bp !== w.bp) { w.bp = bp; w.c = c; if (FT && r !== w.r && FT[r]) { const f = FT[r]; const l = f[0] - 50 - f[2] / 2, t = f[1] - 125 - f[3] / 2; Object.assign(w.sh.style, { left: l + 'px', top: t + 'px', width: f[2] + 'px', height: f[3] + 'px', transformOrigin: `${-l}px ${-t}px` }); } w.r = r; w.spr.style.backgroundPosition = bp; if (w.hid) V.occDirty(w); } };
+    w.draw = () => { const c = w.col(), r = w.row(); let bp = `${-c * 100}px ${-r * 130}px`, cl = '';
+      if (w.at) { const A = w.at, e = A.f[r * A.n + c], k = A.s; if (e) { bp = `${(e[2] - e[0]) * k}px ${(e[3] - e[1]) * k}px`; cl = `inset(${e[3] * k}px ${100 - (e[2] + e[4]) * k}px ${130 - (e[3] + e[5]) * k}px ${e[2] * k}px)`; } else { bp = '-9999px 0px'; cl = 'inset(50%)'; } }
+      if (bp + cl !== w.bk) { w.bk = bp + cl; w.bp = bp; w.clip = cl; w.spr.style.clipPath = cl; w.c = c; if (FT && r !== w.r && FT[r]) { const f = FT[r]; const l = f[0] - 50 - f[2] / 2, t = f[1] - 125 - f[3] / 2; Object.assign(w.sh.style, { left: l + 'px', top: t + 'px', width: f[2] + 'px', height: f[3] + 'px', transformOrigin: `${-l}px ${-t}px` }); } w.r = r; w.spr.style.backgroundPosition = bp; if (w.hid) V.occDirty(w); } };
     w.face = (dx, dy) => { w.dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW'); };
     w.draw();
     V.walkers.push(w);
@@ -1412,7 +1426,9 @@ G.mapView = (parent, o = {}) => {
     c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'destination-in'; c.drawImage(w.om, 0, 0);
     // 가려진 부분에 인물을 흐리게
     const sh = sheets[w.src] || (sheets[w.src] = Object.assign(new Image(), { src: G.asset(w.src) }));
-    if (sh.complete && sh.naturalWidth) { const k = sh.naturalWidth / (w.live ? 43 : 9) / 100; c.globalCompositeOperation = 'source-atop'; c.globalAlpha = w.el.classList.contains('hero') ? 0.4 : 0.35;   /* 10/24 col1024: 주인공은 지붕 뒤에서도 윤곽이 잘 보이게 */ c.imageSmoothingEnabled = false; c.drawImage(sh, (w.c ?? w.frame) * 100 * k, (w.r ?? ROW[w.dir]) * 130 * k, 100 * k, 130 * k, 0, 0, 100, 130); }
+    if (sh.complete && sh.naturalWidth) { const k = sh.naturalWidth / (w.live ? 43 : 9) / 100; c.globalCompositeOperation = 'source-atop'; c.globalAlpha = w.el.classList.contains('hero') ? 0.4 : 0.35;   /* 10/24 col1024: 주인공은 지붕 뒤에서도 윤곽이 잘 보이게 */ c.imageSmoothingEnabled = false;
+      if (w.at) { const A = w.at, e = A.f[(w.r ?? ROW[w.dir]) * A.n + (w.c ?? w.frame)], q = A.s; if (e) c.drawImage(sh, e[0], e[1], e[4], e[5], e[2] * q, e[3] * q, e[4] * q, e[5] * q); }   // 10/30 묶음 그림
+      else c.drawImage(sh, (w.c ?? w.frame) * 100 * k, (w.r ?? ROW[w.dir]) * 130 * k, 100 * k, 130 * k, 0, 0, 100, 130); }
     c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
     cv.style.display = ''; w.hid = true;
   }
@@ -1558,8 +1574,14 @@ const pxStart = () => {
 };
 
 // 카메라 따라가기: setCam이 쓴 inline transform("translate(Xpx,Ypx) scale(S)")을 읽음. getComputedStyle은 그때마다 브라우저가 모양 계산을 다시 해서(10/29 PC 끊김) 쓰지 않음
-const pxFollow = (el, o) => { const m = el.style.transform, v = m && m.match(/-?[\d.]+(?:e-?\d+)?/g);
-  if (!v || v.length < 3) { o.position.set(0, 0); o.scale.set(1); return m; } o.position.set(+v[0], +v[1]); o.scale.set(+v[2]); return m; };
+// 10/30 별 2~6 이사: 별 이야기 코드가 el.animate(WAAPI)로 인물을 뛰게·흔들게·밝게 함 → 움직이는 동안만 계산된 값(getComputedStyle)을 읽음
+const pxAnim = (e) => { const A = e.getAnimations ? e.getAnimations() : null; if (!A || !A.length || !A.some((a) => a.playState === 'running')) return null;
+  const cs = getComputedStyle(e), o = { tx: 0, ty: 0, sx: 1, sy: 1, m: false, op: +cs.opacity, br: 1 };
+  const t = cs.transform; if (t && t !== 'none') { const v = t.match(/-?[\d.]+(?:e-?\d+)?/g).map(Number); if (v.length >= 6) { o.sx = v[0]; o.sy = v[3]; o.tx = v[4]; o.ty = v[5]; o.m = true; } }
+  const tr = cs.translate; if (tr && tr !== 'none') { const v = tr.split(/\s+/).map(parseFloat); o.tx += v[0] || 0; o.ty += v[1] || 0; o.m = true; }
+  const b = /brightness\(([\d.]+)\)/.exec(cs.filter || ''); if (b) o.br = +b[1]; return o; };
+const pxFollow = (el, o) => { const m = el.style.transform, v = m && m.match(/-?[\d.]+(?:e-?\d+)?/g), an = pxAnim(el), sh = an ? an.tx.toFixed(1) + ',' + an.ty.toFixed(1) : '';   // 장면 흔들기(translate 애니메이션)
+  if (!v || v.length < 3) { o.position.set(0, 0); o.scale.set(1); return m; } o.position.set(+v[0] + (an ? an.tx : 0), +v[1] + (an ? an.ty : 0)); o.scale.set(+v[2]); return m + sh; };
 // 그림 빌려 쓰기: 같은 그림을 지도·장면이 겹쳐 쓰거나, 지난 화면이 놓는 동안 새 화면이 같은 그림을 부를 수 있어 몇 곳이 쓰는지 세고
 //  아무도 안 쓰면 1초 뒤에 그래픽 칩에서 내림(바로 내리면 새로 부른 쪽이 빈 그림을 받음)
 const pxRC = new Map();
@@ -1574,8 +1596,8 @@ G.pxMem = (seen) => { let b = 0; for (const [u, r] of pxRC) { const s = r.t && r
 //  scene.js·mapview.js는 지금처럼 DOM 요소에 자리·보이기·그림을 씀(이야기·퍼즐 코드 그대로). 세상 판은 매 화면 그 DOM 값(inline style)을 읽어 같은 모양으로 그리고,
 //  DOM 쪽은 css .world.pxw 가 안 보이게만 함(자리·누르기·말풍선 위치 계산은 그대로). 위층(빛 테두리·할 일·단추·장소 표시·루미 등)은 DOM 그대로 PixiJS 위
 //  가림: 인물을 그릴 때 깊이 그림(_depth)을 그래픽 칩이 점마다 보고 발보다 앞 물건 자리 점을 빼고(지도는 흐리게) 그림(조각 캔버스·다시 그리기 없음)
-G.PXW = new Set(['plaza', 'plaza2', 'library', 'forest', 'map']);   // 별 1 시험판(선생님 확인 뒤 넓힘). 지도는 별 1 동안만. 주소에 ?pxw=0 이면 지금 방식
-G.pxwOn = (id) => !!G.px && G.PXW.has(id) && !/[?&]pxw=0/.test(location.search) && (id !== 'map' || !(G.st && G.st.stars > 0));
+// 10/30 선생님 '다음 장면들도 PixiJS로': 별 1 시험판(광장·도서관·숲·지도) 뒤 모든 장소 장면과 지도 전체로 넓힘. 주소에 ?pxw=0 이면 지금 방식(섞기)
+G.pxwOn = (id) => !!G.px && !/[?&]pxw=0/.test(location.search) && (id === 'map' || !!(G.D && G.D.scenes && G.D.scenes[id]));
 const pxEase = (x) => 0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, x)));   // css ease-in-out 가까이
 const pxWave = (t, d) => { const p = ((t / d) % 1 + 1) % 1; return p < .5 ? pxEase(p * 2) : 1 - pxEase((p - .5) * 2); };   // 0→1→0 (keyframes 0%,50%,100%)
 const pxNum = (v, d = 0) => { const n = parseFloat(v); return isFinite(n) ? n : d; };
@@ -1661,8 +1683,13 @@ const pxLamp = (K, parent, el, size) => { const s = new K.P.Sprite(); s.anchor.s
 const pxWorld = (V, X, root) => {
   const K = pxKit(V, X, false), { P } = K, el = V.el, S = V.S, col = V.colorImg;
   const top = new P.Container(), under = new P.Container(), chars = new P.Container(); chars.sortableChildren = true;
-  top.addChild(under, chars); root.addChild(top);
+  const fnt = new P.Container(); top.addChild(under, chars, fnt); root.addChild(top);
   let sig = 0, clock = 0, lastT = performance.now();
+  // 10/30 선생님(분수가 멈춰 있을 때가 있음): 장면 분수 물줄기 캔버스(worldmap.js G.fountainFx, V.fx 안)는 .pxw가 숨기므로 여기서 인물 위에 그림
+  const founts = new Map();
+  const syncFount = () => { for (const c of V.fx.querySelectorAll(':scope > canvas.map-fountain')) { let f = founts.get(c);
+      if (!f) { f = new P.Texture({ source: new P.CanvasSource({ resource: c, scaleMode: 'nearest' }) }); const sp = new P.Sprite(f), st = c.style; sp.position.set(pxNum(st.left), pxNum(st.top)); sp.width = pxNum(st.width); sp.height = pxNum(st.height); fnt.addChild(sp); founts.set(c, f); }
+      f.source.update(); sig++; } };
   // 가림 기준: scene.js occDraw와 같은 셈(발 둘레가 올라설 수 있는 곳이면 그 아래 땅을 발 높이로)
   const occOf = (b) => { const D = V.depth; if (!D || !b || b.hide) return null; const k = D.k, gy = D.gy; let up = false, lim = b.fy + 4;
     const xa = Math.max(0, Math.floor((b.fx - b.w * 0.2) / k)), xb = Math.min(D.w - 1, Math.floor((b.fx + b.w * 0.2) / k)), ya = Math.max(0, Math.floor((b.fy - 12) / k)), yb = Math.min(D.h - 1, Math.floor((b.fy + 4) / k));
@@ -1674,7 +1701,7 @@ const pxWorld = (V, X, root) => {
   const shadowT = () => K.radial('feet', [[0, 'rgba(30,22,40,.76)'], [.58, 'rgba(30,22,40,.76)'], [.72, 'rgba(30,22,40,.58)'], [.86, 'rgba(30,22,40,.5)'], [1, 'rgba(30,22,40,0)']]);
   const kindOf = (e) => e.tagName === 'IMG' ? 'img' : e.classList.contains('scene-walker') ? 'walk' : e.classList.contains('foot-shadow') ? 'shadow' : e.classList.contains('scene-sprite') ? 'lumi' : null;
   const parse = (r) => { const e = r.e, s = e.style, k = r.kind;
-    r.show = s.display !== 'none' && s.visibility !== 'hidden'; r.L = pxNum(s.left); r.T = pxNum(s.top); r.W = pxNum(s.width); r.H = pxNum(s.height);
+    r.show = s.display !== 'none' && s.visibility !== 'hidden'; r.L = pxNum(s.left); r.T = pxNum(s.top) + pxNum(s.marginTop); r.W = pxNum(s.width); r.H = pxNum(s.height);
     r.z = pxNum(s.zIndex); const op = s.opacity === '' ? 1 : +s.opacity, tr = trOp(s.transition);
     if (op !== r.opT) { r.op0 = r.opT == null || !tr || G.reduced() ? op : r.op; r.opT = op; r.ot0 = performance.now(); r.od = tr; }
     r.age = pxNum(s.scale, 1); r.tf = pxTf(s.transform); r.to = s.transformOrigin; r.idle = e.classList.contains('idle') && !G.reduced();
@@ -1685,6 +1712,7 @@ const pxWorld = (V, X, root) => {
   const upd = (r, now) => { const e = r.e, a = e.getAttribute('style') || '', c = e.className, src = r.kind === 'img' ? e.src : r.kind === 'lumi' && e.firstElementChild ? e.firstElementChild.src : '';
     if (a !== r.a || c !== r.c || src !== r.src) { r.a = a; r.c = c; r.src = src; parse(r); r.oc = undefined; sig++; }
     const m = r.m, fading = r.od && now - r.ot0 < r.od; r.op = fading ? r.op0 + (r.opT - r.op0) * pxEase((now - r.ot0) / r.od) : r.opT; if (fading) sig++;
+    const an = pxAnim(e); if (an) { sig++; r.op = an.op; }   // el.animate 중: 투명도·자리·밝기는 계산된 값
     const t = r.kind === 'shadow' ? shadowT() : K.tex(r.url, r.kind !== 'lumi');
     if (!r.show || r.op <= 0.003 || !t || !r.W) { m.visible = false; if (r.g) r.g.visible = false; return; }
     K.setTex(m, t); m.visible = true;
@@ -1692,14 +1720,14 @@ const pxWorld = (V, X, root) => {
     let { L, T, W: w, H: h } = r, sx = r.age, sy = r.age, tx = 0, ty = 0, ox, oy;
     if (r.kind === 'shadow') [ox, oy] = pxOrg(r.to, w, h, w / 2, h / 2);
     else if (r.kind === 'lumi') { [ox, oy] = pxOrg(r.to, w, h, w / 2, h / 2); [tx, ty, sx, sy] = r.tf; if (!G.reduced()) ty -= 10 * pxWave(clock + r.ph, 2.4); }   // 루미 둥실(bob 2.4초)
-    else { [ox, oy] = r.idle ? [w / 2, h] : pxOrg(r.to, w, h, w / 2, h / 2);
-      if (r.idle) sy *= 1 + 0.015 * pxWave(clock + r.ph, 3.4);   // 숨쉬기(idleb 3.4초, 발 기준). 애니메이션이 있으면 inline transform은 안 먹음(css와 같음)
-      else { tx = r.tf[0] * r.age; ty = r.tf[1] * r.age; sx *= r.tf[2]; sy *= r.tf[3]; } }
+    else { const idle = r.idle && !(an && an.m); [ox, oy] = idle ? [w / 2, h] : pxOrg(r.to, w, h, w / 2, h / 2);
+      if (idle) sy *= 1 + 0.015 * pxWave(clock + r.ph, 3.4);   // 숨쉬기(idleb 3.4초, 발 기준). 애니메이션이 있으면 inline transform은 안 먹음(css와 같음)
+      else { const f = an && an.m ? [an.tx, an.ty, an.sx, an.sy] : r.tf; tx = f[0] * r.age; ty = f[1] * r.age; sx *= f[2]; sy *= f[3]; } }
     const X0 = L + ox - ox * sx + tx, Y0 = T + oy - oy * sy + ty, X1 = L + ox + (w - ox) * sx + tx, Y1 = T + oy + (h - oy) * sy + ty;
     const u0 = r.kind === 'walk' ? r.uv : [0, 0, 1, 1], fl = X1 < X0, rx = Math.min(X0, X1), ry = Math.min(Y0, Y1), rw = Math.abs(X1 - X0), rh = Math.abs(Y1 - Y0);
     K.rect(m, rx, ry, rw, rh); K.uv(m, fl ? [u0[2], u0[1], u0[0], u0[3]] : u0);
     const lit = r.px ? (r.talk ? [1.12, 12, .85] : null) : r.shine ? [1.25, 16, 1] : r.talk ? [1.12, 12, .85] : null;
-    const fx = m.u.uFx; fx[0] = r.op; fx[1] = lit ? lit[0] : 1; fx[2] = r.px ? 1 : 0;
+    const fx = m.u.uFx; fx[0] = r.op; fx[1] = (lit ? lit[0] : 1) * (an ? an.br : 1); fx[2] = r.px ? 1 : 0;
     m.zIndex = r.z * 64 + r.ord;
     // 말할 때 빛
     if (lit && r.kind === 'img') { const g = K.glowOf(r.url, Math.round(lit[1] * (e.naturalWidth || 1) / Math.max(1, w)), lit[2]);
@@ -1742,10 +1770,10 @@ const pxWorld = (V, X, root) => {
     const run = !el.classList.contains('fxpause') && !document.hidden, lite = !!V.lite || el.classList.contains('fxlite');
     if (run) clock += dt;
     if (!K.hasDepth() && V.depth) K.depth();
-    pxFollow(V.el, root); syncChars(now); syncUnder(now, run, lite);
+    pxFollow(V.el, root); syncChars(now); syncUnder(now, run, lite); syncFount();
     return sig + '|' + (run && !G.reduced() ? Math.floor(clock * G.pxAmb) : 0); };
   el.classList.add('pxw'); X.cv.style.display = ''; G.pxDirty = true; G.pxTick.add(tick);
-  const dispose = () => { G.pxTick.remove(tick); top.destroy({ children: true }); K.dispose(); items.clear(); };
+  const dispose = () => { G.pxTick.remove(tick); for (const f of founts.values()) f.destroy(true); founts.clear(); top.destroy({ children: true }); K.dispose(); items.clear(); };
   return { dispose };
 };
 // 지도 세상 판: 밤 덧칠·구름·빛 캔버스(mapfx.js) → 나무·굴뚝 연기(worldmap.js mfxu) → [등불 → 발자국 → 걷는 사람·장소 앞 사람·분수를 발 y 순서로]
@@ -1798,7 +1826,7 @@ const pxMapWorld = (V, X, root) => {
   const walker = (w, r, key) => {
     const e = w.el, es = e.style, show = e.isConnected && es.display !== 'none' && es.visibility !== 'hidden';
     const ss = w.spr.style, t0 = K.tex(pxUrl(ss.backgroundImage), true), ts = w.tint && w.tint.style, gs = w.gt && w.gt.style, cs = w.cst && w.cst.style, hs = w.sh.style;
-    const k = [w.x, w.y, show, ss.backgroundImage, ss.backgroundSize, ss.backgroundPosition, ss.filter, ts && ts.backgroundColor, gs && gs.background, gs && gs.display, cs && cs.display, hs.cssText, w.sh.className, w.age, key, K.hasDepth(), !!t0].join('|');
+    const k = [w.x, w.y, show, ss.backgroundImage, ss.backgroundSize, ss.backgroundPosition, ss.clipPath, ss.filter, ts && ts.backgroundColor, gs && gs.background, gs && gs.display, cs && cs.display, hs.cssText, w.sh.className, w.age, key, K.hasDepth(), !!t0].join('|');
     if (!r.m) { r.m = {}; for (const n of ['ring', 'sh', 'cast', 'spr', 'tint', 'gt']) r.m[n] = K.mkItem(sorted); for (const n of ['cast', 'tint', 'gt']) r.m[n].blendMode = n === 'cast' ? 'normal' : 'multiply'; }
     const m = r.m, hero = e.classList.contains('hero');
     m.ring.visible = show && hero; if (m.ring.visible) { m.ring.alpha = G.reduced() ? 1 : .75 + .25 * pxWave(clock, 2.4); }
@@ -1806,20 +1834,23 @@ const pxMapWorld = (V, X, root) => {
     if (!show) { for (const n in m) m[n].visible = false; return; }
     const s = (w.age || 1) * mk, x = w.x, y = w.y, url = pxUrl(ss.backgroundImage), t = K.tex(url, true);
     const bs = (ss.backgroundSize || '900px 520px').split(/\s+/).map(parseFloat), bp = (ss.backgroundPosition || '0px 0px').split(/\s+/).map(parseFloat);
-    const uv = [-bp[0] / bs[0], -bp[1] / bs[1], (-bp[0] + 100) / bs[0], (-bp[1] + 130) / bs[1]], o = occOf(Math.round(x), Math.round(y), s), bx = x - 50 * s, by = y - 125 * s;
+    let uv = [-bp[0] / bs[0], -bp[1] / bs[1], (-bp[0] + 100) / bs[0], (-bp[1] + 130) / bs[1]], cx = 0, cy = 0, cw = 100, ch = 130;
+    // 10/30 메모리 예산 2단계: 빈칸 자른 묶음 그림(mapview w.at, data/atlas.json)이면 칸 안 그림 네모만 그 자리에
+    if (w.at) { const A = w.at, f = A.f[(w.r ?? 0) * A.n + (w.c ?? 0)], q = A.s; if (f) { cx = f[2] * q; cy = f[3] * q; cw = f[4] * q; ch = f[5] * q; uv = [f[0] / A.w, f[1] / A.h, (f[0] + f[4]) / A.w, (f[1] + f[5]) / A.h]; } else { cw = ch = 0; uv = [0, 0, 0, 0]; } }
+    const o = occOf(Math.round(x), Math.round(y), s), bx = x - 50 * s + cx * s, by = y - 125 * s + cy * s;
     if (hero) { K.setTex(m.ring, ringT()); K.rect(m.ring, x - 72 * mk, y - 26 * mk, 144 * mk, 52 * mk); m.ring.zIndex = key + .1; }
     // 발 그림자: 두 발 자리(feet, 인라인 자리) 또는 둥근 그림자(가운데 56x20). 기준점은 발(0,0)
     const feet = w.sh.classList.contains('feet'), sl = feet ? pxNum(hs.left) : -28, st = feet ? pxNum(hs.top) : -10, sw = feet ? pxNum(hs.width) : 56, sh2 = feet ? pxNum(hs.height) : 20;
     K.setTex(m.sh, feet ? feetT() : shT()); K.rect(m.sh, x + sl * s, y + st * s, sw * s, sh2 * s); m.sh.u.uFx[0] = hs.opacity === '' ? 1 : +hs.opacity; m.sh.visible = sw > 0; m.sh.zIndex = key + .2; K.occ(m.sh, o, 0);
     for (const n of ['cast', 'spr', 'tint', 'gt']) { const q = m[n]; K.setTex(q, t); K.uv(q, uv); q.visible = !!t; K.occ(q, o, n === 'spr' ? (hero ? .4 : .35) : 0); }
     // 눕는 그림자: css scaleY(.55) skewX(-58deg), 기준점 50% 96%(발), 검게 0.28
-    if (cs && cs.display !== 'none') { const Oy = y - .2 * s, q0x = -50, q0y = -124.8, sx0 = (q0x + TANS * q0y) * s, sy0 = .55 * q0y * s; const p = m.cast.u.uP, q = m.cast.u.uQ;
-      p[0] = x + sx0; p[1] = Oy + sy0; p[2] = 100 * s; p[3] = 0; q[0] = TANS * 130 * s; q[1] = .55 * 130 * s; m.cast.u.uFx[0] = .28; m.cast.u.uFx[3] = 3; m.cast.zIndex = key + .3; } else m.cast.visible = false;
-    K.rect(m.spr, bx, by, 100 * s, 130 * s); const b = /brightness\(([\d.]+)\)/.exec(ss.filter || ''); m.spr.u.uFx[1] = b ? +b[1] : 1; m.spr.u.uFx[2] = 1; m.spr.zIndex = key + .4;
+    if (cs && cs.display !== 'none') { const Oy = y - .2 * s, q0x = cx - 50, q0y = cy - 124.8, sx0 = (q0x + TANS * q0y) * s, sy0 = .55 * q0y * s; const p = m.cast.u.uP, q = m.cast.u.uQ;
+      p[0] = x + sx0; p[1] = Oy + sy0; p[2] = cw * s; p[3] = 0; q[0] = TANS * ch * s; q[1] = .55 * ch * s; m.cast.u.uFx[0] = .28; m.cast.u.uFx[3] = 3; m.cast.zIndex = key + .3; } else m.cast.visible = false;
+    K.rect(m.spr, bx, by, cw * s, ch * s); const b = /brightness\(([\d.]+)\)/.exec(ss.filter || ''); m.spr.u.uFx[1] = b ? +b[1] : 1; m.spr.u.uFx[2] = 1; m.spr.zIndex = key + .4;
     const tc = ts && /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(ts.backgroundColor || '');
-    if (tc) { K.rect(m.tint, bx, by, 100 * s, 130 * s); const c = m.tint.u.uC0; c[0] = tc[1] / 255; c[1] = tc[2] / 255; c[2] = tc[3] / 255; c[3] = 1; m.tint.u.uFx[3] = 1; m.tint.zIndex = key + .5; } else m.tint.visible = false;
+    if (tc) { K.rect(m.tint, bx, by, cw * s, ch * s); const c = m.tint.u.uC0; c[0] = tc[1] / 255; c[1] = tc[2] / 255; c[2] = tc[3] / 255; c[3] = 1; m.tint.u.uFx[3] = 1; m.tint.zIndex = key + .5; } else m.tint.visible = false;
     const gc = gs && gs.display !== 'none' && [...(gs.background || '').matchAll(/rgba?\((\d+),\s*(\d+),\s*(\d+)/g)];
-    if (gc && gc.length >= 3) { K.rect(m.gt, bx, by, 100 * s, 130 * s); const c0 = m.gt.u.uC0, c1 = m.gt.u.uC1; for (let i = 0; i < 3; i++) { c0[i] = gc[0][i + 1] / 255; c1[i] = gc[2][i + 1] / 255; } m.gt.u.uFx[3] = 2; m.gt.zIndex = key + .6; } else m.gt.visible = false; };
+    if (gc && gc.length >= 3) { K.rect(m.gt, bx, by, cw * s, ch * s); const c0 = m.gt.u.uC0, c1 = m.gt.u.uC1; for (let i = 0; i < 3; i++) { c0[i] = gc[0][i + 1] / 255; c1[i] = gc[2][i + 1] / 255; } m.gt.u.uFx[3] = 2; m.gt.zIndex = key + .6; } else m.gt.visible = false; };
   const npc = (e, r, key) => { const s = e.style, a = s.cssText + e.src + e.naturalWidth + '|' + key; if (!r.m) r.m = K.mkItem(sorted);
     if (a === r.k) return; r.k = a; sig++; const m = r.m, t = K.tex(e.src, true), nw = e.naturalWidth, nh = e.naturalHeight; m.visible = !!t && !!nw && s.display !== 'none' && s.visibility !== 'hidden'; if (!m.visible) return;
     const L = pxNum(s.left), T = pxNum(s.top), w = pxNum(s.width), h = pxNum(s.height), q = Math.min(w / nw, h / nh), dw = nw * q, dh = nh * q, ag = pxNum(s.scale, 1);   // object-fit contain, 아래 가운데
@@ -1881,7 +1912,7 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
     const shader = P.Shader.from({ gl: { vertex, fragment }, resources: { uTex: c.source, uWarm: (w || c).source,
       pxU: { uCol: { value: 1, type: 'f32' }, uHasWarm: { value: w ? 1 : 0, type: 'f32' }, uWarmK: { value: new Float32Array(wK), type: 'vec2<f32>' }, ...Object.fromEntries(RN.map((i) => ['uR' + i, { value: new Float32Array(4), type: 'vec4<f32>' }])) } } });
     mesh = new P.Mesh({ geometry: geo, shader }); root.addChildAt(mesh, 0);   // 세상 판보다 늘 아래
-    tick = () => { const m = follow(), u = shader.resources.pxU.uniforms; u.uCol = G.pxKicking ? u.uCol : amt();   /* setCam 자리에서는 지난 값(모양 계산을 억지로 안 시킴) */ return m + '|' + u.uCol + '|' + revealTick(u); };   // 달라지면 그림
+    tick = () => { const m = follow(), u = shader.resources.pxU.uniforms; if (V.pxFade) root.alpha = +(V.pxFade.style.opacity || 1);   /* 10/31 도착 연출: 연출 겹이 흐려지고 짙어지는 것을 따라감 */ u.uCol = G.pxKicking ? u.uCol : amt();   /* setCam 자리에서는 지난 값(모양 계산을 억지로 안 시킴) */ return m + '|' + u.uCol + '|' + root.alpha + '|' + revealTick(u); };   // 달라지면 그림
     G.pxDirty = true; G.pxTick.add(tick); cv.style.display = '';
   })().catch((e) => { console.warn('PixiJS 장면 그림 못 읽음', e); });
   // 색 되찾기 동그라미 (DOM 판의 radial-gradient 원 R, #000 45% → 투명 100% 와 같은 모양), anim이면 1.8초에 걸쳐 진해짐
@@ -2298,9 +2329,9 @@ G.story = (() => {
   const CLUE = [['clue_bell', 'opt_bell', '딸랑 두 번'], ['clue_notes', 'icon_sound', '큰 소리, 작은 소리'], ['clue_stars', 'icon_star', '큰 별 옆 작은 별'], ['clue_sky', 'icon_star', '그날 밤 하늘']];
   S.clues = () => sst().clues || [];
   S.clueImg = (k) => G.artImg(CLUE[k][0]) || G.artImg(CLUE[k][1]) || G.icon(CLUE[k][1]);
-  S.clue = async (n) => {   // n: 0~3
+  S.clue = async (n, talk, look) => {   // look: 11/1 e3 — 이미 받은 칸을 다시 펴 보여 줌(그 칸이 빛남)   // n: 0~3. talk: 11/1 1부 평가 e2 — 수첩 그림을 보면서 듣는 대사(수첩을 위로 올리고 아래 대화창이 보이게)
     const c = sst().clues || (sst().clues = []); const fresh = !c.includes(n); if (fresh) { c.push(n); G.save.write(); }
-    if (!fresh) return;
+    if (!fresh && !(look && c.includes(n))) { if (talk) await talk(); return; }
     const ov = G.$('#overlay'), m = G.el('div', 'modal st-clue', ov), sh = G.el('div', 'sheet', m); G.busy++;
     G.el('div', 'st-clue-t', sh, '그날 밤 수첩');
     const row = G.el('div', 'st-clue-row', sh);
@@ -2308,6 +2339,7 @@ G.story = (() => {
       if (c.includes(i)) { G.el('div', 'st-clue-pic', e, S.clueImg(i)); G.el('div', 'st-clue-l', e, d[2]); }
       if (i === n && e.animate) { e.classList.add('on', 'new'); e.animate([{ transform: 'scale(.3) rotate(-8deg)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: G.reduced() ? 150 : 650, delay: 350, fill: 'backwards', easing: 'cubic-bezier(.3,1.5,.6,1)' }); } });
     G.audio.sfx('sfx_page', 0.6); setTimeout(() => G.audio.sfx('sfx_sparkle', 0.5), 500);
+    if (talk) { const g = G.gen; await G.wait(G.reduced() ? 0.3 : 1.3); m.classList.add('talk'); G.busy = Math.max(0, G.busy - 1); await talk(); G.busy++; m.classList.remove('talk'); if (g !== G.gen) { m.remove(); G.busy = Math.max(0, G.busy - 1); return; } }
     const br = G.el('div', 'btn-row', sh);
     await new Promise(r => G.btn('pill gold dlg-next ready', '다음 ' + G.icon('icon_next'), br, () => { G.audio.sfx('sfx_tap', 0.5); r(); }, '다음'));
     m.remove(); G.busy = Math.max(0, G.busy - 1);
@@ -2553,6 +2585,7 @@ G.cut = (() => {
     try { await fn(c, root, opts); } catch (e) { console.error('연출 오류', id, e); }
     done = true;
     if (st0 && !st0.seenCutscenes.includes(id) && !opts.replay) { st0.seenCutscenes.push(id); if (st0 === G.st) G.save.write(); }
+    if (root._pxOff) for (const f of root._pxOff.reverse()) f();   // 도착 연출의 PixiJS 장면을 내리고 진짜 장면을 다시 폄
     root.remove(); if (C.active === c) C.active = null;
     if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.hide(false); }
   };
@@ -2869,7 +2902,13 @@ G.cut = (() => {
   // ---- 장소 도착 공통: 장면 그림 한 벌 + 카메라 + 제목 ----
   async function arrive(c, root, opts, place) {
     root.style.opacity = 0;
-    const V = G.sceneView(root, place); V.setMood(opts.replay ? 0 : (G.st ? G.st.mood : 0));
+    //  10/31 메모리(첫 도착 연출이 장소를 큰 그림 두 장으로 한 벌 더 그려 60~70MB): PixiJS가 되면 연출 속 장면도 압축 그림으로 그림.
+    //  PixiJS 판은 모든 글·단추 아래에 있어서, 연출 동안 진짜 장면(#world)을 접어 그 글자·빛이 연출 위로 비치지 않게 함
+    const px = !!(G.px && G.pxwOn && G.pxwOn(place));
+    const V = G.sceneView(root, place, px ? { px: true } : undefined); V.setMood(opts.replay ? 0 : (G.st ? G.st.mood : 0));
+    let unfold = null;
+    if (V.px) { V.pxFade = root; root.style.background = 'transparent'; const w = G.$('#world'), was = w.style.display; w.style.display = 'none';
+      unfold = () => { unfold = null; if (V.dispose) V.dispose(); w.style.display = was; }; (root._pxOff = root._pxOff || []).push(() => unfold && unfold()); }   // 한 연출에 장면이 둘이면 거꾸로 되돌림
     await V.ready;
     const onR = () => V.setCam(V.cam.x, V.cam.y, V.cam.z); G.resizers.add(onR);
     return { V, off: () => G.resizers.delete(onR) };
@@ -3112,9 +3151,9 @@ G.map = (() => {
     fitGait();
     const n = G.D.places.nodes[Mp.node(G.st.place)]; hero.set(n[0], n[1]); hero.frame = 8; hero.dir = 'SE'; hero.draw();
     lumi = G.el('div', 'lumi-f', V.fx); const li = G.el('img', '', lumi); li.src = G.asset('assets/chars/lumi.png'); li.alt = '';
-    { const ls = 64 * G.ageScale('hero') * (G.D.places.map.charK || 1); Object.assign(lumi.style, { width: ls + 'px', height: ls + 'px', margin: `${-ls / 2}px 0 0 ${-ls / 2}px` }); }   // 10/26 선생님(키 지침): 루미·길별 점 하나 = 지도 주인공 점 하나(키가 주인공의 절반)
+    { const ls = 52 * G.ageScale('hero') * (G.D.places.map.charK || 1); Object.assign(lumi.style, { width: ls + 'px', height: ls + 'px', margin: `${-ls / 2}px 0 0 ${-ls / 2}px` }); }   // 10/26 선생님(키 지침): 루미·길별 점 하나 = 지도 주인공 점 하나(키가 주인공의 절반). 10/30 선생님: 조금 더 작게(64→52)
     if (G.deco) G.deco.dress(lumi);   // 10/11 루미 꾸미기 장식
-    lumiPos.x = hero.x + 60; lumiPos.y = hero.y - 150; lumi.style.display = o.noLumi ? 'none' : '';
+    lumiPos.x = hero.x + 16; lumiPos.y = hero.y - 140 * (hero.age || 1); LF.f = LF.to = 1; LF.px = null; lumi.style.display = o.noLumi ? 'none' : '';
     placeLumi();
     // 배경 주민
     const stage = G.st.mood;
@@ -3151,15 +3190,21 @@ G.map = (() => {
     if (G.p4 && G.p4.accessMarks) G.p4.accessMarks(V);   // 10/9 수정안 3단계: 모두의 지도
   };
 
-  function placeLumi() { if (lumi) lumi.style.transform = `translate(${lumiPos.x.toFixed(1)}px,${lumiPos.y.toFixed(1)}px)`; }
+  // 10/30 선생님(지도 루미가 한 방향만 봄): 날아가는 쪽을 보게 좌우로 돌아섬(그림은 오른쪽을 봄). 돌 때는 납작해졌다 펴지며 뒤집힘
+  const LF = { f: 1, to: 1, px: null };
+  function placeLumi() { if (lumi) lumi.style.transform = `translate(${lumiPos.x.toFixed(1)}px,${lumiPos.y.toFixed(1)}px) scaleX(${LF.f.toFixed(2)})`; }
+  function faceLumi(dt) {
+    if (LF.px != null && dt > 0) { const vx = (lumiPos.x - LF.px) / dt; if (Math.abs(vx) > 12) LF.to = vx > 0 ? 1 : -1; }
+    LF.px = lumiPos.x; const d = LF.to - LF.f; LF.f = Math.abs(d) < 0.01 ? LF.to : LF.f + d * Math.min(1, dt * 9);
+  }
   function update(dt) {
     if (!V) return;
     if (FR) freeStep(dt);
     // 루미는 주인공 오른쪽 위를 살짝 늦게 따라옴
     if (hero && lumi && !Mp.lumiFree) {
       const lt = (FR && freeGuide(dt)) || (V.lumiTarget && V.lumiTarget(hero, dt));   // 10/10 A1: 주인공 둘레를 날고, 가끔 갈 곳을 알려 줌 (mapfx.js)
-      const tx = lt ? lt[0] : hero.x + 60, ty = lt ? lt[1] : hero.y - 150, k = Math.min(1, dt * (lt ? lt[2] : 4));
-      lumiPos.x += (tx - lumiPos.x) * k; lumiPos.y += (ty - lumiPos.y) * k; placeLumi();
+      const tx = lt ? lt[0] : hero.x + 16, ty = lt ? lt[1] : hero.y - 140 * (hero.age || 1), k = Math.min(1, dt * (lt ? lt[2] : 4));
+      lumiPos.x += (tx - lumiPos.x) * k; lumiPos.y += (ty - lumiPos.y) * k; faceLumi(dt); placeLumi();
     }
     for (const v of vills) v.update(dt);
     for (const a of anis) a(dt);
@@ -3296,9 +3341,10 @@ G.map = (() => {
     const FS = F.at.map(([x, y, mir]) => { const c = G.el('canvas', 'map-fountain', V.fx); c.width = FW / 2; c.height = FH / 2; const g = c.getContext('2d'); g.scale(.5, .5);
       Object.assign(c.style, { position: 'absolute', left: x + 'px', top: y + 'px', width: FW * F.k + 'px', height: FH * F.k + 'px', zIndex: Math.round(y + FH * F.k) + 2, pointerEvents: 'none', imageRendering: 'pixelated' });
       return { c, g, x: x + FW * F.k / 2, y: y + FH * F.k / 2, mir, drops: [], rings: [], sparks: [] }; });
-    let last = 0, acc = 0;
+    let last = 0, acc = 0, wait = 600;
     const step = (t) => {
-      if (V.gone || !FS[0].c.isConnected) return;
+      if (V.gone) return;
+      if (!FS[0].c.isConnected) { if (wait-- > 0 && !last) requestAnimationFrame(step); return; }   // 10/30: 화면에 붙기 전에 첫 박자가 오면 멈춰 버리던 것(분수가 가끔 멈춤) → 붙을 때까지 10초 기다림
       requestAnimationFrame(step); const dt = Math.min(0.1, last ? (t - last) / 1000 : 0); last = t; acc += dt; if (acc < (lite() ? 1 / 10 : 1 / 20)) return; const d = acc; acc = 0;
       for (const S of FS) {
         if (V.inCam && !V.inCam(S.x, S.y, 200)) { if (S.drops.length) { S.drops.length = 0; S.g.clearRect(0, 0, FW, FH); } continue; }
@@ -4236,6 +4282,14 @@ G.sceneView = (parent, id, o = {}) => {
       return GW[k] ? V.walkPath(k, r1, GW[k], d) : V.walk(k, r1, G.reduced() ? 0 : 1.6); }));
   };
   if (S.fx && G.sceneEnvFx) G.sceneEnvFx(V);   // 10/23 새 마을 환경 효과(scenes_v2만 S.fx가 있음)
+  { // 10/26 선생님(장소 안 광장 분수가 안 움직임): 지도 분수 자리를 이 장면 좌표로 옮겨 같은 물줄기를 얹음
+    //  10/30 선생님(분수가 어떨 땐 멈춤): 장소에 들어갈 때만이 아니라 도착 연출 등 이 장면을 쓰는 모든 화면에서
+    const M = G.D.places.map, F = M && M.fountains, z = M && M.sceneMap && M.sceneMap[id];
+    if (F && z && G.fountainFx && !G.settings.light && !G.reduced()) {
+      const at = F.at.map(([x, y, m]) => [(x - z[0]) / z[2], (y - z[1]) / z[2], m]).filter(([x, y]) => x > -F.size[0] && y > -F.size[1] && x < W && y < H);
+      if (at.length) G.fountainFx(V, { ...F, k: F.k / z[2], at });
+    }
+  }
   if (V.pxw) PX.world();
   return V;
 };
@@ -4375,13 +4429,6 @@ G.scene = (() => {
     G.loadWatch();   // 10/25 r1: 장면 그림이 늦으면 로딩 창
     G.warmDrop();   // 10/28: 미리 풀어 둔 그림은 장면이 쓰기 시작하면 놓음
     V.setMood(G.st.mood);
-    { // 10/26 선생님(장소 안 광장 분수가 안 움직임): 지도 분수 자리를 이 장면 좌표로 옮겨 같은 물줄기를 얹음
-      const M = G.D.places.map, F = M && M.fountains, z = M && M.sceneMap && M.sceneMap[id], [sw, sh] = def.size || [0, 0];
-      if (F && z && G.fountainFx && !G.settings.light && !G.reduced()) {
-        const at = F.at.map(([x, y, m]) => [(x - z[0]) / z[2], (y - z[1]) / z[2], m]).filter(([x, y]) => x > -F.size[0] && y > -F.size[1] && x < sw && y < sh);
-        if (at.length) G.fountainFx(V, { ...F, k: F.k / z[2], at });
-      }
-    }
     // 누를 곳: 별빛 테두리 + 할 일에는 ☆
     for (const h of def.hotspots) {
       const glow = G.el('img', 'hot-glow', V.fx); glow.src = G.asset(h.img); glow.alt = '';
@@ -8344,7 +8391,7 @@ G.s2 = (() => {
       st.remove();
       await presentItem('piece_sound'); if (!ok()) return;
       await play(['SD04_miru_13', 'SD04_miru_14'], o); if (!ok()) return;
-      if (G.D.dialogues.SD08_miru_01 && G.story && G.story.clue) { await play(['SD08_miru_01'], o); if (!ok()) return; await play(['SD08_rumi_03']); if (!ok()) return; await G.story.clue(1); if (!ok()) return; }   // 11/1 1부 ③: 수첩 둘째 칸
+      if (G.D.dialogues.SD08_miru_01a && G.story && G.story.clue) { await G.story.clue(1, async () => { await play(['SD08_miru_01a', 'SD08_miru_01b'], o); if (ok()) await play(['SD08_rumi_03']); }); if (!ok()) return; }   // 11/1 1부 ③: 수첩 둘째 칸. 1부 평가 e2: 미루 긴 말을 둘로 나누고 수첩 그림을 보면서 들음
       if (!await G.p4.askHelp(V, 'miru', 'SD04_ply_02')) return;   // 10/9 수정안: 먼저 묻기
       await play(['SD04_miru_15', 'SD04_miru_20'], o); if (!ok()) return;   // 10/9 개선 6: 미루가 조용한 길 안내
       if (G.p4.bellGuide) {   // 10/31 별 2 대표 퍼즐: 미루의 종소리 길잡이 (판에서 풀고, 장면에서는 미루가 종을 울리며 앞장섬)
@@ -13361,6 +13408,11 @@ G.s6 = (() => {
       await play(['SP03_miru_03'], mi); if (!ok()) return;
       if (!await waitOn('s6_bell')) return;   // 옆에 있어 주기
       await play(['SP03_miru_02'], mi); if (!ok()) return;   // 미루 방법: 작은 종과 불빛 (빛 알림등은 소리의 별에서)
+      if (G.D.dialogues.SP08_gil_01 && G.story && G.story.clue) {   // 11/1 1부 평가 e3: 작은 종이 딸랑 두 번 → 수첩 첫 칸(딸랑 두 번)을 다시 떠올림. 별 9 회상에서 풂
+        for (let i = 0; i < 2; i++) { G.audio.sfx('sfx_ibell', 0.7); await G.wait(G.reduced() ? 0.2 : 0.55); if (!ok()) return; }
+        await play(['SP08_gil_01']); if (!ok()) return;
+        await G.story.clue(0, async () => { await play(['SP08_ply_01', 'SP08_gil_02']); }, true); if (!ok()) return;
+      }
       if (!await toBag('s6bell', 'SP03_miru_02')) return;
       await play(['SP03_seungsam_02'], se); if (!ok()) return;
       complete('s6plat_miru'); say('SP03_gil_02'); return;
@@ -13724,7 +13776,7 @@ G.s6 = (() => {
         d0();
         const u = w.spr.style.backgroundImage;   // 밝은 표정(G.asset _lit)·살아 있는 그림이 바뀌어도 그대로 따라감
         if (w.tsrc !== u) { w.tsrc = u; const sz = w.spr.style.backgroundSize || '900px 520px'; for (const e of [w.tint, w.gt]) { const s = e.style; s.webkitMaskImage = s.maskImage = u; s.webkitMaskSize = s.maskSize = sz; } w.cst.style.backgroundImage = u; w.cst.style.backgroundSize = sz; }
-        if (w.tbp !== w.bp) { w.tbp = w.bp; for (const e of [w.tint, w.gt]) e.style.webkitMaskPosition = e.style.maskPosition = w.bp; w.cst.style.backgroundPosition = w.bp; }
+        if (w.tbp !== w.bk) { w.tbp = w.bk; for (const e of [w.tint, w.gt]) e.style.webkitMaskPosition = e.style.maskPosition = w.bp; w.cst.style.backgroundPosition = w.bp; for (const e of [w.tint, w.gt, w.cst]) e.style.clipPath = w.clip || ''; }   // 10/30 묶음 그림: 그 칸만 보이게(clip)
       };
       w.draw(); w.lit = -1;
       return w;
@@ -13773,7 +13825,7 @@ G.s6 = (() => {
     };
 
     // ---- A1 루미: 주인공 둘레를 돌고, 가끔 갈 곳 쪽으로 날아가 알려 줌. 지나간 자리에 별가루 ----
-    const LU = { guide: null, next: 3, trail: 0, px: null, py: null };
+    const LU = { guide: null, next: 3, trail: 0, px: null, py: null, spin: null, spinIn: 4 };
     V.lumiTarget = (hero, dt) => {
       if (off() || G.reduced()) { LU.guide = null; return null; }
       LU.next -= dt;
@@ -13783,7 +13835,15 @@ G.s6 = (() => {
         if (np) { const d = Math.hypot(np.marker[0] - hero.x, np.marker[1] - hero.y); if (d > 90 && d < 420) LU.guide = { p: np.marker, t: 0 }; }
       }
       if (LU.guide) { LU.guide.t += dt; const p = LU.guide.p; if (LU.guide.t > 2.2 || hero.frame !== 8) LU.guide = null; else return [p[0] + Math.cos(T * 4) * 16, p[1] - 90 + Math.sin(T * 4) * 10, 2.2]; }
-      return [hero.x + 10 + Math.cos(T * 1.7) * 56, hero.y - 140 * (hero.age || 1) + Math.sin(T * 1.7) * 22 + Math.sin(T * 3.1) * 5, 3.5];
+      // 10/30 선생님: 주로 주인공 머리 위에 떠 있고(좌우로 살랑), 가끔 시계·반시계 방향으로 머리 둘레를 뱅글뱅글 돎
+      const hx = hero.x + 4, hy = hero.y - 140 * (hero.age || 1);
+      LU.spinIn -= dt;
+      if (!LU.spin && LU.spinIn < 0) { LU.spinIn = 7 + Math.random() * 7; LU.spin = { t: 0, dir: Math.random() < 0.5 ? 1 : -1, laps: Math.random() < 0.4 ? 2 : 1 }; }
+      if (LU.spin) { const S = LU.spin, D = 1.5 * S.laps; S.t += dt;
+        if (S.t >= D) LU.spin = null;
+        else { const k = S.t / D, e = k < .5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k), a = -Math.PI / 2 + S.dir * e * Math.PI * 2 * S.laps, r = 46 * Math.sin(Math.min(1, k * 6, (1 - k) * 6) * Math.PI / 2);
+          return [hx + Math.cos(a) * r, hy + (1 + Math.sin(a)) * r * 0.55, 9]; } }
+      return [hx + Math.sin(T * 0.9) * 18, hy + Math.sin(T * 1.6) * 7, 3.5];
     };
     // A3: 걸음 소리는 화면 왼쪽·오른쪽 위치대로, 풀밭이면 부드럽게
     V.stepFx = (w) => ({ pan: Math.max(-1, Math.min(1, (w.x - V.cam.x) / (vw / 2 || 1))), lp: V.grassAt(w.x, w.y + 2) ? 700 : 0, vol: V.grassAt(w.x, w.y + 2) ? 0.6 : 1 });
@@ -14693,7 +14753,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-11-01)';
-G.BUILT = '2026-11-01 10:09';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-11-01 11:44';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
