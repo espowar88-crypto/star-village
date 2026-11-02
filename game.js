@@ -991,12 +991,12 @@ G.hud = (() => {
   const hide = () => { if (box) { box.remove(); box = bar = txt = skipBtn = null; } };
   // r1: 화면 바탕 그림(장면 bg·지도 조각, 퍼즐 그림)이 0.3초 안에 다 안 뜨면 로딩 창을 덮고, 다 뜨면 걷음(반쯤 뜬 그림·버벅임을 안 보이게). 30초 넘으면 그냥 걷음
   G.loadWatch = (sel = '#world img.bg, #world .map-color > img, #world .map-mono > img, #overlay img, #closeup img') => {
-    const my = ++gen, t0 = performance.now();
+    const my = ++gen, t0 = performance.now(); if (G.packs) G.packs.hold(30);   // 11/2 결정 3: 기다리는 동안 뒤에서 받기 멈춤
     const step = () => {
       if (my !== gen) return;
       const im = [...document.querySelectorAll(sel)].filter(i => i.getAttribute('src') && !/^data:/.test(i.src));
       const left = im.filter(i => !i.complete).length, dt = performance.now() - t0;
-      if (!left || dt > 30000) { hide(); return; }
+      if (!left || dt > 30000) { hide(); if (G.packs) { G.packs.free(); G.packs.hold(1.5); } return; }
       if (dt > 700) show(1 - left / im.length);   // 10/26 선생님(준비 창이 너무 자주): 기기에 받아 둔 그림을 푸는 짧은 틈에는 안 띄움
       setTimeout(step, 100);
     };
@@ -1026,26 +1026,71 @@ G.hud = (() => {
   };
   let warm = [], warmT = 0;
   G.warmDrop = () => { clearTimeout(warmT); warmT = setTimeout(() => { warm = []; }, 3000); };
-  // r3: 처음 열 때·새 판일 때 서비스워커가 그림을 받는 동안 '게임 준비' 화면(공통 그림부터). 4초 뒤 [기다리지 않고 시작] 단추
-  // 10/26 선생님(게임 시작 전에 한 번에 받아 두기): 그림을 다 받을 때까지 기다림(새 판이 깔리는 중이면 옛 판의 '다 됨' 대답은 무시), 15초 뒤에야 [기다리지 않고 시작]
-  G.prep = (go) => {
-    let done = false; const fin = () => { if (done) return; done = true; try { bc.close(); } catch (_) { } hide(); go(); };
-    if (!('serviceWorker' in navigator) || location.protocol !== 'https:' || !window.BroadcastChannel) return fin();
-    const bc = new BroadcastChannel('sv-prep'), SW = navigator.serviceWorker; let seen = false, inst = false, t0 = performance.now();
-    const watch = (w) => { if (!w) return; inst = true; w.addEventListener('statechange', () => { if (w.state !== 'installing') { inst = false; if (seen) fin(); } }); };
-    SW.getRegistration().then((r) => { if (!r) return; watch(r.installing); r.addEventListener('updatefound', () => watch(r.installing)); }).catch(() => { });
-    bc.onmessage = (e) => {
-      const P = e.data || {}; if (!P.run) { if (seen && !inst) fin(); return; }
-      if (P.total < 30) return;
-      seen = true; show(P.done / P.total, `게임 준비 중 ${Math.floor(P.done / P.total * 100)}% (처음 한 번만, 그림 ${P.total}개)`);
-      if (!skipBtn && performance.now() - t0 > 15000) { skipBtn = G.btn('pill lw-skip', '기다리지 않고 시작', box, fin, '기다리지 않고 시작'); }
-      if (P.done >= P.total) fin();
-    };
-    const ask = () => { if (!done) { try { bc.postMessage('ask'); } catch (_) { } setTimeout(ask, 1000); } };
-    ask();
-    // 깔리는 판이 없으면 이미 받아 둔 기기는 0.8초, 처음 여는 기기는 서비스워커가 깔릴 때까지 8초 기다림. 깔리는 중인데 크기가 작으면(그림 30개 아래) 끝날 때까지
-    const tick = () => { if (done) return; const dt = performance.now() - t0; if (!seen && !inst && dt > (SW.controller ? 800 : 8000)) return fin(); if (!seen && dt > 60000) return fin(); setTimeout(tick, 200); };
-    tick();
+  // ---- 11/2 선생님 결정(내려받기 줄이기, 결정판 5개 모두 추천대로) ----
+  //  예전: 처음 열면 서비스워커가 그림·소리 거의 전부(약 200MB)를 받은 뒤 시작, 놀던 중에도 그 받기와 노는 데 필요한 그림이 서로 다퉈 늦게 뜸.
+  //  이제: 묶음(build.py packs → window.PACKS)으로 나눠 받음. c 공통(화면·인물·지도 바탕) → m 지도 조각 → 지금 별 → 다음 별 → r 나머지.
+  //   1) 시작 전에는 c만 받음('게임 준비 중'). 2) 별을 시작하기 전에 그 별 묶음을 받고 그 별 사람들 대화 그림을 풀어 둠('별 준비 중', 대부분 이미 받아 있어 바로 지나감)
+  //   3) 장소·지도 그림을 기다리는 동안(G.loadWatch)은 뒤에서 받기를 멈춤 4) 지금 별 다음에는 다음 별을 먼저 5) 선생님 설정 '모두 미리 받기'
+  //  PixiJS로 그리는 기기는 장소 바탕·지도 조각을 압축 그림(KTX2)으로 받고 흑백 그림은 받지 않음(셰이더가 만듦). 받은 것은 서비스워커가 기기에 저장(sw_make.py)
+  const PK = window.PACKS || {};
+  const urlOf = (k) => {
+    const K = window.KTX || {}; if (/\.(mp4|json|dep)$/.test(k)) return null;
+    if (G.px && K[k]) return G.asset(K[k][0]);
+    if (G.px && (K[k.replace('_px_mono.', '_px_color.')] || K[k.replace('map2_mono_h_t', 'map2_color_h_t')])) return null;
+    const a = G.asset(k); return /^data:/.test(a) ? null : a;
+  };
+  const have = async (u) => { try { return !!(window.caches && await caches.match(u, { ignoreSearch: true })); } catch (_) { return false; } };
+  const Pk = G.packs = { done: new Set() };
+  const one = async (u, pri) => {
+    if (Pk.done.has(u)) return true; Pk.done.add(u);
+    try { if (await have(u)) return true; const r = await fetch(u, { priority: pri }); if (!r.ok) throw 0; await r.arrayBuffer(); return true; }
+    catch (_) { Pk.done.delete(u); console.warn('[묶음] 못 받음', u); return false; }
+  };
+  const list = (n) => [...new Set((PK[n] || []).map(urlOf).filter(Boolean))];
+  Pk.cur = () => Math.min(6, Math.max(1, ((G.st && G.st.stars) || 0) + 1));
+  // 뒤에서 받기: 한 번에 2개, 느리게(low). G.packs.hold(초) 동안은 멈춤
+  const q = [], qs = new Set(); let run = 0, holdTo = 0, pumpT = 0;
+  const pump = () => {
+    clearTimeout(pumpT);
+    while (run < 2 && q.length) {
+      const w = holdTo - performance.now(); if (w > 0) { pumpT = setTimeout(pump, w + 50); return; }
+      const u = q.shift(); qs.delete(u); if (Pk.done.has(u)) continue; run++; one(u, 'low').finally(() => { run--; pump(); });
+    }
+  };
+  Pk.bg = (names, front) => { const L = names.flatMap(list).filter(u => !Pk.done.has(u) && !qs.has(u)); L.forEach(u => qs.add(u)); if (front) q.unshift(...L); else q.push(...L); pump(); };
+  Pk.hold = (sec) => { holdTo = Math.max(holdTo, performance.now() + sec * 1000); };
+  Pk.free = () => { holdTo = 0; pump(); };
+  Pk.plan = () => { const k = Pk.cur(); Pk.bg(['m', String(k), String(Math.min(6, k + 1))], true); Pk.bg(['1', '2', '3', '4', '5', '6', 'r']); };
+  // 앞에서 받기(창을 띄우고 기다림): 한 번에 6개. 다 받으면(또는 못 받은 것만 남으면) 끝
+  Pk.get = async (names, onP) => {
+    const L = [...new Set(names.flatMap(list))]; let n = 0, i = 0; if (!L.length) return;
+    const w = async () => { while (i < L.length) { const u = L[i++]; await one(u, 'high'); n++; onP && onP(n / L.length, L.length); } };
+    await Promise.all([w(), w(), w(), w(), w(), w()]);
+  };
+  Pk.left = async (names) => { const L = [...new Set(names.flatMap(list))]; let m = 0; await Promise.all(L.map(async u => { if (!Pk.done.has(u) && !(await have(u))) m++; })); return { left: m, total: L.length }; };
+  // 창: 0.4초 안에 끝나면 안 띄움. 15초 뒤 [기다리지 않고 시작]
+  const gated = async (names, msg) => {
+    const t0 = performance.now(); let shown = false, skip = false, sk = null;
+    const tick = (k, tot) => { if (skip) return; if (performance.now() - t0 > 400) { shown = true; show(k, `${msg} ${Math.floor(k * 100)}%`); if (!sk && performance.now() - t0 > 15000 && box) sk = G.btn('pill lw-skip', '기다리지 않고 시작', box, () => { skip = true; hide(); }, '기다리지 않고 시작'); } };
+    await Promise.race([Pk.get(names, tick), new Promise(r => { const c = () => skip ? r() : setTimeout(c, 200); c(); })]);
+    if (shown && !skip) hide();
+  };
+  // 별을 시작하기 전(새 칸·이어 하기·별 2~6 begin): 그 별 묶음 받기 + 그 별 사람들 대화 그림 풀어 두기
+  Pk.gate = async () => {
+    const k = String(Pk.cur()); await gated(['c', k], '별 준비 중');
+    if (G.warmPortraits) { const who = new Set(); for (const f of PK[k] || []) { const m = /^assets\/chars\/pt\/([a-z0-9]+?)_\d+\./.exec(f); if (m) who.add(m[1]); } G.warmPortraits([...who].filter(w => G.D.portraits[w])); }
+    Pk.plan();
+  };
+  // 선생님 설정 '모두 미리 받기'
+  Pk.all = (onP) => Pk.get(['c', 'm', '1', '2', '3', '4', '5', '6', 'r'], onP);
+  // r3: 처음 열 때 '게임 준비 중'(공통 묶음 c만, 약 60MB). 예전처럼 서비스워커가 다 받을 때까지 기다리지 않음
+  G.prep = async (go) => {
+    let done = false; const fin = () => { if (done) return; done = true; hide(); go(); setTimeout(() => Pk.bg(['m']), 300); };
+    if (!window.PACKS) return fin();
+    await Promise.race([G.pxWait ? G.pxWait() : null, new Promise(r => setTimeout(r, 4000))].filter(Boolean)).catch(() => { });
+    const { left } = await Pk.left(['c']); if (!left) return fin();
+    await gated(['c'], '게임 준비 중 (처음 한 번만)');
+    fin();
   };
 })();
 
@@ -1197,8 +1242,9 @@ G.mapView = (parent, o = {}) => {
       const zs = MOOD.zones.filter(z => (V.alpha[z.id] || 0) >= 0.003);
       // 10/25 아이폰 꽃집 들어가다 멈춤(메모리): 손가락 기기는 여유를 줄여 한꺼번에 풀린 조각 수를 줄임
       // 10/25 선생님(지도도 장소 안만큼 선명하게): 큰 그림 조각은 화면 둘레(0.3 화면 여유)에 닿는 것만 켜고, 한 화면 넘게 멀어져야 끔 → 메모리는 화면 몇 장 몫, 걸어갈 때 빈칸 없음
-      const near = V.camRect(LOW ? (G.duskOK ? 0.15 : 0.06) : 0.3), far = V.camRect(LOW ? (G.duskOK ? 0.2 : 0.1) : 1),   // 사파리 손가락 기기는 여유를 더 줄임(10/31 150MB 예산)
+      const near = V.camRect(LOW ? (G.duskOK ? 0.15 : 0.06) : 0.6), far = V.camRect(LOW ? (G.duskOK ? 0.2 : 0.1) : 1.2),   // 11/2 선생님(PC에서 지도 조각이 늦게 뜸): PC는 0.6 화면 앞서 켬   // 사파리 손가락 기기는 여유를 더 줄임(10/31 150MB 예산)
       hit = (t, R) => !R || (t.x < R[2] && t.x + t.w > R[0] && t.y < R[3] && t.y + t.h > R[1]);
+      if (!LOW && near && V._lv) { const cw = (near[2] - near[0]) / 2, lx = Math.max(-cw, Math.min(cw, V._lv[0] * 1500)), ly = Math.max(-cw, Math.min(cw, V._lv[1] * 1500)); if (lx > 0) near[2] += lx; else near[0] += lx; if (ly > 0) near[3] += ly; else near[1] += ly; }   // 11/2: PC는 걸어가는 쪽으로 1.5초 앞까지 더 켬
       const inV = (t) => hit(t, near) || (t.on && hit(t, far));
       col.tiles.forEach((t, i) => {
         const cn = vis && op > 0.003 && (full || zs.some(z => box(z, t))) && inV(t);
@@ -1447,6 +1493,8 @@ G.mapView = (parent, o = {}) => {
       x = vw >= V.W ? V.W / 2 : Math.max(vw / 2, Math.min(V.W - vw / 2, x));
       y = vh >= V.H ? V.H / 2 : Math.max(vh / 2, Math.min(V.H - vh / 2, y));
     }
+    { const pv = V.cam, now = performance.now(), dt = Math.min(200, Math.max(8, now - (V._lt || now))), lv = V._lv || [0, 0]; V._lt = now;   // 11/2 결정(걸어가는 쪽 지도 먼저): 카메라가 움직이는 빠르기를 부드럽게 재 둠
+      if (pv && pv.z === z) V._lv = [lv[0] * 0.8 + (x - pv.x) / dt * 0.2, lv[1] * 0.8 + (y - pv.y) / dt * 0.2]; }
     V.cam = { x, y, z }; V.cull();
     el.style.transform = `translate(${(W / 2 - x * s).toFixed(1)}px,${(H / 2 - y * s).toFixed(1)}px) scale(${s.toFixed(4)})`;   if (V.px) G.pxKick();   /* PixiJS 바탕도 이 박자에 같이 */
     el.style.setProperty('--k', (u / s).toFixed(3));   // 지도 위 글자·말풍선을 화면 크기에 맞게
@@ -1940,6 +1988,7 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
 // ---- 10/29 2단계: 지도(새 마을 V2 조각 지도). 조각마다 압축 그림 한 장, 보이는 조각만 그래픽 칩에 올림(mapview.js need와 같은 규칙) ----
 //  색 번짐 구역(타원, mapview applyMask·colorAlphaAt과 같은 모양)·색 다 덮기(fullColor)·밤빛·불빛을 조각 그림을 그리며 한 번에 계산
 //  mono·col 조각 묶음(div)은 그대로 두되 그림은 안 받음. 가림 조각(rgDraw → G.mapBlit)은 d.pxBlit로 조각 그림 사본에서
+const pxGot = new Set();   // 미리 받은 압축 조각 주소(한 번만)
 G.pxMap = (V, T, warmSrc, mono, col, zones) => {
   const X = G.px, K = window.KTX || {}; if (!X || !T || !K[T.color + '00' + T.ext]) return null;
   const { P, app, cv } = X, W = V.W, H = V.H, NZ = 8, ZN = [...Array(NZ).keys()], wk = warmSrc && K[warmSrc];
@@ -1998,6 +2047,11 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
       rc.drawImage(im, (ax - t.sx) * k, (ay - t.sy) * k, (bx2 - ax) * k, (by2 - ay) * k, dx + ax - ix, dy + ay - iy, bx2 - ax, by2 - ay); });
   };
   mono.pxBlit = col.pxBlit = pxBlit;
+  //  11/2 선생님(지도를 걸을 때 조각이 늦게 떠서 지도가 생기기 전에 움직임): 압축 지도 조각은 미리 받기(sw.js)에 없어 처음엔 그때그때 인터넷에서 받음
+  //  → 지도를 열면 가까운 조각부터 파일만 뒤에서 둘씩 받아 둠(그래픽 칩에는 안 올려 메모리는 그대로, 한 번 받으면 기기에 저장)
+  setTimeout(() => { if (gone) return; const c = V.cam || { x: W / 2, y: H / 2 }, ids = [...Array(n).keys()].sort((a, b) => { const d = (i) => { const t = col.tiles[i]; return Math.hypot(t.x + t.w / 2 - c.x, t.y + t.h / 2 - c.y); }; return d(a) - d(b); });
+    let k = 0; const next = () => { while (k < ids.length) { const u = G.asset(K[key(ids[k++])][0]); if (pxGot.has(u)) continue; pxGot.add(u); return fetch(u, { priority: 'low' }).then((r) => r.arrayBuffer()).catch(() => pxGot.delete(u)).then(() => !gone && next()); } };
+    next(); next(); }, 1200);
   const follow = () => pxFollow(V.el, world);   // 카메라(setCam이 쓴 transform)를 따라감
   const tick = () => { const m = follow(), u = U.uniforms, s = col.style; let sig = m;
     u.uOp = s.visibility === 'hidden' ? 0 : G.pxKicking ? u.uOp : +(getComputedStyle(col).opacity);
@@ -2086,12 +2140,18 @@ G.dialog = (() => {
       });
     }
   }
+  //  11/2 선생님(대화 때 인물 그림이 안 뜸): 대화가 열리고 나서야 그림을 받던 것 → 장면에 들어갈 때 그 장면 인물(과 주인공·루미·길별)의 대화 그림을 미리 받아 둠
+  const warmed = new Set();
+  G.warmPortraits = (keys) => { for (const k of ['hero', 'lumi', 'gil', ...keys]) { const P = G.D.portraits[k]; if (!P || warmed.has(k)) continue; warmed.add(k);
+    for (const src of new Set([P.img, ...Object.values(P.poses || {})].filter(Boolean))) { const im = new Image(); im.decoding = 'async'; im.src = G.asset(src); } } };
   function portrait(parent, cls, key, side) {
     const P = G.D.portraits[key], img = G.el('img', cls, parent); img.alt = ''; img.dataset.who = key; img.dataset.side = side;
     if (P.scale && cls === 'pmain') img.style.setProperty('--ps', P.scale);
     Object.values(P.poses || {}).forEach(src => { const pre = new Image(); pre.src = G.asset(src); });   // 동작이 바뀔 때 깜박이지 않게 미리 읽음
     // 9/29 밤: 그림의 가로:세로를 원본 그대로 고정 (어떤 브라우저에서도 가로로 눌리지 않게)
+    img.addEventListener('error', () => { console.warn('[대화 그림] 못 불러옴', img.getAttribute('src')); img.style.visibility = 'hidden'; });   // 11/2: 그림이 없으면 깨진 표시 대신 숨기고 기록
     img.addEventListener('load', () => {
+      img.style.visibility = '';
       if (!img.naturalWidth) return;
       img.style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight;
       // 10/4: 길게 자른 그림(높이 720 넘음)은 위 720px만 지금 자리에 두고 나머지는 대화창 뒤로 내려 화면 아래까지 닿게 (휴대폰에서 잘린 끝이 안 보이게)
@@ -3583,7 +3643,9 @@ G.map = (() => {
     if (!M.charK || !M.gait) return;
     const cyc = 116 * 1.15 * M.charK / 2 * G.ageScale('assets/chars/walk_hero.png');
     Object.assign(FREE_GAIT, { walk: cyc, run: cyc * 1.14 }); FREE_W.speed = M.gait.free;
-    const ws = G.D.places.walk.speed; Object.assign(GAIT, { walk: Math.max(cyc, ws / M.gait.cad), run: Math.max(cyc * 1.14, ws * GAIT.runMax / M.gait.cad / 1.4) });
+    //  11/2 선생님(주인공 발이 너무 빨리 움직임): 다리가 초당 3.5주기(한 걸음 7번)라 종종걸음처럼 보임 → 초당 2.5주기까지(별의 아이 주인공)
+    const cad = Math.min(M.gait.cad, 2.5), ws = G.D.places.walk.speed; FREE_GAIT.walk = Math.max(cyc, M.gait.free / cad); FREE_GAIT.run = FREE_GAIT.walk * 1.14;
+    Object.assign(GAIT, { walk: Math.max(cyc, ws / cad), run: Math.max(cyc * 1.14, ws * GAIT.runMax / cad / 1.4) });
   }
   function gait(w, GAIT = Mp.GAIT) {
     const g = { u: 0, lock: null, n: 0 };
@@ -4067,6 +4129,7 @@ G.sceneView = (parent, id, o = {}) => {
     return i; };
   V.ageOf = (k) => G.ageScale(k);
   const town = S.roam && G.townAt && G.townAt[id];   // 10/22 새 마을(걷는 장면): 문으로 나왔으면 그 문 앞에서 시작
+  if (G.warmPortraits) G.warmPortraits(S.sprites.map(sp => sp.id));   // 11/2: 대화 그림 미리 받기(dialogue.js)
   for (const sp of S.sprites) {
     const r0 = (town && sp.id === 'hero') ? town : V.rectOf(sp), v = V.spr[sp.id] = { img: addImg(sp.img, r0, sp.id), def: sp, rect: r0 };
     if (sp.flat) v.img.classList.remove('idle');
@@ -4228,6 +4291,7 @@ G.sceneView = (parent, id, o = {}) => {
   };
   // 10/8 선생님: 잔치 뒤 픽셀 걷기 그림으로 광장 길(at2.walk.path, 발 자리 점들)을 따라 걸어가 자리 잡기
   const liveSheet = (src) => { const m = /\/walk_([^/]+)\.png$/.exec(src); return m && Object.values(LV).includes(m[1]) ? src.replace(/\.png$/, '_live.png') : src; };   // 10/10: 16자세 부드러운 걸음 그림
+  const liveW = (s) => /walk_hero/.test(s) ? 9000 : 8600;   // 11/2 선생님(주인공 머리카락 사이 누끼): 별의 아이 주인공 걷기 그림은 45칸이라 43칸 폭으로 펴면 옆 칸 조각이 비침
   const SCENE_GAIT = V.GAIT = { stride: 116, r: 1.15, min: 3.5, max: 24 };   // 그린 보폭(장면 px, 배율 1)·주기/보폭·초당 자세 수 아래·위 한계
   const sheets = {};   // 걷기 그림 미리 불러 둠 (처음 걷는 사람이 깜빡 사라지지 않게)
   V.sheet = (src) => { if (!sheets[src]) { const im = new Image(); im.src = G.asset(src); sheets[src] = im; } return sheets[src]; };
@@ -4238,7 +4302,7 @@ G.sceneView = (parent, id, o = {}) => {
     const v = V.spr[k]; if (!v) return; V.unstand(k);
     const kk = w.k * G.ageScale(k), cw = 200 * kk, ch = 260 * kk, sheet = liveSheet(w.sheet), lv = sheet !== w.sheet, r = v.rect, x = r[0] + r[2] / 2, y = r[1] + r[3] - 18;
     const el = G.el('div', 'scene-walker', V.chars);
-    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(sheet)}")`, backgroundSize: `${(lv ? 8600 : 1800) * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none', display: 'none',
+    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(sheet)}")`, backgroundSize: `${(lv ? liveW(sheet) : 1800) * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none', display: 'none',
       left: (x - w.fx * kk) + 'px', top: (y + w.foot - w.fy * kk) + 'px', zIndex: Math.round(y + w.foot), backgroundPosition: `${-(lv ? 16 : 8) * cw}px ${-({ SE: 0, SW: 1, NW: 2, NE: 3 })[dir] * ch}px` });
     v.stand = el; const im = V.sheet(sheet);
     (im.decode ? im.decode().catch(() => { }) : Promise.resolve()).then(() => { if (v.stand !== el) return; el.style.display = ''; v.img.style.visibility = 'hidden'; });
@@ -4256,7 +4320,7 @@ G.sceneView = (parent, id, o = {}) => {
     const wm = /\/walk_([^/]+)\.png$/.exec(w.sheet), wf = wm && ((G.D.feet || {}).walk || {})[wm[1]], ws = wf ? G.el('div', 'foot-shadow', V.chars) : null;   // 10/11: 걷는 동안도 두 발 그림자
     if (ws) ws.style.display = 'none';
     const el = G.el('div', 'scene-walker', V.chars);
-    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(sheet)}")`, backgroundSize: `${(lv ? 8600 : 1800) * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none', display: 'none' });
+    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(sheet)}")`, backgroundSize: `${(lv ? liveW(sheet) : 1800) * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none', display: 'none' });
     let wx = 0, wy = 0; const wo = w.noOcc ? null : V.occAdd(el, () => ({ x0: wx - w.fx * kk, y0: wy + w.foot - w.fy * kk, w: cw, h: ch, fx: wx, fy: wy + w.foot, hide: el.style.display === 'none' }), k);   // 10/16 걷는 동안도 앞 물건에 가려짐
     const at = (s) => { let i = 0; while (i < seg.length - 1 && s > seg[i]) { s -= seg[i]; i++; } const t = seg[i] ? Math.min(1, s / seg[i]) : 1; return [P[i][0] + (P[i + 1][0] - P[i][0]) * t, P[i][1] + (P[i + 1][1] - P[i][1]) * t]; };
     // 10/16 선생님(미끄러지는 발): 걸음 그림을 시간이 아니라 걸은 거리에 묶음 (지도 worldmap.js gait()와 같은 생각).
@@ -4283,10 +4347,10 @@ G.sceneView = (parent, id, o = {}) => {
     const kk = w.k * G.ageScale(k), cw = 200 * kk, ch = 260 * kk, lu = V.lumi || null, rect = v.rect, sheet = liveSheet(w.sheet), lv = sheet !== w.sheet;
     const wm = /\/walk_([^/]+)\.png$/.exec(w.sheet), wf = wm && ((G.D.feet || {}).walk || {})[wm[1]], ws = wf ? G.el('div', 'foot-shadow', V.chars) : null;
     const el = G.el('div', 'scene-walker', V.chars);
-    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(sheet)}")`, backgroundSize: `${(lv ? 8600 : 1800) * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none' });
+    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(sheet)}")`, backgroundSize: `${(lv ? liveW(sheet) : 1800) * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none' });
     let wx = rect[0] + rect[2] / 2, wy = rect[1] + rect[3] - 18, s = 0, dir = 'SE';
     const wo = V.occAdd(el, () => ({ x0: wx - w.fx * kk, y0: wy + w.foot - w.fy * kk, w: cw, h: ch, fx: wx, fy: wy + w.foot, hide: false }), k);
-    const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 }, cyc = SCENE_GAIT.stride * kk * SCENE_GAIT.r;
+    const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 }, cyc = SCENE_GAIT.stride * kk * SCENE_GAIT.r * 1.45;   // 11/2 선생님(주인공 발이 너무 빨리 움직임): 조이스틱 걷기 한 주기를 1.45배로(초당 약 3.9→2.7주기)
     const put = (f) => { el.style.left = (wx - w.fx * kk) + 'px'; el.style.top = (wy + w.foot - w.fy * kk) + 'px'; el.style.zIndex = Math.round(wy + w.foot); el.style.backgroundPosition = `${-f * cw}px ${-ROW[dir] * ch}px`;
       if (ws) { const g = wf[ROW[dir]], q = 2 * kk; Object.assign(ws.style, { left: (wx - w.fx * kk + (g[0] - g[2] / 2) * q) + 'px', top: (wy + w.foot - w.fy * kk + (g[1] - g[3] / 2) * q) + 'px', width: g[2] * q + 'px', height: g[3] * q + 'px', zIndex: el.style.zIndex }); }
       if (wo) V.occDirty(wo); if (V.onStep) V.onStep(wx, wy);
@@ -4455,6 +4519,7 @@ G.scene = (() => {
     const world = G.$('#world'); world.innerHTML = ''; world.style.display = '';
     V = G.sceneView(world, id, { chiefBack: false, px: true });   // 10/29 px: 장소 장면만 PixiJS 바탕(연출 속 장면은 지금 방식)   // 돌아보는 모습은 연출 C2가 따로 그림
     G.loadWatch();   // 10/25 r1: 장면 그림이 늦으면 로딩 창
+    if (G.packs) { G.packs.hold(20); V.ready.then(() => { G.packs.free(); G.packs.hold(1.5); }); }   // 11/2 결정 3: 장소 그림(PixiJS 압축 그림 포함)이 다 뜰 때까지 뒤에서 받기 멈춤
     G.warmDrop();   // 10/28: 미리 풀어 둔 그림은 장면이 쓰기 시작하면 놓음
     V.setMood(G.st.mood);
     // 누를 곳: 별빛 테두리 + 할 일에는 ☆
@@ -4700,7 +4765,13 @@ G.scene = (() => {
       const d = x.getImageData(0, 0, im.width, im.height).data, ok = new Uint8Array(im.width * im.height); for (let i = 0; i < ok.length; i++) ok[i] = d[i * 4] > 128 ? 1 : 0;
       RW = { w: im.width, h: im.height, c: def.roam.cell || 8, ok }; c.width = c.height = 0; };
     im.src = G.asset(def.roam.walk);
-    V.onStep = (x, y) => { if (!follow) return; V.setCam(x, y - 60 - V.lift(), V.cam.z); };
+    // 11/2 선생님: 숲에서 다시 나올 때 — 숲 입구 쪽(처음 선 자리) 길로 걸어오면 가운데에 '지도로' 단추
+    const h0 = V.spr.hero && V.spr.hero.rect, ex = def.id === 'forest' && h0 ? [h0[0] + h0[2] / 2, h0[1] + h0[3] - 18] : null; let away = false, shown = false;
+    V.onStep = (x, y) => {
+      if (ex) { const dd = Math.hypot(x - ex[0], y - ex[1]);
+        if (dd > 150) { away = true; if (shown && !G.st.cleared.includes(def.id)) { shown = false; document.querySelectorAll('.hud-go').forEach(e => e.remove()); } }
+        else if (away && dd < 90 && !shown && !G.dialog.active) { shown = true; away = false; G.hud.goMap(() => Sc.leave()); } }
+      if (!follow) return; V.setCam(x, y - 60 - V.lift(), V.cam.z); };
     G.onTap(V.el, (e) => { if (busy || G.busy > 0 || !V || G.dialog.active || driving) return; if (e && e.target && e.target.closest && e.target.closest('.hot')) return;
       const r = V.el.getBoundingClientRect(), s = G.stage.ws * V.cam.z, cx = (e.clientX ?? (e.touches && e.touches[0].clientX)), cy = (e.clientY ?? (e.touches && e.touches[0].clientY));
       if (cx == null) return; roamTo([(cx - r.left) / s, (cy - r.top) / s]); });
@@ -7952,6 +8023,7 @@ G.s2 = (() => {
   async function begin() {
     if (beginning) return; beginning = true;
     const g = G.gen, ok = () => g === G.gen;
+    if (G.packs) { await G.packs.gate(); if (!ok()) { beginning = false; return; } }   // 11/2 결정: 별을 시작하기 전에 이 별 묶음 받기(대부분 앞 별 하는 동안 받아 둠)
     try {
       G.help.off(); G.busy++;
       const ch = G.cut.play('CH:s2_1', { key: 's2_1', cover: true });
@@ -9374,6 +9446,7 @@ G.s3 = (() => {
   async function begin() {
     if (beginning) return; beginning = true;
     const g = G.gen, ok = () => g === G.gen;
+    if (G.packs) { await G.packs.gate(); if (!ok()) { beginning = false; return; } }   // 11/2 결정: 별을 시작하기 전에 이 별 묶음 받기(대부분 앞 별 하는 동안 받아 둠)
     try {
       G.help.off(); G.busy++;
       G.audio.holdMusic(null); G.audio.music('music_night');   // 10/6: 소리의 별 음악회 음악을 여기서 놓음
@@ -10897,6 +10970,7 @@ G.s4 = (() => {
   async function begin() {
     if (beginning) return; beginning = true;
     const g = G.gen, ok = () => g === G.gen, no = { partner: 'nuri' };
+    if (G.packs) { await G.packs.gate(); if (!ok()) { beginning = false; return; } }   // 11/2 결정: 별을 시작하기 전에 이 별 묶음 받기(대부분 앞 별 하는 동안 받아 둠)
     try {
       G.help.off(); G.busy++;
       G.audio.music('music_night');
@@ -12145,6 +12219,7 @@ G.s5 = (() => {
   async function begin() {
     if (beginning) return; beginning = true;
     const g = G.gen, ok = () => g === G.gen;
+    if (G.packs) { await G.packs.gate(); if (!ok()) { beginning = false; return; } }   // 11/2 결정: 별을 시작하기 전에 이 별 묶음 받기(대부분 앞 별 하는 동안 받아 둠)
     try {
       G.help.off(); G.busy++;
       G.audio.music('music_night');
@@ -13097,6 +13172,7 @@ G.s6 = (() => {
   async function begin() {
     if (beginning) return; beginning = true;
     const g = G.gen, ok = () => g === G.gen;
+    if (G.packs) { await G.packs.gate(); if (!ok()) { beginning = false; return; } }   // 11/2 결정: 별을 시작하기 전에 이 별 묶음 받기(대부분 앞 별 하는 동안 받아 둠)
     try {
       G.help.off(); G.busy++;
       G.audio.music('music_night');
@@ -14612,6 +14688,15 @@ G.teacher = (() => {
       q.addEventListener('input', () => { G.settings[k] = q.value / 100; qv.textContent = q.value + '%'; G.applySettings(); });
     }
 
+    // 11/2 선생님 결정 5: 수업 전에 이 기기에 게임 전체(그림·소리)를 받아 두기. 한 번 받으면 기기에 남고, 새 판이 나온 날은 바뀐 것만 다시 받음
+    if (G.packs) {
+      s = sec(p, '수업 전에 모두 미리 받기');
+      r = row(s); const msg = G.el('span', 't-note', r, '');
+      tb('모두 미리 받기', r, (b) => { b.disabled = true; msg.textContent = '받는 중 0%'; G.packs.all((k) => { msg.textContent = '받는 중 ' + Math.floor(k * 100) + '%'; }).then(() => { msg.textContent = '다 받았어요. 이제 수업 중에 끊기지 않아요.'; b.disabled = false; }); });
+      G.packs.left(['c', 'm', '1', '2', '3', '4', '5', '6', 'r']).then(({ left, total }) => { if (!msg.textContent) msg.textContent = left ? `아직 안 받은 것 ${left}개 (전체 ${total}개)` : '모두 받아 두었어요'; });
+      G.el('div', 't-note', s, '쉬는 시간에 기기마다 한 번 눌러 두세요. 학교 와이파이로 몇 분 걸려요. 받는 동안 게임을 해도 돼요.');
+    }
+
     s = sec(p, '2. 글자 크기');
     choice(s, 'textBig', [[false, '보통'], [true, '크게']]);
 
@@ -14948,8 +15033,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-11-02)';
-G.BUILT = '2026-11-02 09:11';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-11-03)';
+G.BUILT = '2026-11-03 08:07';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
@@ -15000,6 +15085,7 @@ G.flow = (() => {
     try { sessionStorage.setItem('bs_play', String(st.slot)); } catch (_) { }   // 10/4: 놀던 중 화면이 새로 켜지면 처음 화면 대신 바로 이어 하기
     G.$('#overlay').querySelectorAll('img').forEach(i => i.removeAttribute('src'));   // 10/25 메모리 2번: 제목 그림(약 19MB)을 GC 기다리지 않고 바로 놓음
     G.$('#overlay').innerHTML = '';
+    if (G.packs) { await G.packs.gate(); if (g !== G.gen) return; }   // 11/2 결정: 별을 시작하기 전에 그 별 묶음 받기
     if (!st.done.includes('meet_lumi')) F.intro();
     else F.resume();
   };
@@ -15015,7 +15101,7 @@ G.flow = (() => {
     G.btn('pill gold qr-go', G.icon('icon_star') + ' 이어서 하기', box, () => {
       if (matchMedia('(pointer: coarse)').matches) G.teacher.fs(true);
       G.audio.unlock(); G.audio.sfx('sfx_tap', 0.6);
-      G.st = st; ov.innerHTML = ''; F.resume();
+      G.st = st; ov.innerHTML = ''; (G.packs ? G.packs.gate() : Promise.resolve()).then(() => F.resume());   // 11/2: 이어 하기도 그 별 묶음부터
     }, '이어서 하기');
     G.btn('pill qr-title', '처음 화면', box, () => { try { sessionStorage.removeItem('bs_play'); } catch (_) { } F.title(); }, '처음 화면');
     return true;
@@ -15118,5 +15204,8 @@ G.flow = (() => {
   // 다른 탭으로 가면 소리를 멈춤
   document.addEventListener('visibilitychange', () => { if (document.hidden) G.audio.pause(); else if (!G.paused) G.audio.resume(); });
   const ld = G.$('#loading'); if (ld) ld.remove();
+  //  11/2 선생님(주인공이 안 보인 채로 이동): 지도 주인공 걷기 그림을 지도를 열 때에야 받던 것 → 처음 켤 때 미리 받음(주인공·밤 주인공·루미)
+  for (const k of ['assets/chars/walk_hero_live.png', 'assets/chars/walk_hero_lit_live.png']) { const a = (G.D.atlas || {})[k]; const im = new Image(); im.src = G.asset(a ? 'assets/chars/' + a.a : k); }
+  { const im = new Image(); im.src = G.asset('assets/chars/lumi.png'); }
   G.prep(() => { if (!G.flow.quick()) G.flow.title(); });   // 10/25 r3: 처음·새 판이면 그림을 받는 동안 '게임 준비' 화면
 })();
