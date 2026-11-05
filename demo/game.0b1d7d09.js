@@ -15402,6 +15402,17 @@ G.demo = (() => {
 
   // ---- 지도에 반영 1: 점자블록 ----
   function pathPoints(ids) { const n = N(); return ids.map((k) => Array.isArray(k) ? k : n[k]).filter(Boolean); }
+  // 11/5 아이폰: 지도(PixiJS)가 인물·가로등을 그림판에 그리는데 따로 둔 블록·표지판은 늘 그 위에 보였음
+  //  → 걷는 사람과 같은 방식(V.walker)으로 놓아 같은 그림판에서 앞뒤 순서·가로등 가림(깊이 그림)이 맞게. 그림은 make_demo2.py가 한 칸(200x260, 발 100,250)으로 만듦
+  function stamp(V, src, x, y, z) {
+    const w = V.walker(src); w.draw = () => { };
+    Object.assign(w.spr.style, { backgroundSize: '100px 130px', backgroundPosition: '0px 0px', clipPath: '' });
+    w.sh.style.opacity = '0'; w.el.style.pointerEvents = 'none';
+    w.put = (px, py) => { w.set(px, py); if (z != null) w.el.style.zIndex = z; };
+    w.glow = (k) => { w.spr.style.filter = k > 1.001 ? `sepia(.08) saturate(.92) brightness(${k.toFixed(2)})` : ''; };
+    w.grow = (k) => { w.age = k; w.el.style.setProperty('--age', k); };
+    w.put(x, y); return w;
+  }
   async function reflectBlocks(V, hero, hs) {
     const g = G.gen; G.busy++; G.map.camFree = true;
     const pts = pathPoints(P.blockPath), tiles = [];
@@ -15410,7 +15421,7 @@ G.demo = (() => {
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy * 2), n = Math.max(1, Math.round(d / 56));
       const th = Math.atan2(dy * 2, dx) * 180 / Math.PI;   // 땅 위 방향 (지도는 비스듬히 내려다봄: 세로가 반)
-      for (let j = 0; j < n; j++) tiles.push({ x: a[0] + dx * j / n, y: a[1] + dy * j / n, th, dot: j === 0 && turn(i) });
+      for (let j = 0; j < n; j++) tiles.push({ x: a[0] + dx * j / n, y: a[1] + dy * j / n, th, seg: i, dot: j === 0 && turn(i) });
     }
     const L = pts[pts.length - 1]; tiles.push({ x: L[0], y: L[1], th: tiles[tiles.length - 1].th, dot: true });
     const mid = tiles[Math.floor(tiles.length / 2)];
@@ -15418,17 +15429,15 @@ G.demo = (() => {
     const fx = fxName('block');
     for (let i = 0; i < tiles.length; i++) {
       if (g !== G.gen) return;
-      const t = tiles[i], el = G.el('div', 'dm-tile ' + (t.dot ? 'dot' : 'line'), V.fx);
-      Object.assign(el.style, { left: t.x + 'px', top: t.y + 'px', zIndex: 3 });
-      const base = `scale(1, .5) rotate(${t.th.toFixed(1)}deg)`;   // 11/5: 3D(rotateX)는 사파리에서 z-index를 무시하고 가로등·인물 위로 올라옴 → 2D로 같은 모양(땅에 누운 블록)
-      el.style.transform = base;
+      // 블록 그림의 발(땅에 닿는 아래 끝)은 가운데보다 20px 아래. 앞뒤 순서는 늘 땅바닥(2) → 사람은 늘 블록 위, 가로등은 깊이 그림으로 블록을 가림
+      const t = tiles[i], src = 'demo/fx/' + (t.dot ? 'tile_dot' : 'tile_line' + t.seg) + '.png', fy = t.y + 20;
+      const w = stamp(V, src, t.x, fy - (G.reduced() ? 0 : 70), 2);
       // 11/5 선생님: 하나씩 확실하고 천천히 — 위에서 내려와 툭 놓이고 잠깐 밝게 빛남
-      if (el.animate && !G.reduced()) el.animate([
-        { transform: 'translateY(-70px) ' + base + ' scale(.7)', opacity: 0, filter: 'brightness(1.8)' },
-        { transform: 'translateY(3px) ' + base + ' scale(1.06)', opacity: 1, filter: 'brightness(1.6)', offset: .55 },
-        { transform: 'translateY(0) ' + base + ' scale(1)', opacity: 1, filter: 'brightness(1.35)', offset: .75 },
-        { transform: 'translateY(0) ' + base + ' scale(1)', opacity: 1, filter: 'brightness(1)' }], { duration: 800, easing: 'ease-out', fill: 'backwards' });
-      else el.style.transform = base;
+      if (!G.reduced()) { w.grow(.7); w.glow(1.8);
+        G.tween(0, 1, 0.8, (k) => { const d = k < .55 ? k / .55 : 1, e = 1 - Math.pow(1 - d, 3);
+          w.put(t.x, fy - 70 * (1 - e) + (k >= .55 && k < .75 ? 3 * Math.sin((k - .55) / .2 * Math.PI) : 0));
+          w.grow(k < .55 ? .7 + .36 * e : k < .75 ? 1.06 - .06 * (k - .55) / .2 : 1); w.glow(k < .55 ? 1.8 - .2 * e : 1.6 - .6 * Math.min(1, (k - .55) / .45)); }, 'lin')
+          .then(() => { w.put(t.x, fy); w.grow(1); w.glow(1); }); }
       setTimeout(() => { if (g === G.gen) G.audio.sfx(i % 2 ? 'sfx_step1' : 'sfx_step2', 0.65); }, 440);
       if (fx) setTimeout(() => { if (g === G.gen) G.pfx.play(fx, { world: true, parent: V.fx, x: t.x, y: t.y + 6, z: Math.round(t.y) + 5, scale: 1.8 }); }, 430);
       await G.wait(G.reduced() ? 0.05 : 0.6);
@@ -15463,11 +15472,9 @@ G.demo = (() => {
     G.dialog.play(['WD04_harang_06'], { partner: 'harang' });
     for (const q of at) {
       if (g !== G.gen) return;
-      const im = G.el('img', 'dm-sign', V.fx); im.src = G.asset('assets/map/' + q.art + '.png'); im.alt = '';
-      await new Promise((r) => { if (im.complete) r(); else { im.onload = im.onerror = r; } });
-      const w = (im.naturalWidth || 40) * 1.6, h = (im.naturalHeight || 80) * 1.6;
-      Object.assign(im.style, { left: (q.x - w / 2) + 'px', top: (q.y - h) + 'px', width: w + 'px', height: h + 'px', zIndex: Math.round(q.y) });
-      if (im.animate && !G.reduced()) im.animate([{ transform: 'scale(0,0)' }, { transform: 'scale(1.15,1.25)', offset: .55 }, { transform: 'scale(.95,.9)', offset: .8 }, { transform: 'scale(1)' }], { duration: 420, easing: 'ease-out' });
+      // 표지판도 걷는 사람과 같은 그림판에(앞뒤 순서는 발 y 그대로)
+      const w = stamp(V, 'demo/fx/sign_' + q.art + '.png', q.x, q.y, null);
+      if (!G.reduced()) { w.grow(.01); G.tween(0, 1, 0.42, (k) => w.grow(k < .55 ? 1.15 * k / .55 : k < .8 ? 1.15 - .2 * (k - .55) / .25 : .95 + .05 * (k - .8) / .2), 'lin').then(() => w.grow(1)); }
       if (fx) G.pfx.play(fx, { world: true, parent: V.fx, x: q.x, y: q.y, z: Math.round(q.y) + 2, scale: 1.2 });
       G.audio.sfx('sfx_tap', 0.6); G.audio.sfx('sfx_chime', 0.35);
       await G.wait(0.45);
