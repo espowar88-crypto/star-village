@@ -15248,7 +15248,7 @@ G.demo = (() => {
 .dm-end .stars div { flex: none; width: calc(var(--u) * 190); height: calc(var(--u) * 190); filter: drop-shadow(0 0 calc(var(--u) * 36) #FFE9A8); }
 .dm-end .stars svg, .dm-end .stars img { width: 100%; height: 100%; display: block; object-fit: contain; }
 .dm-end .big { font-size: calc(var(--u) * 92); }
-.dm-end .small { font-size: calc(var(--u) * 40); opacity: .92; max-width: calc(var(--u) * 1100); line-height: 1.45; }
+.dm-end .small { font-size: calc(var(--u) * 56); opacity: .92; max-width: calc(var(--u) * 1100); line-height: 1.45; }
 .dm-end .row { display: flex; gap: calc(var(--u) * 40); margin-top: calc(var(--u) * 14); }
 .dm-end .pill { font-size: calc(var(--u) * 46); }
 .dm-end .left { position: absolute; bottom: calc(var(--u) * 30); left: 0; right: 0; font-size: calc(var(--u) * 28); opacity: .6; }
@@ -15420,7 +15420,7 @@ G.demo = (() => {
       if (g !== G.gen) return;
       const t = tiles[i], el = G.el('div', 'dm-tile ' + (t.dot ? 'dot' : 'line'), V.fx);
       Object.assign(el.style, { left: t.x + 'px', top: t.y + 'px', zIndex: 3 });
-      const base = `rotateX(60deg) rotateZ(${t.th.toFixed(1)}deg)`;
+      const base = `scale(1, .5) rotate(${t.th.toFixed(1)}deg)`;   // 11/5: 3D(rotateX)는 사파리에서 z-index를 무시하고 가로등·인물 위로 올라옴 → 2D로 같은 모양(땅에 누운 블록)
       el.style.transform = base;
       // 11/5 선생님: 하나씩 확실하고 천천히 — 위에서 내려와 툭 놓이고 잠깐 밝게 빛남
       if (el.animate && !G.reduced()) el.animate([
@@ -15503,7 +15503,7 @@ G.demo = (() => {
     } catch (e) { }
   }
 
-  // ---- 끝: 축하 → [선물 뽑기] [처음부터 다시], 30초 동안 안 누르면 처음 화면으로 ----
+  // ---- 끝: 축하 멘트 → [처음부터 다시], 30초 동안 안 누르면 처음 화면으로 ----
   M.end = () => {
     style();
     G.hud.hide(true); G.screen = 'title'; idle = 0; idleMax = 30;
@@ -15511,10 +15511,9 @@ G.demo = (() => {
     const m = G.el('div', 'dm-end', G.$('#overlay'));
     const row = G.el('div', 'stars', m);
     const S = [G.STARS[0], G.STARS[2]].map((s) => G.el('div', '', row, G.starSvg(s)));
-    G.el('div', 'big', m, '두 별을 밝혔어요!');
-    G.el('div', 'small', m, '해솔이는 노란 점자블록으로, 하랑이는 그림 표지판으로 혼자 갈 수 있게 되었어요. 저마다 맞는 방법이 있으면 모두 함께할 수 있어요.');
+    G.el('div', 'big', m, '두 별을 올렸어요!');
+    G.el('div', 'small', m, '선물을 뽑아 보아요!');   // 11/5 선생님: 선물 뽑기 화면은 빼고 멘트만
     const r = G.el('div', 'row', m);
-    G.btn('pill gold', G.icon('icon_star') + ' 선물 뽑기', r, () => { location.href = 'demo/gift.html?booth=1'; }, '선물 뽑기');
     G.btn('pill', '처음부터 다시', r, restart, '처음부터 다시');
     const left = G.el('div', 'left', m, '');
     const lt = G.every(() => { if (!m.isConnected) return lt(); left.textContent = Math.max(0, Math.ceil(idleMax - idle)) + '초 뒤에 처음 화면으로 돌아가요'; });
