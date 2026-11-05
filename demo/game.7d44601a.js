@@ -15219,7 +15219,7 @@ G.demo = (() => {
   const P = {
     heroStart: [3987, 1930],
     haesol: [3925, 1640],
-    blockPath: ['R5', 'R6', 'R7', 'R8', 'R9', 'R10', 'LIB'],
+    blockPath: [[3782, 1443], [3952, 1358], [3878, 1321]],   // 11/5 선생님: 원래 퍼즐처럼 광장 → 도서관 계단 앞 ㄱ자 길에만 (지도 그림에서 길 가운데를 잼)
     harang: [4190, 1905],
     harangWalk: ['R19', 'R20', 'R21', 'R22'],
     signs: [['R18', 'acc_menu', 30, -6], ['R20', 'acc_turnboard', 26, -10], ['R11', 'acc_menu', 30, -8], ['R21', 'acc_turnboard', -28, -10]],
@@ -15238,10 +15238,10 @@ G.demo = (() => {
   filter: drop-shadow(0 0 calc(var(--u) * 10) rgba(255,220,120,.9)); }
 .dm-arrow svg { width: 100%; height: 100%; display: block; animation: dmNudge .8s ease-in-out infinite; }
 @keyframes dmNudge { 50% { transform: translateX(calc(var(--u) * 14)); } }
-.dm-tile { position: absolute; width: 17px; height: 17px; margin: -8.5px 0 0 -8.5px; pointer-events: none; transform-origin: 50% 50%;
-  background: #F2C428; box-shadow: inset 0 0 0 2px #B8860B; image-rendering: pixelated; }
-.dm-tile.line { background: repeating-linear-gradient(90deg, #F2C428 0 2.5px, #C99510 2.5px 4.3px); box-shadow: inset 0 0 0 1px #B8860B; }
-.dm-tile.dot { background: radial-gradient(circle, #C99510 0 1.3px, transparent 1.6px) 0 0 / 4.25px 4.25px, #F2C428; box-shadow: inset 0 0 0 1px #B8860B; }
+.dm-tile { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; pointer-events: none; transform-origin: 50% 50%; border-radius: 3px;
+  background: #F6C61A; box-shadow: inset 0 0 0 2px #A57806, 0 3px 0 #7E5B05; image-rendering: pixelated; }
+.dm-tile.line { background: linear-gradient(180deg, transparent 0 4px, #D39E0B 4px 8.5px, transparent 8.5px 12px, #D39E0B 12px 16.5px, transparent 16.5px 20px, #D39E0B 20px 24.5px, transparent 24.5px 28px, #D39E0B 28px 32px, transparent 32px), #F6C61A; }
+.dm-tile.dot { background: radial-gradient(circle, #D39E0B 0 2.5px, transparent 2.9px) 0 0 / 6.8px 6.8px, #F6C61A; }
 .dm-sign { position: absolute; pointer-events: none; image-rendering: pixelated; transform-origin: 50% 100%; }
 .dm-end { position: absolute; inset: 0; z-index: 60; background: radial-gradient(ellipse at 50% 38%, #2f3a7a 0%, #1b2146 72%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--u) * 26); color: #FFF6D6; text-align: center; }
 .dm-end .stars { display: flex; gap: calc(var(--u) * 60); }
@@ -15346,9 +15346,9 @@ G.demo = (() => {
       const fin = () => { if (done) return; done = true; clearTimeout(to); try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) { } box.remove(); res(); };
       const to = setTimeout(fin, 15000);
       v.addEventListener('ended', () => { if (!closing) fin(); }); v.addEventListener('error', fin);
-      // close: 영상 끝 2.3초 전부터 별 모양으로 화면이 닫히고, 다 닫히면 끝
-      let closing = false;
-      if (close) v.addEventListener('timeupdate', () => { if (closing || !v.duration || v.currentTime < v.duration - 2.3) return; closing = true; iris(false).then(fin); });
+      // close: 11/5 선생님 — 영상 끝 3.6초 전부터 색종이 축하(e8a)가 영상 위로 쏟아지고, 영상이 끝나면 축하 화면(별 모양으로 열림)
+      let closing = false, cf = false;
+      if (close) v.addEventListener('timeupdate', () => { if (cf || !v.duration || v.currentTime < v.duration - 3.6) return; cf = true; confetti(box); });
       const p = v.play(); if (p && p.catch) p.catch(() => { v.muted = true; v.play().catch(fin); });
       const skip = G.btn('pill skip', '건너뛰기 ' + G.icon('icon_skip'), box, fin, '건너뛰기');
       Object.assign(skip.style, { position: 'absolute', right: 'calc(var(--u) * 30)', bottom: 'calc(var(--u) * 30)', zIndex: 52 });
@@ -15401,34 +15401,37 @@ G.demo = (() => {
   }
 
   // ---- 지도에 반영 1: 점자블록 ----
-  function pathPoints(ids) { const n = N(); return ids.map((k) => n[k]).filter(Boolean); }
+  function pathPoints(ids) { const n = N(); return ids.map((k) => Array.isArray(k) ? k : n[k]).filter(Boolean); }
   async function reflectBlocks(V, hero, hs) {
     const g = G.gen; G.busy++; G.map.camFree = true;
     const pts = pathPoints(P.blockPath), tiles = [];
-    // 길 위로 24px마다 한 칸. 출발·꺾이는 곳·끝은 점 블록
+    // 땅 위 길이로 34px마다 한 칸(블록 크기와 같아 빈틈 없이). 출발·꺾이는 곳·끝은 점 블록
     const turn = (i) => i === 0 || i === pts.length - 1 || (() => { const a = pts[i - 1], b = pts[i], c = pts[i + 1]; const a1 = Math.atan2(b[1] - a[1], b[0] - a[0]), a2 = Math.atan2(c[1] - b[1], c[0] - b[0]); return Math.abs(Math.atan2(Math.sin(a2 - a1), Math.cos(a2 - a1))) > 0.5; })();
     for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy), n = Math.max(1, Math.round(d / 17));
+      const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy * 2), n = Math.max(1, Math.round(d / 34));
       const th = Math.atan2(dy * 2, dx) * 180 / Math.PI;   // 땅 위 방향 (지도는 비스듬히 내려다봄: 세로가 반)
       for (let j = 0; j < n; j++) tiles.push({ x: a[0] + dx * j / n, y: a[1] + dy * j / n, th, dot: j === 0 && turn(i) });
     }
     const L = pts[pts.length - 1]; tiles.push({ x: L[0], y: L[1], th: tiles[tiles.length - 1].th, dot: true });
     const mid = tiles[Math.floor(tiles.length / 2)];
-    await camTo(V, mid.x, mid.y - 40, Math.max(V.cam.z, 1.6), 0.9);
+    await camTo(V, mid.x, mid.y - 10, 2.4, 1.2);   // 블록이 잘 보이게 가까이
     const fx = fxName('block');
     for (let i = 0; i < tiles.length; i++) {
       if (g !== G.gen) return;
       const t = tiles[i], el = G.el('div', 'dm-tile ' + (t.dot ? 'dot' : 'line'), V.fx);
       Object.assign(el.style, { left: t.x + 'px', top: t.y + 'px', zIndex: 3 });
       const base = `rotateX(60deg) rotateZ(${t.th.toFixed(1)}deg)`;
-      el.style.transform = base + ' scale(0)';
-      if (el.animate && !G.reduced()) el.animate([{ transform: base + ' scale(0)' }, { transform: base + ' scale(1.25)', offset: .6 }, { transform: base + ' scale(1)' }], { duration: 260, easing: 'ease-out', fill: 'forwards' });
+      el.style.transform = base;
+      // 11/5 선생님: 하나씩 확실하고 천천히 — 위에서 내려와 툭 놓이고 잠깐 밝게 빛남
+      if (el.animate && !G.reduced()) el.animate([
+        { transform: 'translateY(-46px) ' + base + ' scale(.7)', opacity: 0, filter: 'brightness(1.8)' },
+        { transform: 'translateY(3px) ' + base + ' scale(1.06)', opacity: 1, filter: 'brightness(1.6)', offset: .55 },
+        { transform: 'translateY(0) ' + base + ' scale(1)', opacity: 1, filter: 'brightness(1.35)', offset: .75 },
+        { transform: 'translateY(0) ' + base + ' scale(1)', opacity: 1, filter: 'brightness(1)' }], { duration: 650, easing: 'ease-out', fill: 'backwards' });
       else el.style.transform = base;
-      G.audio.sfx(i % 2 ? 'sfx_step1' : 'sfx_step2', 0.45);
-      if (fx && i % 3 === 0) G.pfx.play(fx, { world: true, parent: V.fx, x: t.x, y: t.y + 6, z: Math.round(t.y) + 5, scale: 1 });
-      // 카메라가 깔리는 블록을 따라감
-      V.setCam(V.cam.x + (t.x - V.cam.x) * 0.12, V.cam.y + (t.y - 40 - V.cam.y) * 0.12);
-      await G.wait(G.reduced() ? 0.02 : 0.055);
+      setTimeout(() => { if (g === G.gen) G.audio.sfx(i % 2 ? 'sfx_step1' : 'sfx_step2', 0.65); }, 340);
+      if (fx) setTimeout(() => { if (g === G.gen) G.pfx.play(fx, { world: true, parent: V.fx, x: t.x, y: t.y + 6, z: Math.round(t.y) + 5, scale: 1.3 }); }, 330);
+      await G.wait(G.reduced() ? 0.05 : 0.42);
     }
     G.audio.sfx('sfx_sparkle', 0.7);
     zoneColor(V, 'plaza', 0.55);
@@ -15518,6 +15521,18 @@ G.demo = (() => {
     if (!G.reduced()) S.forEach((el, i) => el.animate && el.animate([{ transform: 'scale(.3) rotate(-30deg)', opacity: 0 }, { transform: 'scale(1.15)', opacity: 1, offset: .6 }, { transform: 'scale(1)', opacity: 1 }], { duration: 900, delay: i * 250, easing: 'ease-out', fill: 'backwards' }));
   };
   // 끝 영상 → 축하 화면 사이: 별 모양으로 화면이 닫혔다 열림 (결정판 e6b, 화면 가득 늘려 그림. 거꾸로 틀면 열림)
+  // 색종이 축하: 영상 위 가운데에 크게, 한 번 돌고 캔버스·그림을 놓음
+  function confetti(box) {
+    const e = 'e8a', m = FXM[e]; if (!m || G.reduced()) return;
+    const cv = G.el('canvas', 'dm-fx', box); cv.width = m[0]; cv.height = m[1];
+    Object.assign(cv.style, { position: 'absolute', left: '50%', top: '50%', width: '86%', aspectRatio: m[0] + '/' + m[1], transform: 'translate(-50%,-55%)', imageRendering: 'pixelated', zIndex: 51, pointerEvents: 'none' });
+    const x = cv.getContext('2d'), im = new Image(); let t0 = 0;
+    im.onerror = () => cv.remove();
+    im.onload = () => requestAnimationFrame(function step(t) { if (!cv.isConnected) { im.src = ''; return; } if (!t0) t0 = t; const f = Math.floor((t - t0) / 1000 * m[4]); if (f >= m[3]) { cv.remove(); im.src = ''; return; }
+      x.clearRect(0, 0, m[0], m[1]); x.drawImage(im, (f % m[2]) * m[0], Math.floor(f / m[2]) * m[1], m[0], m[1], 0, 0, m[0], m[1]); requestAnimationFrame(step); });
+    im.src = G.asset('demo/fx/' + e + '.png');
+    G.audio.sfx('sfx_sparkle', 0.7);
+  }
   function iris(back) {
     return new Promise((res) => {
       const e = PICK.end, m = FXM[e]; if (!m || G.reduced()) return res();
