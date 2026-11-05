@@ -15218,8 +15218,8 @@ G.demo = (() => {
   const N = () => G.D.places.nodes;
   const P = {
     heroStart: [3987, 1930],
-    haesol: [3925, 1640],
-    blockPath: [[3782, 1443], [3952, 1358], [3878, 1321]],   // 11/5 선생님: 원래 퍼즐처럼 광장 → 도서관 계단 앞 ㄱ자 길에만 (지도 그림에서 길 가운데를 잼)
+    haesol: [3918, 1508],   // 11/5 선생님: ㄱ자 길 앞 가로등에서 5시 방향에 서 있다가 블록이 깔리면 걸어감
+    blockPath: [[3833, 1417], [3952, 1358], [3873, 1318]],   // 11/5 선생님: 원래 퍼즐처럼 광장 → 도서관 계단 앞 ㄱ자 길에만, 퍼즐과 같은 6칸(점·선·선·점·선·점)
     harang: [4190, 1905],
     harangWalk: ['R19', 'R20', 'R21', 'R22'],
     signs: [['R18', 'acc_menu', 30, -6], ['R20', 'acc_turnboard', 26, -10], ['R11', 'acc_menu', 30, -8], ['R21', 'acc_turnboard', -28, -10]],
@@ -15238,10 +15238,10 @@ G.demo = (() => {
   filter: drop-shadow(0 0 calc(var(--u) * 10) rgba(255,220,120,.9)); }
 .dm-arrow svg { width: 100%; height: 100%; display: block; animation: dmNudge .8s ease-in-out infinite; }
 @keyframes dmNudge { 50% { transform: translateX(calc(var(--u) * 14)); } }
-.dm-tile { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; pointer-events: none; transform-origin: 50% 50%; border-radius: 3px;
-  background: #F6C61A; box-shadow: inset 0 0 0 2px #A57806, 0 3px 0 #7E5B05; image-rendering: pixelated; }
-.dm-tile.line { background: linear-gradient(180deg, transparent 0 4px, #D39E0B 4px 8.5px, transparent 8.5px 12px, #D39E0B 12px 16.5px, transparent 16.5px 20px, #D39E0B 20px 24.5px, transparent 24.5px 28px, #D39E0B 28px 32px, transparent 32px), #F6C61A; }
-.dm-tile.dot { background: radial-gradient(circle, #D39E0B 0 2.5px, transparent 2.9px) 0 0 / 6.8px 6.8px, #F6C61A; }
+.dm-tile { position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px; pointer-events: none; transform-origin: 50% 50%; border-radius: 4px;
+  background: #F6C61A; box-shadow: inset 0 0 0 3px #A57806, 0 4px 0 #7E5B05; image-rendering: pixelated; }
+.dm-tile.line { background: linear-gradient(180deg, transparent 0 12%, #D39E0B 12% 24%, transparent 24% 34%, #D39E0B 34% 46%, transparent 46% 56%, #D39E0B 56% 68%, transparent 68% 78%, #D39E0B 78% 90%, transparent 90%), #F6C61A; }
+.dm-tile.dot { background: radial-gradient(circle, #D39E0B 0 33%, transparent 38%) 0 0 / 20% 20%, #F6C61A; }
 .dm-sign { position: absolute; pointer-events: none; image-rendering: pixelated; transform-origin: 50% 100%; }
 .dm-end { position: absolute; inset: 0; z-index: 60; background: radial-gradient(ellipse at 50% 38%, #2f3a7a 0%, #1b2146 72%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--u) * 26); color: #FFF6D6; text-align: center; }
 .dm-end .stars { display: flex; gap: calc(var(--u) * 60); }
@@ -15405,16 +15405,16 @@ G.demo = (() => {
   async function reflectBlocks(V, hero, hs) {
     const g = G.gen; G.busy++; G.map.camFree = true;
     const pts = pathPoints(P.blockPath), tiles = [];
-    // 땅 위 길이로 34px마다 한 칸(블록 크기와 같아 빈틈 없이). 출발·꺾이는 곳·끝은 점 블록
+    // 땅 위 길이로 56px마다 한 칸(블록 크기와 같아 빈틈 없이). 출발·꺾이는 곳·끝은 점 블록
     const turn = (i) => i === 0 || i === pts.length - 1 || (() => { const a = pts[i - 1], b = pts[i], c = pts[i + 1]; const a1 = Math.atan2(b[1] - a[1], b[0] - a[0]), a2 = Math.atan2(c[1] - b[1], c[0] - b[0]); return Math.abs(Math.atan2(Math.sin(a2 - a1), Math.cos(a2 - a1))) > 0.5; })();
     for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy * 2), n = Math.max(1, Math.round(d / 34));
+      const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy * 2), n = Math.max(1, Math.round(d / 56));
       const th = Math.atan2(dy * 2, dx) * 180 / Math.PI;   // 땅 위 방향 (지도는 비스듬히 내려다봄: 세로가 반)
       for (let j = 0; j < n; j++) tiles.push({ x: a[0] + dx * j / n, y: a[1] + dy * j / n, th, dot: j === 0 && turn(i) });
     }
     const L = pts[pts.length - 1]; tiles.push({ x: L[0], y: L[1], th: tiles[tiles.length - 1].th, dot: true });
     const mid = tiles[Math.floor(tiles.length / 2)];
-    await camTo(V, mid.x, mid.y - 10, 2.4, 1.2);   // 블록이 잘 보이게 가까이
+    await camTo(V, mid.x, mid.y + 38, 2.2, 1.2);   // 블록이 잘 보이게 가까이
     const fx = fxName('block');
     for (let i = 0; i < tiles.length; i++) {
       if (g !== G.gen) return;
@@ -15424,14 +15424,14 @@ G.demo = (() => {
       el.style.transform = base;
       // 11/5 선생님: 하나씩 확실하고 천천히 — 위에서 내려와 툭 놓이고 잠깐 밝게 빛남
       if (el.animate && !G.reduced()) el.animate([
-        { transform: 'translateY(-46px) ' + base + ' scale(.7)', opacity: 0, filter: 'brightness(1.8)' },
+        { transform: 'translateY(-70px) ' + base + ' scale(.7)', opacity: 0, filter: 'brightness(1.8)' },
         { transform: 'translateY(3px) ' + base + ' scale(1.06)', opacity: 1, filter: 'brightness(1.6)', offset: .55 },
         { transform: 'translateY(0) ' + base + ' scale(1)', opacity: 1, filter: 'brightness(1.35)', offset: .75 },
-        { transform: 'translateY(0) ' + base + ' scale(1)', opacity: 1, filter: 'brightness(1)' }], { duration: 650, easing: 'ease-out', fill: 'backwards' });
+        { transform: 'translateY(0) ' + base + ' scale(1)', opacity: 1, filter: 'brightness(1)' }], { duration: 800, easing: 'ease-out', fill: 'backwards' });
       else el.style.transform = base;
-      setTimeout(() => { if (g === G.gen) G.audio.sfx(i % 2 ? 'sfx_step1' : 'sfx_step2', 0.65); }, 340);
-      if (fx) setTimeout(() => { if (g === G.gen) G.pfx.play(fx, { world: true, parent: V.fx, x: t.x, y: t.y + 6, z: Math.round(t.y) + 5, scale: 1.3 }); }, 330);
-      await G.wait(G.reduced() ? 0.05 : 0.42);
+      setTimeout(() => { if (g === G.gen) G.audio.sfx(i % 2 ? 'sfx_step1' : 'sfx_step2', 0.65); }, 440);
+      if (fx) setTimeout(() => { if (g === G.gen) G.pfx.play(fx, { world: true, parent: V.fx, x: t.x, y: t.y + 6, z: Math.round(t.y) + 5, scale: 1.8 }); }, 430);
+      await G.wait(G.reduced() ? 0.05 : 0.6);
     }
     G.audio.sfx('sfx_sparkle', 0.7);
     zoneColor(V, 'plaza', 0.55);
