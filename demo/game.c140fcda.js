@@ -1043,7 +1043,7 @@ G.hud = (() => {
   const Pk = G.packs = { done: new Set() };
   const one = async (u, pri) => {
     if (Pk.done.has(u)) return true; Pk.done.add(u);
-    try { if (await have(u)) return true; const r = await fetch(u, { priority: pri }); if (!r.ok) throw 0; await r.arrayBuffer(); return true; }
+    try { if (await have(u)) return true; const r = await fetch(u, { priority: pri }); if (!r.ok) throw 0; if (window.DEMO_C && window.caches && !(navigator.serviceWorker && navigator.serviceWorker.controller)) await (await caches.open(window.DEMO_C)).put(u, r); else await r.arrayBuffer(); return true; }
     catch (_) { Pk.done.delete(u); console.warn('[묶음] 못 받음', u); return false; }
   };
   const list = (n) => [...new Set((PK[n] || []).map(urlOf).filter(Boolean))];
@@ -1082,7 +1082,7 @@ G.hud = (() => {
     Pk.plan();
   };
   // 선생님 설정 '모두 미리 받기'
-  Pk.all = (onP) => Pk.get(['c', 'm', '1', '2', '3', '4', '5', '6', 'r'], onP);
+  Pk.all = (onP) => Pk.get(G.DEMO ? ['c', 'm'] : ['c', 'm', '1', '2', '3', '4', '5', '6', 'r'], onP);
   // r3: 처음 열 때 '게임 준비 중'(공통 묶음 c만, 약 60MB). 예전처럼 서비스워커가 다 받을 때까지 기다리지 않음
   G.prep = async (go) => {
     let done = false; const fin = () => { if (done) return; done = true; hide(); go(); setTimeout(() => Pk.bg(['m']), 300); };
@@ -14697,7 +14697,7 @@ G.teacher = (() => {
       s = sec(p, '수업 전에 모두 미리 받기');
       r = row(s); const msg = G.el('span', 't-note', r, '');
       tb('모두 미리 받기', r, (b) => { b.disabled = true; msg.textContent = '받는 중 0%'; G.packs.all((k) => { msg.textContent = '받는 중 ' + Math.floor(k * 100) + '%'; }).then(() => { msg.textContent = '다 받았어요. 이제 수업 중에 끊기지 않아요.'; b.disabled = false; }); });
-      G.packs.left(['c', 'm', '1', '2', '3', '4', '5', '6', 'r']).then(({ left, total }) => { if (!msg.textContent) msg.textContent = left ? `아직 안 받은 것 ${left}개 (전체 ${total}개)` : '모두 받아 두었어요'; });
+      G.packs.left(G.DEMO ? ['c', 'm'] : ['c', 'm', '1', '2', '3', '4', '5', '6', 'r']).then(({ left, total }) => { if (!msg.textContent) msg.textContent = left ? `아직 안 받은 것 ${left}개 (전체 ${total}개)` : '모두 받아 두었어요'; });
       G.el('div', 't-note', s, '쉬는 시간에 기기마다 한 번 눌러 두세요. 학교 와이파이로 몇 분 걸려요. 받는 동안 게임을 해도 돼요.');
     }
 
