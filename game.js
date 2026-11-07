@@ -2284,6 +2284,17 @@ G.dialog = (() => {
     if (img.dataset.src !== src) { img.dataset.src = src; img.src = G.asset(src); }
     img.classList.toggle('flip', flip);
   }
+  // 11/7 선생님(PixelFX 결정판 d8): 주인공이 놀라거나(그림 04) 무언가 알아챌 때(06 가리키기)만 장면 속 픽셀 주인공 머리 위에 느낌표가 통 튀어 오름.
+  //  같은 그림이 이어지는 줄에서는 다시 뜨지 않음. 장면 밖(지도·연출)이나 주인공이 안 보이면 안 틂
+  let lastHeroPose = '';
+  function noticeMark(q) {
+    const was = lastHeroPose; lastHeroPose = q;
+    if ((q !== '04' && q !== '06') || q === was || G.screen !== 'scene' || !G.pfx || !G.scene || !G.scene.view) return;
+    const V = G.scene.view(), s = V && V.spr && V.spr.hero, e = s && (s.stand || s.img);
+    if (!e || e.style.display === 'none' || e.style.visibility === 'hidden') return;
+    const r = e.getBoundingClientRect(); if (!r.width) return;
+    G.pfx.play('notice_mark', { x: r.left + r.width / 2, y: r.top + r.height * 0.2 });
+  }
   function poseFor(key, id) { return ((G.D.poses || {})[id] || {})[key] || '01'; }
   function tapThrough(x, y) {
     if (Dl.active || G.busy > 0 || G.paused) return;
@@ -2315,6 +2326,7 @@ G.dialog = (() => {
     textEl.textContent = L.text; setSpeaker(L.speaker);
     // "…을 눌러 봐" 대사에서는 인물 그림이 비켜서 장면 속 누를 곳(장소·반짝이는 곳)을 가리지 않음. 마지막 대사면 그곳을 바로 눌러도 됨
     G.$('#portraits').classList.toggle('look', /눌러/.test(L.text));
+    noticeMark(poseFor('hero', id));
     setPose(heroImg, poseFor('hero', id)); setPose(lumiImg, poseFor(lumiImg ? lumiImg.dataset.who : 'lumi', id));
     if (partnerImg) setPose(partnerImg, poseFor(Dl.partner, id));
     return L;
@@ -4630,7 +4642,7 @@ G.sceneEnvFx = (V) => {
   const rnd = (a, b) => a + Math.random() * (b - a), aut = F.trees.filter(t => t[0] === 'tree_aut'), trees = F.trees.filter(t => t[0].startsWith('tree'));
   const smoke = [], leaves = [], chim = F.chim.map(c => ({ x: c[0], y: c[1], t: rnd(0, .6) }));
   const clouds = [0, 1, 2].map(() => ({ x: rnd(-600, W), y: rnd(0, H), rx: rnd(420, 620), ry: rnd(200, 300) }));
-  const flies = trees.length ? Array.from({ length: Math.min(40, trees.length * 2) }, () => { const z = trees[Math.floor(Math.random() * trees.length)]; return { cx: z[1] + z[3] / 2, cy: z[2] + z[4] * .75, a: rnd(0, 6.28), r: rnd(20, 90), s: rnd(.2, .5), ph: rnd(0, 6.28) }; }) : [];
+  const flies = trees.length ? Array.from({ length: Math.min(40, trees.length * 2) }, () => { const z = trees[Math.floor(Math.random() * trees.length)]; return { cx: z[1] + z[3] / 2, cy: z[2] + z[4] * .75, a: rnd(0, 6.28), r: rnd(20, 90), s: rnd(.2, .5), ph: rnd(0, 6.28), per: rnd(2.2, 4.2), two: Math.random() < .35, d: 1 }; }) : [];
   const BC = ['#f4f0e0', '#f2d15c', '#c9a7e8', '#f3a6b8'], bugs = F.mead.map((p, i) => ({ cx: p[0], cy: p[1], a: rnd(0, 6.28), r: rnd(30, 70), s: rnd(.4, .8), c: BC[i % 4], ph: rnd(0, 6) }));
   let flock = null, nextFlock = rnd(3, 8), last = performance.now() / 1000;
   // 10/25 N20: 화면 밖 나무 흔들림·등불 깜빡임은 멈춤(0.3초마다), 퍼즐 창이 열리면 장면 움직임 쉼, 다 칠해지면 밑의 흑백 그림은 숨김(가림 계산은 그대로 씀)
@@ -4656,7 +4668,7 @@ G.sceneEnvFx = (V) => {
     for (const l of leaves) { if (l.y < l.gy) { l.y += 26 * dt; l.ph += dt * 2.2; l.x += Math.sin(l.ph) * 22 * dt + 6 * dt; l.rot += dt * 3; } else l.land += dt; }
     for (let i = leaves.length - 1; i >= 0; i--) if (leaves[i].land > 3) leaves.splice(i, 1);
     for (const c of clouds) { c.x += 11 * dt; c.y += 3 * dt; if (c.x - c.rx > W) { c.x = -c.rx; c.y = rnd(0, H); } }
-    for (const f of flies) f.a += f.s * dt * (Math.sin(t * .3 + f.ph) > 0 ? 1 : -1);
+    for (const f of flies) { f.d = Math.sin(t * .3 + f.ph) > 0 ? 1 : -1; f.a += f.s * dt * f.d; }
     for (const b of bugs) b.a += b.s * dt;
     nextFlock -= dt; if (!flock && nextFlock <= 0) flock = { x: -200, y: rnd(150, H - 500), b: Array.from({ length: 6 }, (_, i) => [-i * 38 * (i % 2 ? 1 : .8), (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 26, rnd(0, 6)]) };
     if (flock) { flock.x += 150 * dt; flock.y -= 12 * dt; if (flock.x > W + 300) { flock = null; nextFlock = rnd(9, 14); } }
@@ -4669,7 +4681,15 @@ G.sceneEnvFx = (V) => {
     ctx.globalAlpha = 1;
     for (const c of clouds) { if (!vis(c.x, c.y, c.rx)) continue; ctx.drawImage(spr.cloud, c.x - c.rx, c.y - c.ry, c.rx * 2, c.ry * 2); }
     ctx.globalCompositeOperation = 'lighter';
-    for (const f of flies) { const x = f.cx + Math.cos(f.a) * f.r, y = f.cy + Math.sin(f.a * 1.3) * f.r * .5 - 20, b = Math.max(0, Math.sin(t * 1.6 + f.ph)); if (b < .05 || !vis(x, y, 10)) continue; ctx.globalAlpha = b; ctx.drawImage(spr.fly, x - 10, y - 10, 20, 20); }
+    // 11/7 선생님(PixelFX 결정판 d6 가, pixelfx weather/fireflies 방식): 반딧불마다 제 박자로 빠르게 켜졌다 천천히 꺼짐(가끔 두 번 깜빡),
+    //  켜져 있는 동안 지나온 자리에 짧은 빛꼬리, 가운데는 또렷한 픽셀 점(4칸), 둘레는 두 겹 둥근 빛
+    const pulse = (v) => (v < 0.06 ? v / 0.06 : v < 0.14 ? 1 : v < 0.4 ? 1 - (v - 0.14) / 0.26 : 0), flyAt = (f, a) => [f.cx + Math.cos(a) * f.r, f.cy + Math.sin(a * 1.3) * f.r * .5 - 20];
+    for (const f of flies) { const u = ((t / f.per + f.ph / 6.28) % 1 + 1) % 1, b = Math.max(pulse(u), f.two ? pulse(u - .22) * .8 : 0), [x, y] = flyAt(f, f.a);
+      if (b < .04 || !vis(x, y, 22)) continue;
+      ctx.globalAlpha = .55 * b; ctx.drawImage(spr.fly, x - 22, y - 22, 44, 44); ctx.globalAlpha = .75 * b; ctx.drawImage(spr.fly, x - 8, y - 8, 16, 16);
+      if (b > .3) { ctx.fillStyle = '#d8f070'; for (let j = 1; j <= 4; j++) { const [tx, ty] = flyAt(f, f.a - f.d * f.s * j * .06); ctx.globalAlpha = b * (1 - j / 5) * .7; ctx.fillRect(Math.round(tx / 2) * 2 - 1, Math.round(ty / 2) * 2 - 1, 2, 2); } }
+      ctx.globalAlpha = b; ctx.fillStyle = '#f8ffd0'; const X = Math.round(x / 2) * 2, Y = Math.round(y / 2) * 2; ctx.fillRect(X - 3, Y - 3, 6, 6);
+      if (b > .7) { ctx.globalAlpha = (b - .7) * 3; ctx.fillStyle = '#e8fa90'; ctx.fillRect(X - 2, Y - 8, 4, 3); ctx.fillRect(X - 2, Y + 5, 4, 3); ctx.fillRect(X - 8, Y - 2, 3, 4); ctx.fillRect(X + 5, Y - 2, 3, 4); } }
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     for (const b of bugs) { const x = b.cx + Math.cos(b.a) * b.r, y = b.cy + Math.sin(b.a * 1.7) * b.r * .4 - 24 - Math.abs(Math.sin(t * 2 + b.ph)) * 6, w = Math.abs(Math.sin(t * 14 + b.ph)) * 6 + 1; ctx.fillStyle = b.c; ctx.fillRect(x - w, y - 3, w, 5); ctx.fillRect(x + 1, y - 3, w, 5); }
     if (flock) for (const [bx, by, ph] of flock.b) { const x = flock.x + bx, y = flock.y + by, f = Math.sin(t * 9 + ph) * 5; ctx.strokeStyle = 'rgba(30,26,30,.85)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 10, y - f); ctx.lineTo(x, y); ctx.lineTo(x + 10, y - f); ctx.stroke(); ctx.fillStyle = 'rgba(10,20,10,.13)'; ctx.beginPath(); ctx.ellipse(x + 60, y + 260, 9, 3, 0, 0, 7); ctx.fill(); }
@@ -14176,7 +14196,9 @@ G.s6 = (() => {
       // 그림 표시 (대합실 = 그림 시간표, 건널목 = 달팽이 신호, 승강장 = 쉬는 의자). 선생님 그림 place_<장소>가 있으면 그것
       const icons = MAPICO6.map(([id, k]) => { const p = G.D.places.places.find(q => q.id === id), src = G.art('place_' + id) || G.art(k); if (!p || !src || G.mapV2()) return null; const e = G.el('div', 's3-mapico', MV.fx, `<img src="${src}" alt="">`);
         Object.assign(e.style, { left: (p.marker[0] + 110) + 'px', top: (p.marker[1] - 30) + 'px' }); e.animate && e.animate([{ scale: .2, opacity: 0 }, { scale: 1.2, opacity: 1 }, { scale: 1 }], { duration: 700, easing: 'ease-out' }); return e; }).filter(Boolean);
-      await G.wait(rm ? 0.5 : 3.0); if (!ok()) return;   // 교훈 세 번째는 말 대신 마을 변화로
+      // 11/7 선생님(PixelFX 결정판 d5): 마지막 별 엔딩 화면에서 게임이 직접 불꽃놀이(로켓 두 발 → 하늘에서 두 번 터짐). 컷신 영상은 그대로
+      const fw = !rm && G.pfx && G.pfx.has('fw_rocket'); if (fw) fireworks(ok);
+      await G.wait(rm ? 0.5 : fw ? 4.5 : 3.0); if (!ok()) return;   // 교훈 세 번째는 말 대신 마을 변화로
       if (G.cut.raised !== 'speed') { await play(['SP05_nar_01', 'SP05_nar_02'], { noPortraits: true }); if (!ok()) return; }   // 되풀이 문장 (별 올리기 영상이 있으면 영상 속에서 말함)
       icons.forEach(e => e.remove());
       await sky(true); if (!ok()) return;
@@ -14192,6 +14214,13 @@ G.s6 = (() => {
     } finally {
       if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.hide(false); }
     }
+  }
+  function fireworks(ok) {
+    const W = window.innerWidth, H = window.innerHeight, at = (t, f) => setTimeout(() => { if (ok()) f(); }, t * 1000);
+    G.pfx.play('fw_rocket', { x: W * .26, y: H * .98, scale: 2.2 });
+    at(.6, () => G.pfx.play('fw_rocket', { x: W * .74, y: H * .98, scale: 2.2 }));
+    at(1.5, () => { G.pfx.play('fw_burst', { x: W * .5, y: H * .3, scale: 2.6, at: 'center' }); G.audio.sfx('sfx_sparkle', 0.5); });
+    at(2.3, () => { G.pfx.play('fw_burst', { x: W * .32, y: H * .26, scale: 2.2, at: 'center' }); G.audio.sfx('sfx_sparkle', 0.4, 1.15); });
   }
   async function sky(noNext) {
     const g = G.gen, m = G.el('div', 'modal sky-view', G.$('#closeup'));   // 10/4: 대사 창(#dialog)보다 아래 층에 둬야 대사를 넘길 수 있음 (#overlay는 대사 창을 덮어 화면이 멈춤)
@@ -15359,7 +15388,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-11-07)';
-G.BUILT = '2026-11-07 21:29';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-11-07 23:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
