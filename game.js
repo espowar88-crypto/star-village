@@ -51,7 +51,8 @@ try { const t = new Image(); t.onload = () => { G.avif = t.naturalWidth === 2; }
 //  → 흑백을 색 그림에서 만드는 방식(G.dusk)은 크롬·엣지·안드로이드만, 사파리는 흑백 그림을 그대로
 G.duskOK = !(/Safari\//.test(navigator.userAgent) && !/Chrome\/|Chromium\/|Edg\//.test(navigator.userAgent)) && !/iPhone|iPad|iPod/.test(navigator.userAgent) && !(/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 // 10/30 선생님(아이패드 사파리 광장에서 꺼짐): 광장은 처음 나오는 큰 AVIF 장소 그림(3300x2290). 사파리는 큰 AVIF를 풀 때 메모리가 크게 튐 → 사파리는 장소 바탕만 WebP(지도 조각 AVIF는 작아서 그대로)
-G.asset = (p) => { p = G.litPath(p); return (G.avif && window.AVIF && window.AVIF[p] && (G.duskOK || !/_v2_px_/.test(p))) || (window.EMBED && window.EMBED[p]) || p; };
+// 11/5 고침: 위 사파리 조건을 && 끝에 붙여 AVIF 주소 대신 true(조건 결과)를 돌려주던 것(10/29부터, 지도 색 조각·W-03 대체 그림 주소가 'true') → 늘 주소 글자를 돌려줌
+G.asset = (p) => { p = G.litPath(p); const av = G.avif && window.AVIF && window.AVIF[p]; if (typeof av === 'string' && (G.duskOK || !/_v2_px_/.test(p))) return av; return (window.EMBED && window.EMBED[p]) || p; };
 // 10/20 선생님(PC·전자칠판에서 픽셀 인물 뭉개짐): 반 크기 걷기 그림(_h)은 휴대폰·메모리 적은 기기만. 픽셀랩 인물은 잔 점이라 반으로 줄이면 점 3/4이 사라짐
 // 10/30 메모리 예산: 아이패드(사파리는 맥처럼 자기를 알려 iPad 글자가 없고 deviceMemory도 없음)가 빠져 지도 걷기 그림을 원래 크기로 받던 것(지도 인물·동물만 약 230MB) → 아이패드도 반 크기
 G.halfSheet = /iPhone|iPad|iPod|Android.*Mobile/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) || (navigator.deviceMemory > 0 && navigator.deviceMemory < 4);
@@ -991,12 +992,12 @@ G.hud = (() => {
   const hide = () => { if (box) { box.remove(); box = bar = txt = skipBtn = null; } };
   // r1: 화면 바탕 그림(장면 bg·지도 조각, 퍼즐 그림)이 0.3초 안에 다 안 뜨면 로딩 창을 덮고, 다 뜨면 걷음(반쯤 뜬 그림·버벅임을 안 보이게). 30초 넘으면 그냥 걷음
   G.loadWatch = (sel = '#world img.bg, #world .map-color > img, #world .map-mono > img, #overlay img, #closeup img') => {
-    const my = ++gen, t0 = performance.now(); if (G.packs) G.packs.hold(30);   // 11/2 결정 3: 기다리는 동안 뒤에서 받기 멈춤
+    const my = ++gen, t0 = performance.now(); if (G.packs) G.packs.pause('look', 30);   // 11/2 결정 3: 기다리는 동안 뒤에서 받기 멈춤   // 11/5 W-07: 까닭별 멈춤(풀 때 장소 멈춤까지 지우지 않게)
     const step = () => {
       if (my !== gen) return;
       const im = [...document.querySelectorAll(sel)].filter(i => i.getAttribute('src') && !/^data:/.test(i.src));
       const left = im.filter(i => !i.complete).length, dt = performance.now() - t0;
-      if (!left || dt > 30000) { hide(); if (G.packs) { G.packs.free(); G.packs.hold(1.5); } return; }
+      if (!left || dt > 30000) { hide(); if (G.packs) { G.packs.hold(1.5); G.packs.resume('look'); } return; }
       if (dt > 700) show(1 - left / im.length);   // 10/26 선생님(준비 창이 너무 자주): 기기에 받아 둔 그림을 푸는 짧은 틈에는 안 띄움
       setTimeout(step, 100);
     };
@@ -1039,27 +1040,77 @@ G.hud = (() => {
     if (G.px && (K[k.replace('_px_mono.', '_px_color.')] || K[k.replace('map2_mono_h_t', 'map2_color_h_t')])) return null;
     const a = G.asset(k); return /^data:/.test(a) ? null : a;
   };
-  const have = async (u) => { try { return !!(window.caches && await caches.match(u, { ignoreSearch: true })); } catch (_) { return false; } };
+  //  11/6 W-05 F1: 예전엔 파일마다 caches.match(ignoreSearch)라 저장소 전체를 훑음(항목 1,300~1,600개에서 한 번 90~165ms, 다시 방문 때 1,636번 = 약 42초).
+  //   이제 저장소 열쇠 목록을 한 번 읽어 '주소(쿼리 뺌)' 표를 만들어 여러 파일 확인에 다시 씀. 뜻은 예전과 같음(모든 캐시, ?v= 무시).
+  //   표는 10초 지나거나 sw가 바뀌면 다시 읽음. 표가 늦어 '없음'이라 해도 받기는 sw를 거쳐 저장본으로 답하므로 망에 다시 가지 않음
+  //   (읽는 중에는 그 읽기를 함께 기다림 = 느린 기기에서 읽기가 10초를 넘어도 겹쳐 읽지 않음)
+  let hIdx = null, hAt = 0, hRun = false;
+  const hKey = (u) => { try { const x = new URL(u, location.href); return x.origin + x.pathname; } catch (_) { return ''; } };
+  const hLoad = () => { if (hIdx && (hRun || performance.now() - hAt < 10000)) return hIdx; hRun = true;
+    const pr = (async () => { const s = new Set(); for (const n of await caches.keys()) for (const r of await (await caches.open(n)).keys()) s.add(hKey(r.url)); return s; })()
+      .catch(() => null).then((s) => { if (hIdx === pr) { hRun = false; hAt = performance.now(); if (!s) hIdx = null; } return s; });
+    return hIdx = pr; };
+  if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('controllerchange', () => { hIdx = null; hRun = false; });
+  const have = async (u) => { try { if (!window.caches) return false; const s = await hLoad(); if (s) return s.has(hKey(u)); return !!(await caches.match(u, { ignoreSearch: true })); } catch (_) { return false; } };
   const Pk = G.packs = { done: new Set() };
-  const one = async (u, pri) => {
+  //  11/5 W-07: 뒤에서 받기는 주소 끝에 svbg=1을 붙여 받음. sw(sw_make.py)는 이 요청을 자기 AbortController로 받고 캐시에 넣으며, 페이지가 끊으면 {svAbort}로 알려 sw의 망 요청도 끊음
+  //   (예전처럼 그냥 받으면 페이지가 끊어도 sw의 fetch·캐시 넣기가 끝까지 받아 장소 그림과 대역을 나눔. 페이지가 직접 캐시에 넣으면 캐시 읽기가 막혀 장소가 더 늦었음)
+  //   옛 sw는 svbg를 모르고 보통처럼 받음(끊기지만 않음). sw가 없으면 그냥 받음
+  Pk.fetchBg = async (u, sig, onChunk, chk) => {
+    const sc = navigator.serviceWorker && navigator.serviceWorker.controller; if (sc && chk && await have(u)) return true;   // chk: 이미 기기에 있으면 안 받음
+    const abs = new URL(u, location.href).href, tell = () => { try { sc.postMessage({ svAbort: [abs] }); } catch (_) { } };
+    if (sc && sig) sig.addEventListener('abort', tell, { once: true });
+    try {
+      const r = await fetch(sc ? u + (u.includes('?') ? '&' : '?') + 'svbg=1' : u, { priority: 'low', signal: sig }); if (!r.ok) throw 0;
+      const len = +r.headers.get('Content-Length') || 0; let got = 0;
+      if (r.body && r.body.getReader) { const rd = r.body.getReader(); for (;;) { onChunk && onChunk(len ? got / len : 0); const x = await rd.read(); if (x.done) break; got += x.value.length; } } else await r.arrayBuffer();
+      return true;
+    } finally { if (sc && sig) sig.removeEventListener('abort', tell); }
+  };
+  //  11/5 W-07: 뒤에서 받기(pump)는 자기 AbortController(ac)를 넘김. 장소에 들어가 멈추면 ac.paused=true로 끊고 '못 받음'이 아니라 'paused'로 돌려줌 → 큐 맨 앞에 다시 넣음
+  //   (끊긴 파일은 sw가 캐시에 넣지 않음 = 반쯤 받은 파일이 저장되지 않음. 다시 받을 때 처음부터)
+  const one = async (u, pri, ac0) => {
     if (Pk.done.has(u)) return true; Pk.done.add(u);
-    try { if (await have(u)) return true; const r = await fetch(u, { priority: pri }); if (!r.ok) throw 0; await r.arrayBuffer(); return true; }
-    catch (_) { Pk.done.delete(u); console.warn('[묶음] 못 받음', u); return false; }
+    // 11/5 W-01(B-04): 응답이 멈춘 파일 하나 때문에 '별 준비 중 99%'에서 끝없이 서지 않게, 받는 바이트가 이만큼 안 오면 끊고 못 받음으로(뒤에서 다시 받을 수 있음)
+    //  큰 파일도 느린 망에서 끊기지 않게 '전체 시간'이 아니라 '멈춘 시간'으로 셈(PC 20초, 손가락 기기 30초)
+    const ac = ac0 || (window.AbortController ? new AbortController() : null), lim = matchMedia('(pointer: coarse)').matches ? 30000 : 20000; let tm = 0, late = false;
+    const arm = () => { if (!ac) return; clearTimeout(tm); tm = setTimeout(() => { late = true; ac.abort(); }, lim); };
+    try { if (await have(u)) return true; if (ac && ac.paused) throw 0; arm(); if (ac0) return await Pk.fetchBg(u, ac.signal, (k) => { ac.prog = k; arm(); });
+      const r = await fetch(u, { priority: pri, signal: ac ? ac.signal : undefined }); if (!r.ok) throw 0;
+      if (r.body && r.body.getReader) { const rd = r.body.getReader(); for (;;) { arm(); if ((await rd.read()).done) break; } } else await r.arrayBuffer(); return true; }
+    catch (_) { Pk.done.delete(u); if (ac && ac.paused) return 'paused'; console.warn(late ? '[늦음] 묶음 파일' : '[묶음] 못 받음', u); return false; }
+    finally { clearTimeout(tm); }
   };
   const list = (n) => [...new Set((PK[n] || []).map(urlOf).filter(Boolean))];
   Pk.cur = () => Math.min(6, Math.max(1, ((G.st && G.st.stars) || 0) + 1));
   // 뒤에서 받기: 한 번에 2개, 느리게(low). G.packs.hold(초) 동안은 멈춤
   const q = [], qs = new Set(); let run = 0, holdTo = 0, pumpT = 0;
+  //  11/5 W-07: 멈춤 까닭(why: 'scene' 장소 그림, 'look' 로딩 창)마다 따로 걸고 풂 — 예전엔 로딩 창이 끝나며 free()가 장소 멈춤까지 지워
+  //   장소 압축 바탕을 받는 중에 뒤 묶음(다른 장소 KTX 3~4MB)이 다시 시작됐음. live = 지금 뒤에서 받는 요청(주소 → ac), 장소 멈춤은 이것도 끊음
+  //   오프라인이면 새로 시작하지 않고 'online' 때 이어 감(못 받음이 줄줄이 나지 않게)
+  const why = new Map(), live = new Map();
   const pump = () => {
     clearTimeout(pumpT);
     while (run < 2 && q.length) {
+      if (why.size || navigator.onLine === false) return;
       const w = holdTo - performance.now(); if (w > 0) { pumpT = setTimeout(pump, w + 50); return; }
-      const u = q.shift(); qs.delete(u); if (Pk.done.has(u)) continue; run++; one(u, 'low').finally(() => { run--; pump(); });
+      const u = q.shift(); qs.delete(u); if (Pk.done.has(u)) continue; run++;
+      const ac = window.AbortController ? new AbortController() : null; if (ac) live.set(u, ac);
+      one(u, 'low', ac).then((ok) => { if ((ok === 'paused' || (!ok && navigator.onLine === false)) && !Pk.done.has(u) && !qs.has(u)) { qs.add(u); q.unshift(u); } })
+        .finally(() => { if (live.get(u) === ac) live.delete(u); run--; pump(); });
     }
   };
   Pk.bg = (names, front) => { const L = names.flatMap(list).filter(u => !Pk.done.has(u) && !qs.has(u)); L.forEach(u => qs.add(u)); if (front) q.unshift(...L); else q.push(...L); pump(); };
   Pk.hold = (sec) => { holdTo = Math.max(holdTo, performance.now() + sec * 1000); };
   Pk.free = () => { holdTo = 0; pump(); };
+  //  pause(까닭, 최대 초, 받는 중인 것도 끊을지 — true 또는 주소를 받아 끊을지 답하는 함수): 최대 시간이 지나면 저절로 풂(W-01: 멈춘 그림 때문에 뒤 받기가 영영 서지 않게)
+  //   돌려주는 표(tok)로 풀면 그 멈춤일 때만 풂 — 앞 장소가 늦게 끝나며 다음 장소의 멈춤을 푸는 일이 없게
+  Pk.pause = (k, sec, cut) => { const o = why.get(k); if (o) clearTimeout(o.t); const tok = { t: 0 }; tok.t = setTimeout(() => Pk.resume(k, tok), sec * 1000); why.set(k, tok);
+    if (cut) for (const [u, ac] of live) if (!(ac.prog > 0.7) && (cut === true || cut(u))) { ac.paused = true; ac.abort(); }   // 70% 넘게 받은 것은 마저 받음(느린 망에서 같은 큰 파일을 장소마다 처음부터 다시 받다 영영 못 끝내지 않게)
+    return tok; };
+  Pk.resume = (k, tok) => { const o = why.get(k); if (!o || (tok && o !== tok)) return; clearTimeout(o.t); why.delete(k); pump(); };
+  Pk.state = () => ({ why: [...why.keys()], live: live.size, liveU: [...live.keys()].map((u) => u.split('/').pop()), run, queued: q.length, done: Pk.done.size });   // 시험·점검용
+  addEventListener('online', () => pump());
   Pk.plan = () => { const k = Pk.cur(); Pk.bg(['m', String(k), String(Math.min(6, k + 1))], true); Pk.bg(['1', '2', '3', '4', '5', '6', 'r']); };
   // 앞에서 받기(창을 띄우고 기다림): 한 번에 6개. 다 받으면(또는 못 받은 것만 남으면) 끝
   Pk.get = async (names, onP) => {
@@ -1067,7 +1118,8 @@ G.hud = (() => {
     const w = async () => { while (i < L.length) { const u = L[i++]; await one(u, 'high'); n++; onP && onP(n / L.length, L.length); } };
     await Promise.all([w(), w(), w(), w(), w(), w()]);
   };
-  Pk.left = async (names) => { const L = [...new Set(names.flatMap(list))]; let m = 0; await Promise.all(L.map(async u => { if (!Pk.done.has(u) && !(await have(u))) m++; })); return { left: m, total: L.length }; };
+  // 11/6 F1: Pk.left는 남은 수를 정확히 세려고 주소 표를 새로 읽음(hIdx = null)
+  Pk.left = async (names) => { const L = [...new Set(names.flatMap(list))]; let m = 0; if (!hRun) hIdx = null; await Promise.all(L.map(async u => { if (!Pk.done.has(u) && !(await have(u))) m++; })); return { left: m, total: L.length }; };
   // 창: 0.4초 안에 끝나면 안 띄움. 15초 뒤 [기다리지 않고 시작]
   const gated = async (names, msg) => {
     const t0 = performance.now(); let shown = false, skip = false, sk = null;
@@ -1084,10 +1136,23 @@ G.hud = (() => {
   // 선생님 설정 '모두 미리 받기'
   Pk.all = (onP) => Pk.get(['c', 'm', '1', '2', '3', '4', '5', '6', 'r'], onP);
   // r3: 처음 열 때 '게임 준비 중'(공통 묶음 c만, 약 60MB). 예전처럼 서비스워커가 다 받을 때까지 기다리지 않음
+  //  11/6 W-05 F2: 첫 방문에 sw가 페이지를 맡기 전에 c를 받으면 sw를 거치지 않아 저장되지 않음(다시 방문에 11~25MB 또 받음).
+  //   그래서 sw가 맡을 때(controllerchange)까지 기다린 뒤 받음. 무한정 기다리지 않음: 최대 ms. 바로 지나가는 때 = 이미 맡음(다시 방문·업데이트),
+  //   sw 없음·https 아님(폴더 판 file://)·등록 없음/설치 실패(3초 뒤 확인)·활성 sw가 있는데 맡지 않음(강력 새로 고침, 1.5초 뒤). 그때는 예전처럼 그냥 받음
+  const swWait = (ms) => { const S = navigator.serviceWorker; if (!S || location.protocol !== 'https:' || S.controller) return Promise.resolve('ok');
+    const t0 = performance.now(); let actAt = 0;
+    return new Promise((ok) => { let iv = 0; const end = (why) => { clearInterval(iv); S.removeEventListener('controllerchange', cc); ok(why); }, cc = () => end('ok');
+      S.addEventListener('controllerchange', cc);
+      iv = setInterval(async () => { const t = performance.now() - t0; if (S.controller) return end('ok'); if (t > ms) return end('timeout');
+        let r = null; try { r = await S.getRegistration(); } catch (_) { return end('noreg'); }
+        if (t > 3000 && (!r || (!r.installing && !r.waiting && !r.active))) return end('noreg');
+        if (r && r.active && r.active.state === 'activated' && !r.installing && !r.waiting) { actAt = actAt || performance.now(); if (performance.now() - actAt > 1500) end('uncontrolled'); } else actAt = 0; }, 250); }); };
   G.prep = async (go) => {
     let done = false; const fin = () => { if (done) return; done = true; hide(); go(); setTimeout(() => Pk.bg(['m']), 300); };
     if (!window.PACKS) return fin();
-    await Promise.race([G.pxWait ? G.pxWait() : null, new Promise(r => setTimeout(r, 4000))].filter(Boolean)).catch(() => { });
+    const S = navigator.serviceWorker, sw0 = performance.now(), swT = S && !S.controller && location.protocol === 'https:' ? setTimeout(() => show(0, '게임 준비 중 (처음 한 번만) 0%'), 400) : 0;   // 기다릴 때만 창(다시 방문은 예전처럼 안 띄움)
+    await Promise.all([Promise.race([G.pxWait ? G.pxWait() : null, new Promise(r => setTimeout(r, 4000))].filter(Boolean)).catch(() => { }),
+      swWait(20000).then((w) => { clearTimeout(swT); G.swWaitInfo = { why: w, ms: Math.round(performance.now() - sw0) }; })]);   // F2 (G.swWaitInfo는 시험·점검용)
     const { left } = await Pk.left(['c']); if (!left) return fin();
     await gated(['c'], '게임 준비 중 (처음 한 번만)');
     fin();
@@ -1177,8 +1242,10 @@ G.depthLoad = (dsrc, cb, o = {}) => {
   // 10/10 소리의 별에서 놀다 처음 화면(이어서 하기)으로 튕김: 지도를 열 때마다 깊이 그림을 큰 캔버스(넓은 지도 2880x1620)에 새로 풀어
   //  휴대폰 메모리가 쌓여 페이지가 다시 켜짐 → 한 번만 풀어 두고 같이 쓰며, 다 쓴 캔버스는 바로 비움
   const ent = { wait: [cb] }; if (o.keep) DC[dsrc] = ent;
-  const fail = () => { if (o.keep && DC[dsrc] === ent) delete DC[dsrc]; };
-  const done = (w, h, gy) => { Object.assign(ent, { w, h, gy }); const ws = ent.wait; ent.wait = []; for (const f of ws) f(ent); };
+  // 11/5 N-03: 끝나면(성공·실패 모두) 그림 처리기를 비움. 크롬은 다 쓴 <img>도 문서가 붙잡아 두어, 처리기가 남으면 ent(gy)·cb(장면 V)가 장소를 나가도 풀리지 않았음(바퀴마다 하나씩 쌓임)
+  const clr = () => { im.onload = im.onerror = null; };
+  const fail = () => { clr(); ent.wait = []; if (o.keep && DC[dsrc] === ent) delete DC[dsrc]; };
+  const done = (w, h, gy) => { clr(); Object.assign(ent, { w, h, gy }); const ws = ent.wait; ent.wait = []; for (const f of ws) f(ent); };
   const im = new Image();
   im.onerror = fail;
   im.onload = () => {
@@ -1634,7 +1701,14 @@ const pxFollow = (el, o) => { const m = el.style.transform, v = m && m.match(/-?
 //  아무도 안 쓰면 1초 뒤에 그래픽 칩에서 내림(바로 내리면 새로 부른 쪽이 빈 그림을 받음)
 const pxRC = new Map();
 const pxAbs = (u) => { try { return new URL(u, location.href).href; } catch (_) { return u; } };   // 같은 그림을 상대·절대 주소로 따로 세면 한쪽이 내릴 때 다른 쪽 그림이 지워짐
-G.pxGet = (url) => { url = pxAbs(url); let r = pxRC.get(url); if (!r) { r = { n: 0, p: G.px.P.Assets.load(url) }; pxRC.set(url, r); } r.n++; clearTimeout(r.tm);
+// 11/5 W-02(B-03): 받기에 실패한 약속을 그대로 두면 막힘을 풀어도 다시 받지 않아 새로고침 전까지 빈칸 → 실패 표시(bad)만 하고 다음에 부를 때 새로 받음
+//  (참조 수 n은 그대로: 부른 쪽은 성공·실패 상관없이 한 번씩 pxPut. PixiJS Assets는 실패한 주소를 스스로 잊음)
+// 11/5 W-01(B-04): 화면을 막고 그림을 기다리는 곳(장소 바탕·지도 첫 조각)은 이만큼만 기다림(PC 8초, 손가락 기기 12초). 넘으면 화면을 열고 늦은 그림은 오는 대로 그림
+const pxLim = () => (matchMedia('(pointer: coarse)').matches ? 12000 : 8000);
+const pxStall = () => (matchMedia('(pointer: coarse)').matches ? 30000 : 20000);   // 11/5: 장소 원본 그림이 이만큼 안 오면 멈춘 것으로 보고 웹 그림(늦음과 구분)
+const pxLate = (p, ms, what) => new Promise((ok, no) => { const tm = setTimeout(() => { console.warn('[늦음]', what); no(new Error('late')); }, ms); p.then((v) => { clearTimeout(tm); ok(v); }, (e) => { clearTimeout(tm); no(e); }); });
+const pxLoad1 = (r, url) => { const p = r.p = G.px.P.Assets.load(url); r.bad = false; p.catch(() => { if (r.p === p) r.bad = true; }); };
+G.pxGet = (url) => { url = pxAbs(url); let r = pxRC.get(url); if (!r) { r = { n: 0 }; pxLoad1(r, url); pxRC.set(url, r); } else if (r.bad) pxLoad1(r, url); r.n++; clearTimeout(r.tm);
   return r.p.then((t) => { r.t = t; if (t) { t.source.scaleMode = 'linear'; t.source.alphaMode = 'premultiply-alpha-on-upload'; } return t; }); };   // 줄여 보일 때 일렁이지 않게, 반투명 겹이 두 번 곱해지지 않게
 G.pxPut = (url) => { url = pxAbs(url); const r = pxRC.get(url); if (!r || --r.n > 0) return; clearTimeout(r.tm);
   r.tm = setTimeout(() => { if (r.n > 0) return; pxRC.delete(url); r.p.then(() => G.px.P.Assets.unload(url)).catch(() => { }); }, 1000); };
@@ -1685,9 +1759,10 @@ void main(){ float gh = 1.0;
   const prog = P.GlProgram.from({ vertex, fragment, preferredFragmentPrecision: 'highp' });
   const quad = new P.Geometry({ attributes: { aPosition: [0, 0, 1, 0, 1, 1, 0, 1] }, indexBuffer: [0, 1, 2, 0, 2, 3] });
   const v4 = (a = [0, 0, 0, 0]) => ({ value: new Float32Array(a), type: 'vec4<f32>' });
+  // 11/5 N-03: Mesh.destroy는 셰이더를 안 지움 → 셰이더 묶음(BindGroup)이 늘 사는 빈 그림(EMPTY)·깊이 그림에 'change' 듣기로 남아 판마다 쌓였음. 판이 지워질 때 셰이더도 지움(같이 쓰는 prog는 안 지움, destroy(false))
   const mkItem = (parent) => { const U = new P.UniformGroup({ uP: v4(), uQ: v4(), uUV: v4([0, 0, 1, 1]), uOcc: v4([0, 0, 0, 1e9]), uFx: v4([1, 1, 0, 0]), uC0: v4(), uC1: v4(), uX: v4(), uDK: { value: dk, type: 'vec3<f32>' } });
-    const m = new P.Mesh({ geometry: quad, shader: new P.Shader({ glProgram: prog, resources: { itemU: U, uTex: empty, uDepth: dep ? dep.source : empty } }) });
-    m.u = U.uniforms; m.visible = false; parent.addChild(m); meshes.add(m); m.on('destroyed', () => meshes.delete(m)); return m; };
+    const sh = new P.Shader({ glProgram: prog, resources: { itemU: U, uTex: empty, uDepth: dep ? dep.source : empty } }), m = new P.Mesh({ geometry: quad, shader: sh });
+    m.u = U.uniforms; m.visible = false; parent.addChild(m); meshes.add(m); m.on('destroyed', () => { meshes.delete(m); sh.destroy(); }); return m; };
   const setTex = (m, t) => { const s = t ? t.source : empty; if (m.shader.resources.uTex !== s) m.shader.resources.uTex = s; };
   const rect = (m, x, y, w, h) => { const p = m.u.uP, q = m.u.uQ; p[0] = x; p[1] = y; p[2] = w; p[3] = 0; q[0] = 0; q[1] = h; };
   const uv = (m, a) => { const u = m.u.uUV; u[0] = a[0]; u[1] = a[1]; u[2] = a[2]; u[3] = a[3]; };
@@ -1951,18 +2026,45 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
   const amt = () => { if (!col) return 1; if (col.style.visibility === 'hidden') return 0; const o = getComputedStyle(col).opacity; return o === '' ? 1 : +o; };
   // 장면 칸(V.el)의 지금 transform(카메라 이동·CSS 전환 중간값까지)을 그대로 따라감
   const follow = () => pxFollow(V.el, root);   // 카메라(setCam이 쓴 transform)를 따라감
-  const ready = (async () => {
-    const urls = [G.asset(cUrl)]; if (wk) urls.push(G.asset(wk[0]));
-    const [c, w] = await Promise.all(urls.map((u) => G.pxGet(u)));
-    if (gone) return;
-    tc = c; tw = w;
-    const wK = wk ? [(wk[3] || wk[1]) / wk[1] / W, (wk[4] || wk[2]) / wk[2] / H] : [1, 1];
-    const shader = P.Shader.from({ gl: { vertex, fragment }, resources: { uTex: c.source, uWarm: (w || c).source,
-      pxU: { uCol: { value: 1, type: 'f32' }, uHasWarm: { value: w ? 1 : 0, type: 'f32' }, uWarmK: { value: new Float32Array(wK), type: 'vec2<f32>' }, ...Object.fromEntries(RN.map((i) => ['uR' + i, { value: new Float32Array(4), type: 'vec4<f32>' }])) } } });
-    mesh = new P.Mesh({ geometry: geo, shader }); root.addChildAt(mesh, 0);   // 세상 판보다 늘 아래
-    tick = () => { const m = follow(), u = shader.resources.pxU.uniforms; if (V.pxFade) root.alpha = +(V.pxFade.style.opacity || 1);   /* 10/31 도착 연출: 연출 겹이 흐려지고 짙어지는 것을 따라감 */ u.uCol = G.pxKicking ? u.uCol : amt();   /* setCam 자리에서는 지난 값(모양 계산을 억지로 안 시킴) */ return m + '|' + u.uCol + '|' + root.alpha + '|' + revealTick(u); };   // 달라지면 그림
-    G.pxDirty = true; G.pxTick.add(tick); cv.style.display = '';
-  })().catch((e) => { console.warn('PixiJS 장면 그림 못 읽음', e); });
+  // 11/5 W-03(B-02)·W-01: 장소 바탕은 압축 그림(KTX2)이 원본. 받기 오류면 바로 웹 그림(avif·webp)으로 그림
+  //  늦음(느린 망)은 실패가 아님: 웹 그림을 따로 받으면 같은 망을 나눠 써서 원본이 더 늦어짐(5Mbps 실측) → 원본을 계속 기다리고, 장면만 먼저 엶(ready 상한)
+  //  응답이 멈춘 듯 pxStall(PC 20초·손가락 기기 30초, 묶음 받기와 같은 값) 넘게 안 오면 그때 웹 그림. 그 뒤 원본이 오면 같은 판에서 원본으로 바꾸고 웹 그림은 돌려줌
+  //  대체도 PixiJS 판에: 이 장소의 인물·불빛·가림은 같은 판(root)이 그려서 DOM 바탕으로 바꾸면 겹 순서가 어긋남. held: 지금 빌린 주소(dispose가 돌려줌)
+  const held = [];
+  const take = (u) => { held.push(u); return G.pxGet(u); };
+  const give = (u) => { const i = held.indexOf(u); if (i >= 0) { held.splice(i, 1); G.pxPut(u); } };
+  const cur = { c: null, w: null };   // 지금 그리는 그림 { t, k(압축이면 true), u }
+  let shader = null, drawn0 = null, full0 = null; const drawn = new Promise((r) => { drawn0 = r; }), full = new Promise((r) => { full0 = r; });   // full: 원본 압축 바탕을 다 받았거나(그림) 못 받음이 정해짐
+  const uvOf = (k) => k ? [0, 0, ow / cw, 0, ow / cw, oh / ch, 0, oh / ch] : [0, 0, 1, 0, 1, 1, 0, 1];   // 웹 그림은 늘린 칸이 없음
+  const warmK = () => !cur.w ? [1, 1] : cur.w.k ? [(wk[3] || wk[1]) / wk[1] / W, (wk[4] || wk[2]) / wk[2] / H] : [1 / W, 1 / H];
+  const paint = () => { if (gone || !cur.c) return;
+    const c = cur.c.t, w = cur.w && cur.w.t;
+    if (!mesh) {
+      shader = P.Shader.from({ gl: { vertex, fragment }, resources: { uTex: c.source, uWarm: (w || c).source,
+        pxU: { uCol: { value: 1, type: 'f32' }, uHasWarm: { value: w ? 1 : 0, type: 'f32' }, uWarmK: { value: new Float32Array(warmK()), type: 'vec2<f32>' }, ...Object.fromEntries(RN.map((i) => ['uR' + i, { value: new Float32Array(4), type: 'vec4<f32>' }])) } } });
+      geo.getBuffer('aUV').data = new Float32Array(uvOf(cur.c.k));
+      mesh = new P.Mesh({ geometry: geo, shader }); root.addChildAt(mesh, 0);   // 세상 판보다 늘 아래
+      tick = () => { const m = follow(), u = shader.resources.pxU.uniforms; if (V.pxFade) root.alpha = +(V.pxFade.style.opacity || 1);   /* 10/31 도착 연출: 연출 겹이 흐려지고 짙어지는 것을 따라감 */ u.uCol = G.pxKicking ? u.uCol : amt();   /* setCam 자리에서는 지난 값(모양 계산을 억지로 안 시킴) */ return m + '|' + u.uCol + '|' + root.alpha + '|' + revealTick(u); };   // 달라지면 그림
+      G.pxTick.add(tick); cv.style.display = ''; drawn0();
+    } else {   // 웹 그림 → 압축 그림(또는 불빛 그림이 늦게 옴): 판은 그대로 두고 그림만 바꿈
+      shader.resources.uTex = c.source; shader.resources.uWarm = (w || c).source; geo.getBuffer('aUV').data = new Float32Array(uvOf(cur.c.k));
+      const u = shader.resources.pxU.uniforms; u.uHasWarm = w ? 1 : 0; u.uWarmK = new Float32Array(warmK());
+    }
+    tc = c; tw = w || null; G.pxDirty = true; };
+  // 그림 한 칸(색 또는 불빛): 압축 그림을 받고, 오류·늦음이면 웹 그림도 받음. 압축 그림이 오면 늘 그것으로(웹 그림은 돌려줌)
+  const slot = (key, ktx, web, what, fin) => {
+    let real = false, webAsked = false;
+    const set = (t, k, u) => { const old = cur[key]; cur[key] = { t, k, u }; paint(); if (old && old.u !== u) give(old.u); };
+    const tryWeb = (why) => { if (webAsked || gone || real) return; webAsked = true; console.warn('PixiJS 장면 압축 그림 대신 웹 그림', what, why);
+      take(web).then((t) => { if (gone) return; if (real || !t) give(web); else set(t, false, web); }, (e) => { console.warn('PixiJS 장면 웹 그림도 못 읽음', what, e && e.message); give(web); }); };
+    const tm = setTimeout(() => tryWeb('stall'), pxStall());
+    take(ktx).then((t) => { clearTimeout(tm); if (fin) fin(); if (gone) return; if (!t) { give(ktx); return tryWeb('empty'); } real = true; set(t, true, ktx); },
+      (e) => { clearTimeout(tm); if (fin) fin(); give(ktx); if (!gone) tryWeb(e && e.message); });   // 실패한 압축 그림은 바로 돌려줌(W-02: 다음에 들어오면 새로 받음)
+    return () => clearTimeout(tm);
+  };
+  const stops = [slot('c', G.asset(cUrl), G.asset(colSrc), colSrc, () => full0())]; if (wk) stops.push(slot('w', G.asset(wk[0]), G.asset(warmSrc), warmSrc));
+  // 장면을 여는 쪽(scene.js Sc.enter, 연출)은 바탕이 처음 그려질 때까지, 최대 pxLim 두 배만 기다림. 늦은 바탕은 오는 대로 그림
+  const ready = pxLate(drawn, pxLim() * 2, '장면 바탕 ' + colSrc).catch(() => { });
   // 색 되찾기 동그라미 (DOM 판의 radial-gradient 원 R, #000 45% → 투명 100% 와 같은 모양), anim이면 1.8초에 걸쳐 진해짐
   const rs = [];
   const revealTick = (u) => { const now = performance.now(); let on = rs.length;
@@ -1978,11 +2080,11 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
     x.drawImage(cpu, sx * s, sy * s, sw * s, sh * s, dx, dy, dw, dh); return true; };
   // 장면을 떠날 때 지도와 겹쳐 사라지는 사본(scene.js)에 넣을 지금 화면 그림
   const snapshot = () => { if (!mesh) return null; app.render(); const c = app.renderer.extract.canvas({ target: app.stage, frame: new P.Rectangle(0, 0, app.screen.width, app.screen.height) }); return c; };
-  const dispose = () => { gone = true; if (wd) { wd.dispose(); wd = null; } if (tick) G.pxTick.remove(tick); if (mesh) { mesh.destroy(); mesh = null; } root.destroy(); geo.destroy(); if (cpu) { cpu.onload = null; cpu.removeAttribute('src'); cpu = null; }
-    const urls = [G.asset(cUrl)]; if (wk) urls.push(G.asset(wk[0])); urls.forEach(G.pxPut);   // 그래픽 칩 메모리를 놓음
+  const dispose = () => { gone = true; stops.forEach((f) => f()); full0(); if (wd) { wd.dispose(); wd = null; } if (tick) G.pxTick.remove(tick); if (mesh) { mesh.destroy(); mesh = null; } if (shader) shader.destroy(); root.destroy(); geo.destroy(); if (cpu) { cpu.onload = null; cpu.removeAttribute('src'); cpu = null; }
+    held.forEach(G.pxPut); held.length = 0; cur.c = cur.w = null; shader = null;   // 그래픽 칩 메모리를 놓음(지금 그리는 그림·아직 오는 중인 그림 모두)
     tc = tw = null; G.pxDirty = true; if (!app.stage.children.length) cv.style.display = 'none'; };
   const world = () => { if (!gone && !wd) wd = pxWorld(V, X, root); };   // scene.js: V.pxw 장소면 sceneView 끝에서
-  return { ready, blit, snapshot, reveal, dispose, world, col: (e) => { col = e; }, busy: () => !gone && !mesh };
+  return { ready, full, blit, snapshot, reveal, dispose, world, col: (e) => { col = e; }, busy: () => !gone && !mesh };
 };
 
 // ---- 10/29 2단계: 지도(새 마을 V2 조각 지도). 조각마다 압축 그림 한 장, 보이는 조각만 그래픽 칩에 올림(mapview.js need와 같은 규칙) ----
@@ -2012,31 +2114,35 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
     ...Object.fromEntries(ZN.flatMap((i) => [['uZ' + i, { value: new Float32Array([0, 0, 1, 1]), type: 'vec4<f32>' }], ['uA' + i, { value: 0, type: 'f32' }]])) });
   const world = new P.Container(), tl = new P.Container(); world.addChild(tl); app.stage.addChild(world);   // tl: 조각 그림(늘 세상 판 아래)
   let warm = null, gone = false, pend = 0, waiters = [];
-  const box = { on: [], tex: [], mesh: [], tm: [], cpu: [] };   // 조각마다: 켜짐, 그림, 그리는 판, 끄기 타이머, 가림용 원래 그림
+  const box = { on: [], tex: [], mesh: [], tm: [], cpu: [], rt: [], rn: [] };   // rt·rn: 실패한 조각 다시 받기 타이머·횟수(11/5 W-02)   // 조각마다: 켜짐, 그림, 그리는 판, 끄기 타이머, 가림용 원래 그림
   const n = T.cols * T.rows, want = (i) => !!(mono.tiles[i].on || col.tiles[i].on);
   const settle = () => { if (pend) return; const w = waiters; waiters = []; w.forEach((f) => f()); };
   const key = (i) => T.color + Math.floor(i / T.cols) + (i % T.cols) + T.ext;
   const load = async (i) => {
-    const [url, pw, ph, ow, oh] = K[key(i)], t = col.tiles[i]; pend++;
+    const [url, pw, ph, ow, oh] = K[key(i)], t = col.tiles[i]; pend++; let held = true;   // held: 빌린 그림을 이 함수가 아직 돌려줘야 함(실패해도 pxGet이 센 수는 돌려줌)
     try {
       const tex = await G.pxGet(G.asset(url));
-      if (gone || !want(i) || box.mesh[i] || !tex) { G.pxPut(G.asset(url)); return; }
+      if (gone || !want(i) || box.mesh[i] || !tex) return;
       const u0 = .5 / pw, v0 = .5 / ph, u1 = (ow - .5) / pw, v1 = (oh - .5) / ph;   // 가장자리 반 점 안쪽까지만: 조각 사이에 늘린 칸·옆 점이 섞여 줄이 생기지 않게
       const geo = new P.Geometry({ attributes: { aPosition: [t.x, t.y, t.x + t.w, t.y, t.x + t.w, t.y + t.h, t.x, t.y + t.h], aUV: [u0, v0, u1, v0, u1, v1, u0, v1] }, indexBuffer: [0, 1, 2, 0, 2, 3] });
       const m = new P.Mesh({ geometry: geo, shader: new P.Shader({ glProgram, resources: { mapU: U, uTex: tex.source, uWarm: (warm || tex).source } }) });
-      m.pxGeo = geo; box.tex[i] = { tex, url, ow, oh }; box.mesh[i] = m; tl.addChild(m); G.pxDirty = true; mono.ver = ++col.ver;   // ver: 가림 조각이 새 그림으로 다시 그리게
-    } catch (e) { console.warn('PixiJS 지도 조각 못 읽음', i, e); }
-    finally { pend--; settle(); }
+      m.pxGeo = geo; box.tex[i] = { tex, url, ow, oh }; held = false; box.rn[i] = 0; box.mesh[i] = m; tl.addChild(m); G.pxDirty = true; mono.ver = ++col.ver;   // ver: 가림 조각이 새 그림으로 다시 그리게
+    } catch (e) { console.warn('PixiJS 지도 조각 못 읽음', i, e);
+      // 11/5 W-02: 2초·5초·10초 뒤 세 번 다시 받아 봄(그 뒤에는 조각이 다시 보일 때 need가 부름). 기다리는 동안 화면은 막지 않음(pend에 안 셈)
+      const k = box.rn[i] = (box.rn[i] || 0) + 1; clearTimeout(box.rt[i]);
+      if (k <= 3) box.rt[i] = setTimeout(() => { if (!gone && box.on[i] && !box.mesh[i]) load(i); }, [2000, 5000, 10000][k - 1]); }
+    finally { if (held) G.pxPut(G.asset(url)); pend--; settle(); }
   };
-  const drop = (i) => { const m = box.mesh[i]; if (m) { G.pxDirty = true; tl.removeChild(m); m.pxGeo.destroy(); m.destroy(); box.mesh[i] = null; }
+  const drop = (i) => { const m = box.mesh[i]; if (m) { G.pxDirty = true; tl.removeChild(m); m.pxGeo.destroy(); const sh = m.shader; m.destroy(); sh.destroy(); box.mesh[i] = null; }   // 11/5 N-03: 조각 셰이더도 지움(같이 쓰는 U·glProgram은 그대로)
     const t = box.tex[i]; if (t) { G.pxPut(G.asset(t.url)); box.tex[i] = null; }
     const c = box.cpu[i]; if (c) { c.onload = null; c.removeAttribute('src'); box.cpu[i] = null; } };
-  const need = (i) => { const w = want(i); if (w === !!box.on[i]) return; box.on[i] = w; clearTimeout(box.tm[i]);
+  const need = (i) => { const w = want(i); if (w === !!box.on[i]) return; box.on[i] = w; clearTimeout(box.tm[i]); if (w) box.rn[i] = 0;
     if (w) { if (!box.mesh[i]) load(i); } else box.tm[i] = setTimeout(() => { if (!box.on[i]) drop(i); }, 700); };
   // mapview가 부르는 조각 켜기·끄기: 조각 묶음의 on만 바꾸고(그림은 안 받음) PixiJS 쪽 조각을 맞춤
   for (const d of [mono, col]) for (const t of d.tiles) t.im.style.visibility = 'hidden';   // 그림 없는 img가 조각 둘레에 회색 줄로 보이지 않게
   for (const d of [mono, col]) { d.need = (i, on) => { const t = d.tiles[i]; if (t.on === on) return; t.on = on; need(i); };
-    d.decode = () => new Promise((r) => { if (!pend) r(); else waiters.push(r); }); d.dusk = d === mono; }
+    d.decode = () => new Promise((r) => { if (!pend) return r(); waiters.push(r);   // 11/5 W-01: 조각 하나가 멈춰도 지도를 여는 쪽(#fade)은 pxLim만 기다림
+      setTimeout(() => { const k = waiters.indexOf(r); if (k < 0) return; waiters.splice(k, 1); console.warn('[늦음] PixiJS 지도 조각', pend); r(); }, pxLim()); }); d.dusk = d === mono; }
   // 가림 조각용: 그래픽 칩에서 다시 읽지 않고 조각의 원래 웹 그림을 따로 받아 옮김(다 받으면 ver를 올려 가림 조각이 다시 그림)
   const pxBlit = (rc, ix, iy, w, h, dx, dy) => {   // G.mapBlit과 같은 뜻: 지도 그림 점 좌표(ix, iy, w, h)를 rc의 (dx, dy)로
     col.tiles.forEach((t, i) => {
@@ -2049,8 +2155,10 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
   mono.pxBlit = col.pxBlit = pxBlit;
   //  11/2 선생님(지도를 걸을 때 조각이 늦게 떠서 지도가 생기기 전에 움직임): 압축 지도 조각은 미리 받기(sw.js)에 없어 처음엔 그때그때 인터넷에서 받음
   //  → 지도를 열면 가까운 조각부터 파일만 뒤에서 둘씩 받아 둠(그래픽 칩에는 안 올려 메모리는 그대로, 한 번 받으면 기기에 저장)
+  //  11/5 W-07: 지도를 닫으면(장소로 가면) 받는 중인 미리 받기 조각도 끊음(장소 그림과 대역을 나누지 않게, 끊긴 조각은 pxGot에서 빠져 다음 지도에서 다시)
+  const pre = new Set();
   setTimeout(() => { if (gone) return; const c = V.cam || { x: W / 2, y: H / 2 }, ids = [...Array(n).keys()].sort((a, b) => { const d = (i) => { const t = col.tiles[i]; return Math.hypot(t.x + t.w / 2 - c.x, t.y + t.h / 2 - c.y); }; return d(a) - d(b); });
-    let k = 0; const next = () => { while (k < ids.length) { const u = G.asset(K[key(ids[k++])][0]); if (pxGot.has(u)) continue; pxGot.add(u); return fetch(u, { priority: 'low' }).then((r) => r.arrayBuffer()).catch(() => pxGot.delete(u)).then(() => !gone && next()); } };
+    let k = 0; const next = () => { while (k < ids.length) { const u = G.asset(K[key(ids[k++])][0]); if (pxGot.has(u)) continue; pxGot.add(u); const ac = window.AbortController ? new AbortController() : null; if (ac) pre.add(ac); return (G.packs && G.packs.fetchBg ? G.packs.fetchBg(u, ac && ac.signal, null, true) : fetch(u, { priority: 'low', signal: ac ? ac.signal : undefined }).then((r) => r.arrayBuffer())).catch(() => pxGot.delete(u)).then(() => { if (ac) pre.delete(ac); return !gone && next(); }); } };
     next(); next(); }, 1200);
   const follow = () => pxFollow(V.el, world);   // 카메라(setCam이 쓴 transform)를 따라감
   const tick = () => { const m = follow(), u = U.uniforms, s = col.style; let sig = m;
@@ -2063,7 +2171,7 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
   G.pxTick.add(tick); cv.style.display = '';
   const snapshot = () => { app.render(); return app.renderer.extract.canvas({ target: app.stage, frame: new P.Rectangle(0, 0, app.screen.width, app.screen.height) }); };
   let mw = null; const mworld = () => { if (!gone && !mw) mw = pxMapWorld(V, X, world); };   // mapview.js: 별 1 지도면 끝에서
-  const dispose = () => { gone = true; if (mw) { mw.dispose(); mw = null; } G.pxTick.remove(tick); for (let i = 0; i < n; i++) { clearTimeout(box.tm[i]); drop(i); } world.destroy(); if (warm) G.pxPut(G.asset(wk[0]));
+  const dispose = () => { gone = true; pre.forEach((ac) => ac.abort()); pre.clear(); if (mw) { mw.dispose(); mw = null; } G.pxTick.remove(tick); for (let i = 0; i < n; i++) { clearTimeout(box.tm[i]); clearTimeout(box.rt[i]); drop(i); } world.destroy(); if (warm) G.pxPut(G.asset(wk[0]));
     G.pxDirty = true; if (!app.stage.children.length) cv.style.display = 'none'; };
   return { snapshot, dispose, world: mworld, busy: () => pend > 0 };
 };
@@ -4519,7 +4627,7 @@ G.scene = (() => {
     const world = G.$('#world'); world.innerHTML = ''; world.style.display = '';
     V = G.sceneView(world, id, { chiefBack: false, px: true });   // 10/29 px: 장소 장면만 PixiJS 바탕(연출 속 장면은 지금 방식)   // 돌아보는 모습은 연출 C2가 따로 그림
     G.loadWatch();   // 10/25 r1: 장면 그림이 늦으면 로딩 창
-    if (G.packs) { G.packs.hold(20); V.ready.then(() => { G.packs.free(); G.packs.hold(1.5); }); }   // 11/2 결정 3: 장소 그림(PixiJS 압축 그림 포함)이 다 뜰 때까지 뒤에서 받기 멈춤
+    if (G.packs) { const pk = G.packs.pause('scene', 20, (u) => !u.includes('/' + id + '_')); ((V.px && V.px.full) || V.ready).then(() => { G.packs.hold(1.5); G.packs.resume('scene', pk); }); }   // 11/2 결정 3: 장소 그림(PixiJS 압축 그림 포함)이 다 뜰 때까지 뒤에서 받기 멈춤   // 11/5 W-01: ready는 시간 상한이 있어 원본 압축 바탕(full)을 기다림(최대 20초는 그대로)   // 11/5 W-07: 까닭('scene')으로 멈추고, 이미 받는 중인 뒤 묶음도 끊음(이 장소 파일은 그대로 둠, 지도로 돌아가거나 원본이 오면 이어 받음)
     G.warmDrop();   // 10/28: 미리 풀어 둔 그림은 장면이 쓰기 시작하면 놓음
     V.setMood(G.st.mood);
     // 누를 곳: 별빛 테두리 + 할 일에는 ☆
@@ -4759,12 +4867,25 @@ G.scene = (() => {
   // ---- 10/22 새 마을(걷는 장면, S.roam): 땅을 누르면 걸어감(길 찾기), 카메라가 주인공을 따라감, 문을 누르면 실내로 ----
   //  걷는 곳 = S.roam.walk(한 점 = 장면 cell칸, 흰 곳만). 길 찾기는 8방향 BFS 뒤 곧은 선으로 줄임
   let RW = null;
+  //  11/5 걷기 그림 읽기: willReadFrequently(GPU 기다림 없이 CPU에서 읽음) + 그림 주소별 결과 보관(다시 와도·같은 그림 쓰는 장소도 다시 안 읽음)
+  //  보관은 성공한 결과만 {w,h,ok}. RW에는 복사본을 줘서 보관본이 바뀌지 않게. 실패(그림 못 받음·읽기 오류)는 안 남겨 다음에 다시 시도
+  const RWC = new Map();
   function roamSetup(def) {
-    RW = null; const im = new Image(), v0 = V;
-    im.onload = () => { if (V !== v0) return; const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const x = c.getContext('2d'); x.drawImage(im, 0, 0);
-      const d = x.getImageData(0, 0, im.width, im.height).data, ok = new Uint8Array(im.width * im.height); for (let i = 0; i < ok.length; i++) ok[i] = d[i * 4] > 128 ? 1 : 0;
-      RW = { w: im.width, h: im.height, c: def.roam.cell || 8, ok }; c.width = c.height = 0; };
-    im.src = G.asset(def.roam.walk);
+    RW = null; const v0 = V, url = G.asset(def.roam.walk), cell = def.roam.cell || 8;
+    const use = (r) => { RW = { w: r.w, h: r.h, c: cell, ok: r.ok.slice() }; };
+    const hit = RWC.get(url);
+    if (hit) use(hit);
+    else {
+      const im = new Image();
+      im.onload = () => { if (V !== v0) return; const c = document.createElement('canvas');
+        try { c.width = im.width; c.height = im.height; const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
+          const d = x.getImageData(0, 0, im.width, im.height).data, ok = new Uint8Array(im.width * im.height); for (let i = 0; i < ok.length; i++) ok[i] = d[i * 4] > 128 ? 1 : 0;
+          const r = { w: im.width, h: im.height, ok }; RWC.set(url, r); use(r);
+        } catch (e) { console.warn('[roam] 걷기 그림 읽기 실패', def.roam.walk, e && e.message); }
+        finally { c.width = c.height = 0; im.onload = im.onerror = null; } };
+      im.onerror = () => { im.onload = im.onerror = null; if (V === v0) console.warn('[roam] 걷기 그림 못 받음', def.roam.walk); };
+      im.src = url;
+    }
     // 11/2 선생님: 숲에서 다시 나올 때 — 숲 입구 쪽(처음 선 자리) 길로 걸어오면 가운데에 '지도로' 단추
     const h0 = V.spr.hero && V.spr.hero.rect, ex = def.id === 'forest' && h0 ? [h0[0] + h0[2] / 2, h0[1] + h0[3] - 18] : null; let away = false, shown = false;
     V.onStep = (x, y) => {
@@ -15033,8 +15154,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-11-03)';
-G.BUILT = '2026-11-03 08:07';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-11-07)';
+G.BUILT = '2026-11-07 13:15';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
