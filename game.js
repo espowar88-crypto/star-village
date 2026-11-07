@@ -1809,7 +1809,12 @@ const pxWorld = (V, X, root) => {
   const fnt = new P.Container(); top.addChild(under, chars, fnt); root.addChild(top);
   let sig = 0, clock = 0, lastT = performance.now();
   // 10/30 선생님(분수가 멈춰 있을 때가 있음): 장면 분수 물줄기 캔버스(worldmap.js G.fountainFx, V.fx 안)는 .pxw가 숨기므로 여기서 인물 위에 그림
-  const founts = new Map();
+  const founts = new Map(), waters = new Map();
+  // 11/7 물가 효과 캔버스(scene.js G.waterFx, .fxu 안 — .pxw가 숨김)를 인물 아래 판 맨 밑에. 새로 그렸을 때만 올림, 장소를 나가 캔버스가 빠지면 놓음
+  const syncWater = () => { const U = el.querySelector(':scope > .fxu'); if (U) for (const c of U.querySelectorAll(':scope > canvas.water-fx')) { let f = waters.get(c);
+      if (!f) { f = new P.Texture({ source: new P.CanvasSource({ resource: c, scaleMode: 'nearest' }) }); const sp = new P.Sprite(f), st = c.style; sp.position.set(pxNum(st.left), pxNum(st.top)); sp.width = pxNum(st.width); sp.height = pxNum(st.height); under.addChildAt(sp, 0); waters.set(c, f); c._dirty = true; }
+      if (c._dirty) { c._dirty = false; f.source.update(); sig++; } }
+    for (const [c, f] of waters) if (!c.isConnected) { f.destroy(true); waters.delete(c); } };
   const syncFount = () => { for (const c of V.fx.querySelectorAll(':scope > canvas.map-fountain')) { let f = founts.get(c);
       if (!f) { f = new P.Texture({ source: new P.CanvasSource({ resource: c, scaleMode: 'nearest' }) }); const sp = new P.Sprite(f), st = c.style; sp.position.set(pxNum(st.left), pxNum(st.top)); sp.width = pxNum(st.width); sp.height = pxNum(st.height); fnt.addChild(sp); founts.set(c, f); }
       f.source.update(); sig++; } };
@@ -1893,10 +1898,10 @@ const pxWorld = (V, X, root) => {
     const run = !el.classList.contains('fxpause') && !document.hidden, lite = !!V.lite || el.classList.contains('fxlite');
     if (run) clock += dt;
     if (!K.hasDepth() && V.depth) K.depth();
-    pxFollow(V.el, root); syncChars(now); syncUnder(now, run, lite); syncFount();
+    pxFollow(V.el, root); syncChars(now); syncUnder(now, run, lite); syncFount(); syncWater();
     return sig + '|' + (run && !G.reduced() ? Math.floor(clock * G.pxAmb) : 0); };
   el.classList.add('pxw'); X.cv.style.display = ''; G.pxDirty = true; G.pxTick.add(tick);
-  const dispose = () => { G.pxTick.remove(tick); for (const f of founts.values()) f.destroy(true); founts.clear(); top.destroy({ children: true }); K.dispose(); items.clear(); };
+  const dispose = () => { G.pxTick.remove(tick); for (const f of founts.values()) f.destroy(true); founts.clear(); for (const f of waters.values()) f.destroy(true); waters.clear(); top.destroy({ children: true }); K.dispose(); items.clear(); };
   return { dispose };
 };
 // 지도 세상 판: 밤 덧칠·구름·빛 캔버스(mapfx.js) → 나무·굴뚝 연기(worldmap.js mfxu) → [등불 → 발자국 → 걷는 사람·장소 앞 사람·분수를 발 y 순서로]
@@ -3404,7 +3409,7 @@ G.map = (() => {
     // 카메라
     if (FR && hero) freeArrow();
     if (FR && hero && !Mp.camFree && !Mp.userCam) {   // 10/24 선생님 move1024: 자유 이동은 주인공을 늘 화면 가운데(갈 곳은 가장자리 화살표)
-      const k = Math.min(1, dt * 12); V.setCam(V.cam.x + (hero.x - V.cam.x) * k, V.cam.y + (hero.y - 40 - V.cam.y) * k);
+      G.camEase(V, hero.x, hero.y - 40, dt);   // 11/7 선생님(아이폰 순간이동): 지도를 끈 뒤 누르면 한 프레임에 50px씩 당겨져 주인공이 튄 것처럼 보였음 → 속도가 이어지게 따라감
     } else if (hero && !Mp.camFree && !Mp.userCam) {
       let fx = hero.x, fy = hero.y - 40;
       // 갈 곳 표시가 화면 모서리 버튼에 가리지 않게, 주인공과 함께 안전한 가운데 영역에 들어오도록 카메라를 옮김
@@ -3636,16 +3641,18 @@ G.map = (() => {
     }
     const can = hero && f.mask && !walking && G.busy === 0 && !G.paused && G.screen === 'map' && G.st.done.includes('meet_lumi') && !G.$('#game').classList.contains('talking') && !G.overlayUp(dt);   // 대화·퍼즐 창이 떠 있으면 안 움직임(키보드)
     if (manual) { const a = Math.atan2(iy, ix); let b = DIR8[0], bd = 9; for (const d of DIR8) { const e = Math.abs(Math.atan2(Math.sin(a - d), Math.cos(a - d))); if (e < bd) { bd = e; b = d; } } ix = Math.cos(b) * mag; iy = Math.sin(b) * mag; }   // 8방향으로 맞춤
-    const go = can && mag >= 0.15, W = FREE_W;
-    if (!can) { f.cx = f.cy = 0; f.run = f.hold = 0; }
-    f.hold = go && mag > 0.5 ? f.hold + dt : go ? Math.max(0, f.hold - dt) : 0;
-    f.run = f.hold > 2 ? Math.min(1, f.run + dt / 1.2) : Math.max(0, f.run - dt / (go ? 0.8 : 0.5));   // 1.2초 뒤 0.8초에 걸쳐 달리기로
+    const go = can && mag >= 0.15, W = FREE_W, MV = Mp.MOVE;
+    if (!can) { f.cx = f.cy = 0; f.run = f.same = 0; f.bk = -1; }
+    // 11/7 선생님(플레이 감각 2차): 같은 방향(8방향 중 한 칸)으로 1초 이어 걸으면 0.4초에 걸쳐 달리기. 방향이 바뀌거나 멈추면 시간은 처음부터(달리기는 0.3초에 걸쳐 걷기로)
+    const bk = go ? dir8(ix, iy) : -1;
+    if (bk !== f.bk) { f.bk = bk; f.same = 0; } else if (go && mag > 0.5) f.same = (f.same || 0) + dt;
+    f.run = go && f.same >= MV.runAfter ? Math.min(1, f.run + dt / MV.runIn) : go ? Math.max(0, f.run - dt / 0.3) : 0;
     const sp = go ? W.speed * mag * (1 + (W.runMax - 1) * f.run) : 0, tx = go ? ix / mag * sp : 0, ty = go ? iy / mag * sp : 0;
-    const k = Math.min(1, dt * (go ? 9 : 25)); f.cx = (f.cx || 0) + (tx - (f.cx || 0)) * k; f.cy = (f.cy || 0) + (ty - (f.cy || 0)) * k;   // 출발은 빨리, 멈춤은 천천히(약 0.6초)
+    if (go) { const k = Math.min(1, dt * 9); f.cx = (f.cx || 0) + (tx - (f.cx || 0)) * k; f.cy = (f.cy || 0) + (ty - (f.cy || 0)) * k; }   // 출발은 약 0.1초에 걸쳐
+    else f.cx = f.cy = 0;   // 11/7 선생님: 손을 떼면 그 자리에서 바로 멈춤(예전: 0.04초 더 미끄러짐)
     const v = Math.hypot(f.cx, f.cy);
-    if (v < 40 && !go) {
-      f.cx = f.cy = 0;
-      if (f.moved && hero) { f.moved = false; hero.frame = 8; hero.rc = -1; hero.draw(); freeNear(); }
+    if (!go) {
+      if (f.moved && hero) { if (!f.gt || f.gt.settle(dt)) { f.moved = false; hero.frame = 8; hero.rc = -1; hero.draw(); freeNear(); } else hero.draw(); }   // 걸음 그림만 두 발 모으는 칸까지 짧게 넘긴 뒤 서기
       return;
     }
     if (!f.moved) { f.moved = true; f.used = true; f.gt = gait(hero, FREE_GAIT); clearHint(); Mp.userCam = false; }
@@ -3663,19 +3670,35 @@ G.map = (() => {
     f.gt.adv(dm || 0.0001, go ? 1e9 : Math.max(0.001, v * 0.06), Math.min(1, f.run * (v / Math.max(1, W.speed))), ux, uy); hero.draw();   // 멈출 때는 남은 거리를 알려 두 발을 모으며 섬
     freeNear();
   }
-  function freeNear() {   // 멈춰 선 곳 가까이 열린 장소가 있으면 [들어가기] (걷는 동안은 숨김)
-    if (FR.moved) { if (FR.near) { FR.near = null; clearEnter(); } return; }
-    let best = null, bd = 130;
+  // 11/7 선생님(플레이 감각 3단계: 광장 입구에 아주 가까이 가야 버튼이 뜸): 예전엔 장소의 길 점(광장은 광장 그림보다 280px 남쪽) 130px 안 + 멈췄을 때만.
+  //  이제 장소마다 '진입 영역' = 길 점과 장소 표지(그림 쪽)를 잇는 선분에서의 땅 위 거리(지도는 비스듬히 내려다봐 세로를 2배로 셈)가 R 안이면, 걷는 중에도 [들어가기].
+  //  나갈 때는 R + 50(경계에서 깜빡이지 않게). 장소별 R은 ENTER_R 한곳에서
+  const ENTER_R = { plaza: 300 }, ENTER_R0 = 170, ENTER_OUT = 50;
+  function enterDist(p, x, y) {
+    const n = G.D.places.nodes[p.node]; if (!n) return Infinity;
+    const m = p.marker ? [p.marker[0], Math.min(n[1], p.marker[1] + 60)] : n;   // 표지 바로 아래(그림 쪽)까지
+    const ax = n[0], ay = n[1] * 2, bx = m[0], by = m[1] * 2, px = x, py = y * 2, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
+    return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+  }
+  Mp.enterDist = enterDist; Mp.ENTER_R = ENTER_R; Mp.freeOk = (x, y) => !!FR && freeOk(x, y); Mp.freeV = () => FR ? Math.hypot(FR.cx || 0, FR.cy || 0) : 0;   // 시험: 지금 걷는 빠르기(px/초, 화면이 느려 걸음이 잘려도 같은 값)   // 시험(qa play-feel)에서 걸을 수 있는 곳 찾기   // 시험·결정판 그림용
+  function freeNear() {   // 가까이 열린 장소가 있으면 [들어가기] (11/7: 걷는 중에도)
+    if (G.$('#game').classList.contains('talking')) return;
+    let best = null, bd = Infinity;
     for (const p of G.D.places.places) {
       const s = Mp.state(p); if (s === 'locked' || s === 'hidden') continue;
-      const n = G.D.places.nodes[p.node]; if (!n) continue; const d = Math.hypot(hero.x - n[0], hero.y - n[1]);
-      if (d < bd) { best = p; bd = d; }
+      const d = enterDist(p, hero.x, hero.y), R = (ENTER_R[p.id] || ENTER_R0) + (p === FR.near ? ENTER_OUT : 0);
+      if (d < R && d < bd) { best = p; bd = d; }
     }
-    if (best === FR.near) return;
+    if (best === FR.near && !!enterEl === !!best) return;   // 다른 곳에서 버튼을 지웠으면 다시 띄움
     FR.near = best; if (best) showEnter(best); else clearEnter();
   }
   const FREE_W = { speed: 250, runMax: 1.28 };   // 10/24 선생님 move1024: 자유 이동 걷기 250 → col1024: 달리기 최고 320(2초 넘게 끝까지 밀 때 천천히)
   const FREE_GAIT = { walk: 70, run: 80, runMax: 1.28, end: 30 };   // 10/24 col1024: 한 걸음 거리를 줄여 발이 덜 미끄러지게(걷기 94→70)
+  const dir8 = (x, y) => { const a = Math.atan2(y, x); let b = 0, bd = 9; DIR8.forEach((d, i) => { const e = Math.abs(Math.atan2(Math.sin(a - d), Math.cos(a - d))); if (e < bd) { bd = e; b = i; } }); return b; };
+  // 11/7 선생님(플레이 감각 2차): 움직임 값 한곳. cad = 걷기 한 걸음 주기(두 걸음)를 초당 몇 번(예전 2.5 → 1.6, 한 걸음 약 0.31초), walkK = 걷기 빠르기 배율(결정판에서 고름)
+  //  runAfter = 같은 방향으로 몇 초 걸으면 달리기, runIn = 달리기로 바뀌는 데 걸리는 초
+  Mp.MOVE = { cad: 1.6, walkK: 0.85, runAfter: 1, runIn: 0.4 };   // 11/7 결정판 move1107: 걷기 15% 느리게(200 → 170)
   const DIR8 = [0, Math.atan2(1, 2), Math.PI / 2, Math.PI - Math.atan2(1, 2), Math.PI, -Math.PI + Math.atan2(1, 2), -Math.PI / 2, -Math.atan2(1, 2)];   // 10/24 col1024: 8방향(대각선 = 쿼터뷰 길 기울기 1:2)
   function freeTapEnd() { const f = FR; if (!f) return; f.path = null; if (f.ring) { f.ring.remove(); f.ring = null; } }
   function freeTap(mx, my) {   // 10/24 move1024: 누른 곳(또는 가장 가까운 걸을 수 있는 곳)까지 칸 지도로 길 찾기(8방향 BFS)
@@ -3752,7 +3775,8 @@ G.map = (() => {
     const cyc = 116 * 1.15 * M.charK / 2 * G.ageScale('assets/chars/walk_hero.png');
     Object.assign(FREE_GAIT, { walk: cyc, run: cyc * 1.14 }); FREE_W.speed = M.gait.free;
     //  11/2 선생님(주인공 발이 너무 빨리 움직임): 다리가 초당 3.5주기(한 걸음 7번)라 종종걸음처럼 보임 → 초당 2.5주기까지(별의 아이 주인공)
-    const cad = Math.min(M.gait.cad, 2.5), ws = G.D.places.walk.speed; FREE_GAIT.walk = Math.max(cyc, M.gait.free / cad); FREE_GAIT.run = FREE_GAIT.walk * 1.14;
+    const cad = Math.min(M.gait.cad, 2.5), ws = G.D.places.walk.speed;
+    FREE_W.speed = M.gait.free * Mp.MOVE.walkK; FREE_GAIT.walk = Math.max(cyc, FREE_W.speed / Math.min(M.gait.cad, Mp.MOVE.cad)); FREE_GAIT.run = FREE_GAIT.walk * 1.14;   // 11/7: 자유 이동(조이스틱·누르기·장소 걷기)은 초당 1.6주기
     Object.assign(GAIT, { walk: Math.max(cyc, ws / cad), run: Math.max(cyc * 1.14, ws * GAIT.runMax / cad / 1.4) });
   }
   function gait(w, GAIT = Mp.GAIT) {
@@ -3764,11 +3788,13 @@ G.map = (() => {
         if (g.lock === null) { const ue = g.u + rem / S; let m = Math.round(ue * 2) / 2; if (m < g.u + 0.05) m += 0.5; g.lock = m; }
         g.u += rem > 1e-6 ? (g.lock - g.u) * Math.min(1, dist / rem) : g.lock - g.u;
       } else g.u += dist / S;
-      const f = g.u % 1;
-      w.frame = Math.min(7, Math.floor(f * 8)); w.rc = run ? 37 + Math.min(7, Math.floor(f * 8)) : -1;   // 달리기 칸 37~44 (11/1 별의 아이 주인공 _live 그림 8칸)
+      g.run = run; pose();
       const hits = run ? [1 / 6, 4 / 6] : [1 / 8, 5 / 8];
       for (let k = Math.floor(u0); k <= Math.floor(g.u); k++) for (const h of hits) if (u0 < k + h && k + h <= g.u) { stepSfx(g.n++); if (V && V.heroStep) V.heroStep(w, ux, uy); }
     };
+    const pose = () => { const f = g.u % 1; w.frame = Math.min(7, Math.floor(f * 8)); w.rc = g.run ? 37 + Math.min(7, Math.floor(f * 8)) : -1; };   // 달리기 칸 37~44 (11/1 별의 아이 주인공 _live 그림 8칸)
+    // 11/7 선생님(멈춘 뒤 미끄러짐): 손을 떼면 몸은 바로 서고, 걸음 그림만 가장 가까운 두 발 모으는 칸(반 주기)까지 빠르게(초당 3주기) 넘김. 다 넘기면 참
+    g.settle = (dt) => { const t = Math.ceil(g.u * 2 - 1e-6) / 2; if (g.u >= t - 1e-3) return true; g.u = Math.min(t, g.u + dt * 3); pose(); return g.u >= t - 1e-3; };
     return g;
   }
   Mp.walkTo = async (p, o = {}) => {
@@ -3797,12 +3823,12 @@ G.map = (() => {
       if (visited) G.hud.skip(() => { if (walking) walking.skip = true; });
       if (p.walkLine) G.hud.say(p.walkLine);
       await new Promise(res => {
-        let seg = 1, d = 0, dd = 0, t = 0, a = 0, ux = 0, uy = 1; const gt = gait(hero);
+        let seg = 1, d = 0, dd = 0, t = 0, a = 0, ux = 0, uy = 1; const gt = gait(hero, fp ? FREE_GAIT : Mp.GAIT);   // 11/7: 자유 이동 지도는 조이스틱과 같은 걸음 주기
         const off = G.every(dt => {
           if (!walking) { off(); res(); return; }
           if (walking.skip) { const e = pts[pts.length - 1]; hero.set(e[0], e[1]); off(); res(); return; }
           t += dt; const e = G.walkEase(t, len - dd); let v = speed;
-          if (run) { a = Math.min(1, Math.max(0, (t - 1) / 0.6), Math.max(0, (len - dd - 130) / 400)); v = W.speed * (1 + (RUN - 1) * a); }
+          if (run) { a = Math.min(1, Math.max(0, (t - (fp ? Mp.MOVE.runAfter : 1)) / (fp ? Mp.MOVE.runIn : 0.6)), Math.max(0, (len - dd - 130) / 400)); v = W.speed * (1 + (RUN - 1) * a); }   // 11/7: 1초 걷다가 0.4초에 걸쳐 달리기
           const dm = v * dt * e; d += dm; dd += dm;
           while (seg < pts.length) {
             const a = pts[seg - 1], b = pts[seg], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -3991,7 +4017,7 @@ G.map = (() => {
     if (G.fast() || G.reduced()) { fin(); return Promise.resolve(); }
     G.busy++; walking = { skip: false };
     return new Promise(res => {
-      let seg = 1, d = 0, dd = 0, t = 0, ux = 0, uy = 1; const gt = gait(hero);
+      let seg = 1, d = 0, dd = 0, t = 0, ux = 0, uy = 1; const gt = gait(hero, FR ? FREE_GAIT : Mp.GAIT);
       const done = () => { off2(); if (g === G.gen && hero) fin(); walking = null; G.busy = Math.max(0, G.busy - 1); res(); };
       const off2 = G.every(dt => {
         if (!walking || !V || g !== G.gen) { off2(); G.busy = Math.max(0, G.busy - 1); res(); return; }
@@ -4101,10 +4127,14 @@ G.map = (() => {
     arrowEl = G.el('div', 'arrow', V.fx, G.arrowHtml());
     arrowEl.style.left = p.marker[0] + 'px'; arrowEl.style.top = (p.marker[1] - 60) + 'px'; arrowEl.style.zIndex = 3002;
   }
+  const SHOW_TRAIL = false;
   function showTrail(p) {
     if (trailEl || !V || !hero) return;
     const names = G.mapPath(Mp.node(G.st.place), p.node); const pts = names.map(n => G.D.places.nodes[n]);
     pts[0] = [hero.x, hero.y]; pts.push([p.marker[0], p.marker[1] + 70]);
+    // 11/7 선생님(플레이 감각 3단계): 별 모양 길 점은 옛 길 점(G.mapPath)을 이어 실제로 걷는 길과 달라 화면만 어지러움 → 그림은 그리지 않음.
+    //  갈 곳 표지 키우기·화살표·루미 안내·길 찾기는 그대로. 다시 켜려면 SHOW_TRAIL = true
+    if (!SHOW_TRAIL) { if (V.markers[p.id]) V.markers[p.id].m.style.transform = 'scale(1.25)'; return; }
     const TI = G.D.places.map.trailImg;   // 10/24 선생님: 길 점을 픽셀랩 그림으로 (정해진 간격마다, 차례로 반짝임)
     if (TI) {
       trailEl = G.el('div', 'trail-px', V.fx); trailEl.style.zIndex = 2998; let left = 0, n = 0;
@@ -4136,6 +4166,16 @@ G.map = (() => {
   return Mp;
 })();
 
+// 11/7 선생님(아이폰에서 '좌표가 갑자기 바뀐 뒤 출발'): 카메라가 주인공에게 돌아갈 때 한 프레임에 크게 뛰지 않게, 속도가 이어지는 용수철처럼 따라감(지도·걷는 장면 같이 씀)
+//  가까우면 빠르게(0.07초) 붙고, 멀면(끈 지도·대화 카메라 뒤) 0.3초쯤 걸려 부드럽게. 0.15초 넘게 안 불렸으면(손으로 끌던 중) 속도는 0에서 다시
+G.camEase = (V, tx, ty, dt, z, tight) => {   // tight: 가까우면 그 자리에 바로 붙음(걷는 장면은 예전처럼 주인공에 딱 붙어 다님, 멀 때만 부드럽게)
+  const c = V.cam, now = performance.now(), s = V._ce && now - V._ce.t < 150 ? V._ce : (V._ce = { vx: 0, vy: 0, far: false, t: now }); s.t = now;
+  const d = Math.hypot(tx - c.x, ty - c.y); s.far = s.far ? d > 12 : d > 80;
+  if (tight && !s.far) { s.vx = s.vy = 0; V.setCam(tx, ty, z ?? c.z); return; }
+  const T = s.far ? 0.3 : 0.07, w = 2 / T, x = w * dt, e = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x), mx = 1600 * T;
+  const one = (cur, to, vk) => { let ch = cur - to; ch = Math.max(-mx, Math.min(mx, ch)); const tmp = (s[vk] + w * ch) * dt; s[vk] = (s[vk] - w * tmp) * e; let o = cur - ch + (ch + tmp) * e; if ((to - cur > 0) === (o > to)) { o = to; s[vk] = 0; } return o; };
+  V.setCam(one(c.x, tx, 'vx'), one(c.y, ty, 'vy'), z ?? c.z);
+};
 // 10/24 가상 조이스틱(오른쪽 아래) + 방향키·WASD. 지도(worldmap freeOn)와 걷는 장면(scene.js) 같이 씀. kv() = 키보드 방향(없으면 null), vx·vy = 조이스틱(-1~1)
 // 10/24 휴대폰 점검: 퍼즐·창이 떠 있는지 매 프레임 문서 전체를 찾지 않고 0.25초마다만 봄(조이스틱 지도·장면 같이 씀)
 let ovT = 1, ovUp = false;
@@ -4434,7 +4474,7 @@ G.sceneView = (parent, id, o = {}) => {
     // 10/16 선생님(미끄러지는 발): 걸음 그림을 시간이 아니라 걸은 거리에 묶음 (지도 worldmap.js gait()와 같은 생각).
     //  그린 보폭(두 발 사이 약 29점 × 2걸음, 반 크기 그림 → 장면 116px × 그림 배율 × 연령 배율)의 SCENE_GAIT.r배를 한 주기(8자세)로.
     //  다만 다리가 너무 느리거나(초당 min자세 밑) 흐릴 만큼 빠르지(max자세 위) 않게 주기를 묶고, 길 끝에서 두 발이 모이는 자세(0·4)로 끝나게 반 주기 단위로 맞춤
-    const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 }, Q = SCENE_GAIT, v0 = L / d, cg = Math.min(8 * v0 / Q.min, Math.max(8 * v0 / Q.max, Q.stride * kk * Q.r)), cyc = L / Math.max(0.5, Math.round(2 * L / cg) / 2); let dir = 'SE';
+    const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 }, Q = SCENE_GAIT, v0 = L / d, cg = Math.max(Math.min(8 * v0 / Q.min, Math.max(8 * v0 / Q.max, Q.stride * kk * Q.r)), w.cad ? v0 / w.cad : 0), cyc = L / Math.max(0.5, Math.round(2 * L / cg) / 2); let dir = 'SE';
     const put = (x, y, f) => { el.style.left = (x - w.fx * kk) + 'px'; el.style.top = (y + w.foot - w.fy * kk) + 'px'; el.style.zIndex = Math.round(y + w.foot);   // 10/16: 발 y 순서(인물 판 안)
       el.style.backgroundPosition = `${-f * cw}px ${-ROW[dir] * ch}px`;
       if (ws) { const g = wf[ROW[dir]], q = 2 * kk; Object.assign(ws.style, { left: (x - w.fx * kk + (g[0] - g[2] / 2) * q) + 'px', top: (y + w.foot - w.fy * kk + (g[1] - g[3] / 2) * q) + 'px', width: g[2] * q + 'px', height: g[3] * q + 'px', zIndex: el.style.zIndex, display: el.style.display }); }
@@ -4443,11 +4483,13 @@ G.sceneView = (parent, id, o = {}) => {
     const hide = (on) => { v.img.style.visibility = on ? 'hidden' : ''; if (v.back) v.back.style.visibility = on ? 'hidden' : ''; };
     // 10/8 선생님: 걷기 그림이 다 불러지기 전에 서 있는 그림을 숨기면 잠깐 사라져 보임 → 그림이 준비된 뒤 바꿈
     const im = V.sheet(sheet);
+    // 11/7 선생님(3단계): w.cut이 있으면 걷는 도중 w.cut.stop()으로 그 자리에서 멈춤(새 곳을 누르면 지금 자리에서 다시 출발)
+    let cut = false; const cutP = w.cut ? new Promise((r) => { w.cut.stop = () => { cut = true; r(); }; }) : null;
     return Promise.all([G.wait(w.delay || 0), im.decode ? im.decode().catch(() => {}) : null]).then(() => { if (!V.spr[k]) return; el.style.display = ''; put(P[0][0], P[0][1], lv ? 16 : 8); hide(true);
-      return G.tween(0, 1, d, (q) => { const s = q * L, p = at(s), a = at(Math.min(L, s + 40)), dx = a[0] - p[0], dy = a[1] - p[1];   // 앞쪽 40px를 보고 방향을 정해 자주 뒤집히지 않게
+      const tw = G.tween(0, 1, d, (q) => { if (cut) return; const s = q * L, p = at(s), a = at(Math.min(L, s + 40)), dx = a[0] - p[0], dy = a[1] - p[1];   // 앞쪽 40px를 보고 방향을 정해 자주 뒤집히지 않게
         if (Math.hypot(dx, dy) > 4) dir = (dy >= 0 || w.front) ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW');   // front: 뒷모습 칸이 없는 사람(해솔)
-        const f = Math.floor(((s / cyc) % 1) * 8) % 8; put(p[0], p[1], q >= 1 ? (lv ? 16 : 8) : lv ? f * 2 : f); }, 'lin'); })   // _live 16칸은 두 칸씩 같은 자세
-      .then(() => { V.walk(k, rect, 0); el.remove(); if (ws) ws.remove(); if (wo) wo.remove(); hide(false); });
+        const f = Math.floor(((s / cyc) % 1) * 8) % 8; put(p[0], p[1], q >= 1 ? (lv ? 16 : 8) : lv ? f * 2 : f); }, 'lin'); return cutP ? Promise.race([tw, cutP]) : tw; })   // _live 16칸은 두 칸씩 같은 자세
+      .then(() => { if (cut && w.cut) w.cut.at = [wx, wy]; V.walk(k, cut ? [wx - rect[2] / 2, wy + 18 - rect[3], rect[2], rect[3]] : rect, 0); el.remove(); if (ws) ws.remove(); if (wo) wo.remove(); hide(false); });
   };
   // 10/24 선생님(조이스틱): 주인공을 손으로 몰기 — walkPath와 같은 걷기 그림을 쓰되 길 대신 한 걸음씩 옮김. go(x, y, ds) 발 자리·걸은 거리, end()에서 서 있는 그림으로
   V.drive = (w) => {
@@ -4458,16 +4500,22 @@ G.sceneView = (parent, id, o = {}) => {
     Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', backgroundImage: `url("${G.asset(sheet)}")`, backgroundSize: `${(lv ? liveW(sheet) : 1800) * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none' });
     let wx = rect[0] + rect[2] / 2, wy = rect[1] + rect[3] - 18, s = 0, dir = 'SE';
     const wo = V.occAdd(el, () => ({ x0: wx - w.fx * kk, y0: wy + w.foot - w.fy * kk, w: cw, h: ch, fx: wx, fy: wy + w.foot, hide: false }), k);
-    const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 }, cyc = SCENE_GAIT.stride * kk * SCENE_GAIT.r * 1.45;   // 11/2 선생님(주인공 발이 너무 빨리 움직임): 조이스틱 걷기 한 주기를 1.45배로(초당 약 3.9→2.7주기)
+    // 11/2 선생님(주인공 발이 너무 빨리 움직임): 조이스틱 걷기 한 주기를 1.45배로(초당 약 3.9→2.7주기)
+    // 11/7 선생님(플레이 감각 2차): 지도와 같은 걸음 주기(G.map.MOVE.cad, 초당 1.6주기)를 넘지 않게. 달리기는 _live 그림 달리기 칸(37~44), 한 주기 1.14배
+    const MV = (G.map && G.map.MOVE) || { cad: 1.6 }, ROW = { SE: 0, SW: 1, NW: 2, NE: 3 }, cyc = Math.max(SCENE_GAIT.stride * kk * SCENE_GAIT.r * 1.45, (w.speed || 340) / MV.cad);
+    let u = 0, run = false;
     const put = (f) => { el.style.left = (wx - w.fx * kk) + 'px'; el.style.top = (wy + w.foot - w.fy * kk) + 'px'; el.style.zIndex = Math.round(wy + w.foot); el.style.backgroundPosition = `${-f * cw}px ${-ROW[dir] * ch}px`;
       if (ws) { const g = wf[ROW[dir]], q = 2 * kk; Object.assign(ws.style, { left: (wx - w.fx * kk + (g[0] - g[2] / 2) * q) + 'px', top: (wy + w.foot - w.fy * kk + (g[1] - g[3] / 2) * q) + 'px', width: g[2] * q + 'px', height: g[3] * q + 'px', zIndex: el.style.zIndex }); }
       if (wo) V.occDirty(wo); if (V.onStep) V.onStep(wx, wy);
       if (lu) { lu.style.left = (wx - rect[2] / 2 + V.lumiOff[0] - V.lh) + 'px'; lu.style.top = (wy + 18 - rect[3] + V.lumiOff[1] - V.lh) + 'px'; } };
     v.img.style.visibility = 'hidden'; if (v.back) v.back.style.visibility = 'hidden'; put(lv ? 16 : 8);
+    const pose = () => { const f = Math.floor((u % 1) * 8) % 8; put(run ? 37 + f : lv ? f * 2 : f); };
     return {
       at: () => [wx, wy],
-      go(x, y, dx, dy) { const ds = Math.hypot(x - wx, y - wy); wx = x; wy = y; s += ds; if (Math.hypot(dx, dy) > 0.1) dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW');
-        const f = Math.floor(((s / cyc) % 1) * 8) % 8; put(lv ? f * 2 : f); },
+      go(x, y, dx, dy, rn) { const ds = Math.hypot(x - wx, y - wy); wx = x; wy = y; s += ds; run = !!rn && lv; u += ds / (run ? cyc * 1.14 : cyc); if (Math.hypot(dx, dy) > 0.1) dir = dy >= 0 ? (dx >= 0 ? 'SE' : 'SW') : (dx >= 0 ? 'NE' : 'NW');
+        pose(); },
+      // 11/7: 손을 떼면 몸은 그 자리, 걸음 그림만 두 발 모으는 칸(반 주기)까지 빠르게 넘김. 다 넘기면 참
+      settle(dt) { const t = Math.ceil(u * 2 - 1e-6) / 2; if (u >= t - 1e-3) return true; u = Math.min(t, u + dt * 3); pose(); return u >= t - 1e-3; },
       end() { el.remove(); if (ws) ws.remove(); if (wo) wo.remove(); V.walk(k, [wx - rect[2] / 2, wy + 18 - rect[3], rect[2], rect[3]], 0); v.img.style.visibility = ''; if (v.back) v.back.style.visibility = ''; }
     };
   };
@@ -4491,6 +4539,58 @@ G.sceneView = (parent, id, o = {}) => {
   return V;
 };
 
+// 11/7 선생님(플레이 감각 4단계 '물은 수변도 자연스럽게'): 물 지도(도구/물/water_mask.py, 흰=물, 한 점 = 장면 몇 칸)로
+//  ① 물결: 물 위 아무 데서나 동그란 물결(아이소라 납작한 타원)이 천천히 커지며 옅어짐, 물가에 닿으면 그 칸은 안 그림(결정판 vis1107: 거품 대신 퍼지는 물결, 은은하게)
+//  ② 젖은 띠: 물 바로 옆 땅 2칸이 물결 박자에 맞춰 살짝 어두워짐(물가 진한 선이 부드러워 보이게) ③ 반짝임: 물 가운데 쪽 점 몇 개가 가끔 반짝
+//  캔버스 한 장(물 둘레 크기, 물 지도 크기 그대로 → 점이 픽셀로 보임)에 1초 10번만 그림(가벼운 모드 5번). 쉬는 중·화면 밖·다른 탭이면 안 그림
+//  PixiJS 장면(.pxw)에서는 이 캔버스를 pxscene.js가 인물 아래 판에 그대로 얹음. 장소를 나가면(캔버스가 빠지면) 멈추고 놓음
+G.waterFx = (V, U, src) => {
+  const im = new Image();
+  im.onload = () => { if (V.gone || !U.isConnected) return; const w = im.width, h = im.height, k = V.W / w;
+    const c0 = document.createElement('canvas'); c0.width = w; c0.height = h; const x0c = c0.getContext('2d', { willReadFrequently: true }); x0c.drawImage(im, 0, 0);
+    const px = x0c.getImageData(0, 0, w, h).data; c0.width = c0.height = 0; im.onload = null; im.src = '';
+    const wat = new Uint8Array(w * h); let bx0 = w, by0 = h, bx1 = 0, by1 = 0;
+    for (let i = 0; i < w * h; i++) if (px[i * 4] > 127) { wat[i] = 1; const x = i % w, y = (i / w) | 0; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }
+    if (bx1 < bx0) return;
+    // 물가까지 거리(물 칸은 땅까지, 땅 칸은 물까지) — 물가에서 함께 퍼지는 BFS, 6칸까지만
+    const dist = new Uint8Array(w * h).fill(255), q = new Int32Array(w * h); let qh = 0, qt = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x, v = wat[i];
+      if ((x > 0 && wat[i - 1] !== v) || (x < w - 1 && wat[i + 1] !== v) || (y > 0 && wat[i - w] !== v) || (y < h - 1 && wat[i + w] !== v)) { dist[i] = 1; q[qt++] = i; } }
+    while (qh < qt) { const i = q[qh++], d = dist[i]; if (d >= 6) continue; const x = i % w;
+      for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) if (j >= 0 && j < w * h && wat[j] === wat[i] && dist[j] > d + 1) { dist[j] = d + 1; q[qt++] = j; } }
+    const P = 3; bx0 = Math.max(0, bx0 - P); by0 = Math.max(0, by0 - P); bx1 = Math.min(w - 1, bx1 + P); by1 = Math.min(h - 1, by1 + P);
+    const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1, hash = (x, y) => { const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; return s - Math.floor(s); };
+    const deep = [], wet = [], spark = [], rip = [];
+    for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) { const i = y * w + x, d = dist[i], o = (y - by0) * bw + (x - bx0), n = hash(x, y);
+      if (wat[i]) { if (d >= 5 && n < 0.05) deep.push(x - bx0, y - by0); if (d > 4 && n < 0.004) spark.push(o, 0.6 + n * 180, n * 1400); }
+      else if (d <= 2) wet.push(o, d, n * 1.6 + Math.sin(x * 0.13 + y * 0.07) * 0.9); }
+    const cv = G.el('canvas', 'water-fx', null); cv.width = bw; cv.height = bh;
+    Object.assign(cv.style, { position: 'absolute', left: bx0 * k + 'px', top: by0 * k + 'px', width: bw * k + 'px', height: bh * k + 'px', imageRendering: 'pixelated', pointerEvents: 'none' });
+    U.insertBefore(cv, U.firstChild);
+    const ctx = cv.getContext('2d'), id = ctx.createImageData(bw, bh), D = id.data, el = V.el, box = [bx0 * k, by0 * k, (bx1 + 1) * k, (by1 + 1) * k];
+    const put = (o, r, g, b, a) => { const p = o * 4; D[p] = r; D[p + 1] = g; D[p + 2] = b; D[p + 3] = a; };
+    let acc = 1, last = performance.now() / 1000, t = 0, nextRip = 0;
+    const isW = (x, y) => x >= 0 && y >= 0 && x < bw && y < bh && wat[(y + by0) * w + x + bx0] === 1;
+    const ring = (cx, cy, R, a) => { if (R < 1 || a < 0.02) return; const n = Math.max(12, Math.round(R * 5)), A = Math.round(a * 255);
+      for (let k = 0; k < n; k++) { const th = k / n * 6.2832, x = Math.round(cx + Math.cos(th) * R), y = Math.round(cy + Math.sin(th) * R * 0.5); if (isW(x, y)) put(y * bw + x, 214, 234, 238, A); } };
+    const draw = () => { D.fill(0);
+      for (let i = rip.length - 1; i >= 0; i--) { const q = rip[i], age = t - q.t0; if (age > q.life) { rip.splice(i, 1); continue; } const k = age / q.life;
+        ring(q.x, q.y, 1.5 + k * q.R, 0.45 * (1 - k)); if (age > 0.5) ring(q.x, q.y, 1 + (age - 0.5) / q.life * q.R * 0.75, 0.3 * (1 - k)); }
+      for (let i = 0; i < wet.length; i += 3) { const d = wet[i + 1], s = Math.sin(t * 1.0 + wet[i + 2]); const a = (d === 1 ? 0.12 : 0.05) + 0.05 * Math.max(0, s); put(wet[i], 12, 22, 28, Math.round(a * 255)); }
+      for (let i = 0; i < spark.length; i += 3) { const v = Math.pow(Math.max(0, Math.sin(t * spark[i + 1] + spark[i + 2])), 14); if (v > 0.05) { put(spark[i], 225, 242, 255, Math.round(v * 150)); if (v > 0.7) { const o = spark[i]; for (const j of [o - 1, o + 1, o - bw, o + bw]) if (j >= 0 && j < bw * bh) put(j, 200, 228, 250, Math.round(v * 60)); } } }
+      ctx.putImageData(id, 0, 0); cv._dirty = true; };
+    const loop = () => { if (V.gone || !cv.isConnected) { cv.width = cv.height = 0; return; }
+      const now = performance.now() / 1000, dt = Math.min(0.2, now - last); last = now;
+      const v = V.view, off = v && (box[2] < v[0] || box[0] > v[2] || box[3] < v[1] || box[1] > v[3]);
+      // 11/7 선생님(결정판 vis1107b) 프레임 걱정: 느린 기기(처음 2.5초가 40fps 밑이면 V.lite)·가벼운 모드에선 물결을 멈추고 젖은 띠만 한 장 그려 둠(다시 그리기·그림 올리기 0)
+      if (V.lite) { if (!cv._still) { cv._still = 1; rip.length = 0; draw(); } requestAnimationFrame(loop); return; }
+      if (!el.classList.contains('fxpause') && !document.hidden && !off) { t += dt; acc += dt;
+        if (t >= nextRip && deep.length && rip.length < 7) { const j = Math.floor(Math.random() * deep.length / 2) * 2; rip.push({ x: deep[j], y: deep[j + 1], t0: t, life: 2.6 + Math.random(), R: 12 + Math.random() * 8 }); nextRip = t + 0.45 + Math.random() * 0.7; }
+        if (acc >= 0.1) { acc = 0; draw(); } }
+      requestAnimationFrame(loop); };
+    draw(); requestAnimationFrame(loop); };
+  im.src = G.asset(src);
+};
 // 10/23 선생님 '다 넣자': 새 마을 장면 환경 효과 8가지(새 그림 0). 움직임 줄이기면 안 함.
 //  아래 판(인물 아래): 나무·덤불 흔들림(먹색·색 두 장, 색 장은 장면 색 그림 투명도를 따라감), 창 불빛 일렁임. 등불은 깜빡임 class.
 //  위 판(인물 위, 빛 테두리·단추 아래): 굴뚝 연기·단풍잎·구름 그림자·반딧불·나비·새 떼를 반 크기 캔버스에. 장면이 먹색이면 캔버스도 먹색
@@ -4507,7 +4607,8 @@ G.sceneEnvFx = (V) => {
   if (G.settings && G.settings.light) { V.lite = true; el.classList.add('fxlite'); }   // 선생님 설정 가벼운 모드면 처음부터
   const U = G.el('div', 'fxu', null); el.insertBefore(U, V.fx); const colEls = [], moving = [];   // moving: [요소, x, y, w, h] 화면 밖이면 멈춤
   // 11/1 선생님 결정판 e7: 물가 장소의 잔잔한 물결(pixelfx water_ripple, 물 색에 맞춰 톤다운). 인물 아래 판, 장면 그림 좌표. 장면을 나가면 저절로 멈추고 그림을 놓음
-  for (const [x, y] of ({ s3dock: [[1000, 1800], [1250, 1560], [1800, 1950]], s3harang: [[1000, 1800], [1250, 1560], [1800, 1950]], s5pond: [[950, 600], [1650, 860]] })[S.id] || [])
+  if (S.water) G.waterFx(V, U, S.water);   // 11/7 선생님(플레이 감각 4단계): 물 지도가 있는 장소는 물가 찰랑임·젖은 띠·반짝임(아래 G.waterFx). 물결 고리는 뺌
+  else for (const [x, y] of ({ s3dock: [[1000, 1800], [1250, 1560], [1800, 1950]], s3harang: [[1000, 1800], [1250, 1560], [1800, 1950]], s5pond: [[950, 600], [1650, 860]] })[S.id] || [])
   { const r = G.pfx.play('water_ripple', { parent: U, world: true, x, y, f0: Math.floor(Math.random() * 60) }); if (r.el) r.el.style.opacity = 0.6; }   // 물빛보다 튀지 않게 조금 옅게
   for (const [n, x, y, w, h] of V.pxw ? [] : F.trees) {   // 10/29 PixiJS 세상 판이면 나무·창 불빛은 그쪽이 그림
     const d = G.el('div', 'tw', U); moving.push([d, x, y, w, h]); Object.assign(d.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', animationDelay: (-Math.random() * 4.2).toFixed(2) + 's', animationDuration: (n.startsWith('bush') ? 3.4 : 4.2 + Math.random()) + 's' });
@@ -4892,33 +4993,37 @@ G.scene = (() => {
       if (ex) { const dd = Math.hypot(x - ex[0], y - ex[1]);
         if (dd > 150) { away = true; if (shown && !G.st.cleared.includes(def.id)) { shown = false; document.querySelectorAll('.hud-go').forEach(e => e.remove()); } }
         else if (away && dd < 90 && !shown && !G.dialog.active) { shown = true; away = false; G.hud.goMap(() => Sc.leave()); } }
-      if (!follow) return; V.setCam(x, y - 60 - V.lift(), V.cam.z); };
-    G.onTap(V.el, (e) => { if (busy || G.busy > 0 || !V || G.dialog.active || driving) return; if (e && e.target && e.target.closest && e.target.closest('.hot')) return;
+      if (!follow) return; const now = performance.now(), dt = Math.min(0.05, (now - (V._st || now)) / 1000) || 1 / 60; V._st = now; G.camEase(V, x, y - 60 - V.lift(), dt, null, true); };   // 11/7 선생님(아이폰 순간이동): 카메라를 주인공 자리로 곧바로 옮기지 않고 이어지게 따라감
+    G.onTap(V.el, (e) => { if (!V || G.dialog.active || driving) return; if (e && e.target && e.target.closest && e.target.closest('.hot')) return;
+      const tapWalk = roamCur && !roamCur.next && G.busy === 0; if (!tapWalk && (busy || G.busy > 0)) return;   // 11/7 선생님(3단계): 땅을 눌러 걷는 중이면 새로 누른 곳으로 바로 방향을 바꿈(예전: 다 걸을 때까지 무시)
       const r = V.el.getBoundingClientRect(), s = G.stage.ws * V.cam.z, cx = (e.clientX ?? (e.touches && e.touches[0].clientX)), cy = (e.clientY ?? (e.touches && e.touches[0].clientY));
-      if (cx == null) return; roamTo([(cx - r.left) / s, (cy - r.top) / s]); });
+      if (cx == null) return; const to = [(cx - r.left) / s, (cy - r.top) / s];
+      if (tapWalk) { roamCur.next = to; if (roamCur.cut.stop) roamCur.cut.stop(); } else roamTo(to, true); });
     if (G.D.places.map.free && G.joyMake) joyOn();
   }
   // 10/24 선생님: 걷는 장면에서도 조이스틱(지도와 같은 느낌 — 1.2초 뒤 달리기로, 손 떼면 천천히 섬). 걷는 곳 밖으로는 못 감, 벽을 따라 미끄러짐
   let joyOff = null, driving = false;
   function joyOn() {
-    const J = G.joyMake(), v0 = V, HW = { sheet: 'assets/chars/walk_hero.png', k: V.K, fx: 100, fy: 252, foot: 14 * V.K };
-    let cx = 0, cy = 0, hold = 0, run = 0, dr = null;
+    const J = G.joyMake(), v0 = V, HW = { sheet: 'assets/chars/walk_hero.png', k: V.K, fx: 100, fy: 252, foot: 14 * V.K, speed: 340 };
+    let cx = 0, cy = 0, run = 0, same = 0, bk = -1, dr = null;
     const okAt = (x, y) => { if (!RW) return false; const X = Math.floor(x / RW.c), Y = Math.floor(y / RW.c); return X >= 0 && Y >= 0 && X < RW.w && Y < RW.h && !!RW.ok[Y * RW.w + X]; };
-    const stop = () => { cx = cy = 0; hold = run = 0; if (dr) { dr.end(); dr = null; follow = false; driving = false; } };
+    const stop = () => { cx = cy = 0; same = run = 0; bk = -1; if (dr) { dr.end(); dr = null; follow = false; driving = false; } };
     const off = G.every(dt => {
       if (V !== v0) return; const kv = J.kv(), ix = kv ? kv[0] : J.vx, iy = kv ? kv[1] : J.vy, mag = Math.min(1, Math.hypot(ix, iy));
       const can = RW && V.spr.hero && !busy && G.busy === 0 && !G.paused && !G.dialog.active && !G.overlayUp(dt);
       if (!can) { if (dr) stop(); return; }
-      const go = mag >= 0.15;
-      hold = go && mag > 0.5 ? hold + dt : go ? Math.max(0, hold - dt) : 0;
-      run = hold > 1.2 ? Math.min(1, run + dt / 0.8) : Math.max(0, run - dt / (go ? 0.8 : 0.5));
-      const sp = go ? 340 * mag * (1 + 0.85 * run) : 0, tx = go ? ix / mag * sp : 0, ty = go ? iy / mag * sp : 0, q = Math.min(1, dt * (go ? 7 : 3.2));
-      cx += (tx - cx) * q; cy += (ty - cy) * q; const sv = Math.hypot(cx, cy);
-      if (sv < 25 && !go) { if (dr) stop(); return; }
+      const go = mag >= 0.15, MV = (G.map && G.map.MOVE) || { runAfter: 1, runIn: 0.4 };
+      // 11/7 선생님(플레이 감각 2차): 같은 방향(8칸 중 하나)으로 1초 이어 걸으면 0.4초에 걸쳐 달리기. 방향이 바뀌거나 멈추면 시간은 처음부터
+      const b = go ? (Math.round(Math.atan2(iy, ix) / (Math.PI / 4)) + 8) % 8 : -1;
+      if (b !== bk) { bk = b; same = 0; } else if (go && mag > 0.5) same += dt;
+      run = go && same >= MV.runAfter ? Math.min(1, run + dt / MV.runIn) : go ? Math.max(0, run - dt / 0.3) : 0;
+      const sp = go ? HW.speed * mag * (1 + 0.85 * run) : 0, tx = go ? ix / mag * sp : 0, ty = go ? iy / mag * sp : 0;
+      if (go) { const q = Math.min(1, dt * 7); cx += (tx - cx) * q; cy += (ty - cy) * q; } else cx = cy = 0;   // 11/7 선생님: 손을 떼면 바로 멈춤(예전: 0.8초 동안 약 87px 미끄러짐)
+      if (!go) { if (dr && dr.settle(dt)) stop(); return; }
       if (!dr) { dr = V.drive(HW); if (!dr) return; follow = driving = true; }
       const [x, y] = dr.at(); let dx = cx * dt, dy = cy * dt;
       if (!okAt(x + dx, y + dy)) { if (okAt(x + dx, y)) { dy = 0; cy *= 0.5; } else if (okAt(x, y + dy)) { dx = 0; cx *= 0.5; } else { dx = dy = 0; cx = cy = 0; } }
-      dr.go(x + dx, y + dy, dx || (go ? ix : 0), dy || (go ? iy : 0));
+      dr.go(x + dx, y + dy, dx || (go ? ix : 0), dy || (go ? iy : 0), run > 0.5);
     });
     joyOff = () => { off(); if (dr && V === v0) dr.end(); dr = null; follow = driving = false; J.destroy(); joyOff = null; };
   }
@@ -4938,14 +5043,16 @@ G.scene = (() => {
     const sm = [cells[0]]; let k = 0; while (k < cells.length - 1) { let j = cells.length - 1; while (j > k + 1 && !seeLine(cells[k], cells[j])) j--; sm.push(cells[j]); k = j; }
     const pts = sm.map(c => [c[0] * RW.c + RW.c / 2, c[1] * RW.c + RW.c / 2]); pts[0] = a; pts[pts.length - 1] = RW.ok[ti] && ti === cellOf(b)[1] * w + cellOf(b)[0] ? b : pts[pts.length - 1]; return pts;
   }
-  async function roamTo(to) {
+  let roamCur = null;   // 땅을 눌러 걷는 중 { cut, next }
+  async function roamTo(to, tap) {
     const hs = V.spr.hero; if (!hs) return; const a = hs.rect, fa = [a[0] + a[2] / 2, a[1] + a[3] - 18], P = roamPath(fa, to); if (!P || P.length < 2) return;
     let L = 0; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); if (L < 20) return;
     const end = P[P.length - 1], r = [end[0] - a[2] / 2, end[1] + 18 - a[3], a[2], a[3]], d = G.fast() ? 0 : Math.max(0.3, L / 420);   // 10/23 선생님: 조금 더 빠르게(330 → 420)
-    follow = true; const was = busy; busy = true;
-    try { await V.walkPath('hero', r, { sheet: 'assets/chars/walk_hero.png', k: V.K, fx: 100, fy: 252, foot: 14 * V.K, minD: 0, path: P }, d); }
-    finally { follow = false; busy = was; }
-    if (V) V.setCam(end[0], end[1] - 60 - V.lift(), V.cam.z);
+    follow = true; const was = busy; busy = true; const me = tap && !G.fast() ? (roamCur = { cut: {}, next: null }) : null;
+    try { await V.walkPath('hero', r, { sheet: 'assets/chars/walk_hero.png', k: V.K, fx: 100, fy: 252, foot: 14 * V.K, minD: 0, path: P, cad: ((G.map && G.map.MOVE) || {}).cad, cut: me && me.cut }, d); }
+    finally { follow = false; busy = was; if (roamCur === me) roamCur = null; }
+    if (me && (me.cut.at || me.next)) { if (me.next && V) return roamTo(me.next, true); return; }   // 도중에 멈춤: 카메라는 이미 따라와 있으므로 옮기지 않음
+    if (V) V.setCam(end[0], end[1] - 60 - V.lift(), V.cam.z);   // 11/7: 걷는 동안 가까우면 딱 붙어 따라가므로(camEase tight) 여기서 튀지 않음
   }
   function heroToSpot(h) {
     const r = h.rect || h.def.rect; const to = h.stand || h.def && h.def.stand || [r[0] + r[2] / 2, r[1] + r[3] + 24];
@@ -5586,6 +5693,7 @@ G.present.star = async () => {
   G.busy++;
   const m = G.el('div', 'modal starget', G.$('#overlay')), sh = G.el('div', 'sheet', m);
   const pic = G.el('div', 'star-pic', sh, G.starSvg(s));
+  requestAnimationFrame(() => G.pfx.rays(pic));   // 11/7 결정판 e4a: 별을 되찾은 순간 빛살(한 화면에만)
   G.el('div', 'get-title', sh, G.txt(E.title));
   for (const l of E.lines) G.el('div', 'get-desc', sh, G.txt(l));
   G.el('div', 'star-count', sh, G.icon('icon_star') + ' 되찾은 별 1/9');
@@ -6191,7 +6299,13 @@ G.pfx = (() => {
     return { el: cv, done, stop() { stop = true; } };
   }
   const atEl = (name, el, o = {}) => { if (!el || !el.getBoundingClientRect || quiet()) return null; const r = el.getBoundingClientRect(); if (!r.width && !r.height) return null; return play(name, { at: 'center', ...o, x: r.left + r.width / 2, y: r.top + r.height / 2 }); };
-  return { play, atEl, has: (n) => !!sheet(n), trial: /[?&]pfx=1/.test(location.search) };
+  // 11/7 선생님(플레이 감각 4단계, 결정판 e4a): 별을 되찾은 화면에서만 큰 별 뒤로 금빛 빛살이 천천히 돎. 화면을 닫으면(요소가 빠지면) 저절로 멈추고 그림을 놓음
+  const rays = (pic) => { if (!pic || quiet() || !sheet('star_rays')) return null; const w = pic.offsetWidth || 0; if (!w) return null;
+    if (getComputedStyle(pic).position === 'static') pic.style.position = 'relative';
+    const r = play('star_rays', { parent: pic, world: true, at: 'center', x: w / 2, y: (pic.offsetHeight || w) / 2, scale: Math.max(1, Math.round(w * 1.7 / 128)), z: 0 });
+    if (r.el) { r.el.style.left = '0'; r.el.style.top = '0'; pic.insertBefore(r.el, pic.firstChild); for (const c of pic.children) if (c !== r.el) { c.style.position = 'relative'; c.style.zIndex = 1; } }
+    return r; };
+  return { play, atEl, rays, has: (n) => !!sheet(n), trial: /[?&]pfx=1/.test(location.search) };
 })();
 
 /* ---- pzpages.js ---- */
@@ -6556,6 +6670,61 @@ G.p4 = (() => {
       if (!o) { const t = G.el('div', 'acc-tip', el); G.el('b', '', t, name); G.el('span', '', t, text); G.audio.sfx('sfx_tap', 0.4); }
     }, true);
   }
+  // 11/7 선생님(결정판 vis1107 '지도 블록 다음', vis1107c '체험판과 똑같이'): 새 마을 지도에도 1분 체험판(demo2 reflectBlocks)과 같은 점자블록 6개.
+  //  길·그림·놓는 법·효과 모두 체험판 그대로: 광장 → 도서관 계단 앞 ㄱ자 길, 56px(땅 위 길이)마다 한 칸, 출발·꺾이는 곳·끝은 점 블록(점·선·선·점·선·점)
+  //  그림은 걷는 사람 한 칸(200x260, 발 100,250, 도구/점자블록/make_map_tiles.py)이라 V.walker로 놓아 PixiJS 지도에서도 가로등·인물과 앞뒤가 맞음
+  //  처음 볼 때만(두 번째 광장을 끝내고 지도로 나왔을 때) 화면이 다가가 하나씩 0.6초 간격으로 내려앉고(금빛 반짝·발소리), 그 뒤엔 깔린 채로 있음
+  const MAPBLOCK = [[3833, 1417], [3952, 1358], [3873, 1318]];
+  function mapBlockTiles() {
+    const pts = MAPBLOCK, tiles = [];
+    const turn = (i) => i === 0 || i === pts.length - 1 || (() => { const a = pts[i - 1], b = pts[i], c = pts[i + 1]; const a1 = Math.atan2(b[1] - a[1], b[0] - a[0]), a2 = Math.atan2(c[1] - b[1], c[0] - b[0]); return Math.abs(Math.atan2(Math.sin(a2 - a1), Math.cos(a2 - a1))) > 0.5; })();
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], n = Math.max(1, Math.round(Math.hypot(dx, dy * 2) / 56));
+      for (let j = 0; j < n; j++) tiles.push({ x: a[0] + dx * j / n, y: a[1] + dy * j / n, seg: i, dot: j === 0 && turn(i) });
+    }
+    const L = pts[pts.length - 1]; tiles.push({ x: L[0], y: L[1], dot: true });
+    return tiles;
+  }
+  function mapStamp(V, src, x, y) {
+    const w = V.walker(src); w.draw = () => { };
+    Object.assign(w.spr.style, { backgroundSize: '100px 130px', backgroundPosition: '0px 0px', clipPath: '' });
+    w.sh.style.opacity = '0'; w.el.style.pointerEvents = 'none'; w.el.classList.add('acc-tile');
+    w.put = (px, py) => { w.set(px, py); w.el.style.zIndex = 2; };   // 앞뒤 순서는 늘 땅바닥(2): 사람은 늘 블록 위, 가로등은 깊이 그림으로 블록을 가림
+    w.glow = (k) => { w.spr.style.filter = k > 1.001 ? `sepia(.08) saturate(.92) brightness(${k.toFixed(2)})` : ''; };
+    w.grow = (k) => { w.age = k; w.el.style.setProperty('--age', k); };
+    w.put(x, y); return w;
+  }
+  async function mapBlocks(V, name, text, first) {
+    if (V.fx.querySelector('[data-acc="block"]')) return;
+    const tiles = mapBlockTiles(), mid = tiles[Math.floor(tiles.length / 2)], src = (t) => 'assets/map/acc_block_tile_' + (t.dot ? 'dot' : 'line' + t.seg) + '.png';
+    const b = G.el('button', 'acc-obj', V.fx, `<span>${name}</span>`); b.type = 'button'; b.dataset.acc = 'block'; b.setAttribute('aria-label', name);
+    const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y), bx = Math.min(...xs) - 30, by = Math.min(...ys) - 20;
+    Object.assign(b.style, { left: bx + 'px', top: by + 'px', width: Math.max(...xs) + 30 - bx + 'px', height: Math.max(...ys) + 20 - by + 'px', zIndex: 2992 }); accTip(V, b, name, text);
+    if (!first || G.fast()) { for (const t of tiles) mapStamp(V, src(t), t.x, t.y + 20); return; }
+    // 처음: 지도 화면이 다 열리고 대화가 끝나기를 기다렸다가 체험판처럼 깔기
+    const g = G.gen; for (let k = 0; k < 100 && g === G.gen && (G.busy || G.screen !== 'map' || (G.dialog && G.dialog.active) || document.querySelector('.cut')); k++) await G.wait(0.3);
+    if (g !== G.gen || !V.fx.isConnected) return;
+    G.busy++; G.map.camFree = true;
+    try {
+      const c0 = { ...V.cam }, camTo = (x, y, z, d) => { const a = { ...V.cam }; return G.tween(0, 1, d, (k) => V.setCam(a.x + (x - a.x) * k, a.y + (y - a.y) * k, a.z + ((z || a.z) - a.z) * k), 'io'); };
+      await camTo(mid.x, mid.y + 38, 2.2, 1.2);
+      for (let i = 0; i < tiles.length; i++) {
+        if (g !== G.gen) return;
+        const t = tiles[i], fy = t.y + 20, w = mapStamp(V, src(t), t.x, fy - (G.reduced() ? 0 : 70));
+        if (!G.reduced()) { w.grow(.7); w.glow(1.8);
+          G.tween(0, 1, 0.8, (k) => { const d = k < .55 ? k / .55 : 1, e = 1 - Math.pow(1 - d, 3);
+            w.put(t.x, fy - 70 * (1 - e) + (k >= .55 && k < .75 ? 3 * Math.sin((k - .55) / .2 * Math.PI) : 0));
+            w.grow(k < .55 ? .7 + .36 * e : k < .75 ? 1.06 - .06 * (k - .55) / .2 : 1); w.glow(k < .55 ? 1.8 - .2 * e : 1.6 - .6 * Math.min(1, (k - .55) / .45)); }, 'lin')
+            .then(() => { w.put(t.x, fy); w.grow(1); w.glow(1); }); }
+        setTimeout(() => { if (g === G.gen) G.audio.sfx(i % 2 ? 'sfx_step1' : 'sfx_step2', 0.65); }, 440);
+        setTimeout(() => { if (g === G.gen) G.pfx.play('star_burst', { world: true, parent: V.fx, x: t.x, y: t.y + 6, z: Math.round(t.y) + 5, scale: 1.8 }); }, 430);
+        await G.wait(G.reduced() ? 0.05 : 0.6);
+      }
+      G.audio.sfx('sfx_sparkle', 0.7); await G.wait(0.8);
+      const h = G.map.hero && G.map.hero(); await camTo(h ? h.x : c0.x, h ? h.y - 40 : c0.y, c0.z, 0.6);
+    } finally { G.map.camFree = false; G.busy = Math.max(0, G.busy - 1); }
+  }
+  P.mapBlocks = mapBlocks; P.mapBlockTiles = mapBlockTiles;
   P.accessMarks = (V) => {
     if (!V || !V.fx || !G.st) return;
     const M = G.D.places.map, off = M && M.width > 4000 ? [0, 0] : [-1440, -810];
@@ -6569,6 +6738,7 @@ G.p4 = (() => {
         Object.assign(box.style, { left: e.style.left, top: e.style.top, width: e.style.width || '36px', height: e.style.height || '151px', zIndex: 2992 });
         accTip(V, box, name, text); continue;
       }
+      if (key === 'block' && M.width > 6000) { mapBlocks(V, name, text, !seen.includes(key)); if (!seen.includes(key)) { seen.push(key); G.save.write(); } continue; }   // 11/7 새 마을 지도(V2): 체험판과 같은 블록 6개
       if (key === 'rest' && V.fx.querySelector('.s2-restmark')) continue;   // 소리의 별 엔딩 뒤에는 같은 자리에 누르면 쉬는 쉼터 표지판이 이미 있음
       const o = ACCOBJ[key]; if (!o) continue;
       const [[w, h], sp0] = o, spots = (M.acc && M.acc[key]) || sp0;   // 10/23 새 마을 지도(V2): 자리를 지도 자료에서(off 없이 그 지도 좌표)
@@ -7162,24 +7332,53 @@ G.p4 = (() => {
   // ---- 두 번째 광장: 노란 길 깔기 (기둥 앞·꺾이는 곳·문 앞 = 점 블록, 곧은 길 = 막대 블록) ----
   // 10/31 방탈출 업그레이드 3-1(별 1 대표 퍼즐): 판에서 길을 다 이으면 판이 사라지고, 새 마을 광장에 점자블록이 반짝이며 깔린 뒤 해솔이 그 길을 따라 도서관 문 앞까지 걸어감
   const ROADWALK = [[1281, 774], [1653, 588], [1560, 541]];
+  // 11/7 선생님(결정판 vis1107b, "체험판처럼 똑같이 블록 6개가 생성되도록. 효과도 체험판과 동일"): 1분 체험판(demo2 reflectBlocks)과 같은 큰 블록 6개.
+  //  퍼즐처럼 출발·꺾이는 곳·문 앞은 점 블록, 사이는 선 블록. 블록 그림·자리·다 깔린 그림(plaza2_v2_blocks)은 도구/점자블록/make_plaza2_tiles.py가 만듦(TILES는 그 출력)
+  //  한 개씩 0.6초 간격: 위에서 70px 내려와 0.7→1.06→1로 툭 놓이고 밝게 빛남(0.8초) + 금빛 반짝(star_burst = 체험판 e1a) + 발소리 — 체험판 숫자 그대로
+  //  움직임은 el.animate(아이패드 PixiJS 장면도 transform·밝기를 그대로 읽음). 가로등은 블록보다 앞이라 깔리는 동안 가로등 앞 그림을 위에 둠
+  //  다 놓이면 조각을 지우고 다 깔린 그림 한 장만 남김(같은 모습). 움직임 줄이기: 내려오기 없이 차례로 나타남. 장면을 떠나면(G.gen 바뀜) 바로 다 깔린 그림으로
+  const TILES = [[1281.0, 774.0, 'dot'], [1374.1, 727.4, 'line0'], [1467.2, 680.9, 'line0'], [1560.3, 634.3, 'line0'], [1652.6, 587.8, 'dot'], [1560.0, 541.0, 'dot']], TILE_TH = 6, POLE = [1410, 585, 60, 240],
+    TILE_SRC = { dot: 'assets/scenes/plaza2_v2_tile_dot.png', line0: 'assets/scenes/plaza2_v2_tile_line0.png' };   // 주소를 통째로 적어 둠(빌드가 별 1 묶음에 넣도록)
+  async function blockDrop(V, bl) {
+    const im = bl.img, g = G.gen, red = G.reduced(), pcs = [], z = parseInt(getComputedStyle(im).zIndex) || 0, par = im.parentNode;
+    const mk = (src, l, t, w, h, zz) => { const e = G.el('img', 'scene-sprite', null); e.src = G.asset(src); e.alt = '';
+      Object.assign(e.style, { left: l + 'px', top: t + 'px', width: w + 'px', height: h + 'px', zIndex: zz, pointerEvents: 'none' }); par.insertBefore(e, im); pcs.push(e); return e; };
+    const fin = () => { pcs.forEach((p) => p.remove()); pcs.length = 0; im.style.visibility = ''; };
+    im.style.display = ''; im.style.visibility = 'hidden';
+    try {
+      const pics = {}; await Promise.all([...new Set(TILES.map((t) => t[2]))].map(async (k) => { const e = new Image(); e.src = G.asset(TILE_SRC[k]); try { await e.decode(); } catch (_) { } pics[k] = [e.naturalWidth / 2 || 161, e.naturalHeight / 2 || 87]; }));
+      if (g !== G.gen) return;
+      mk('assets/scenes/plaza2_v2_pole_front.png', POLE[0], POLE[1], POLE[2], POLE[3], z + 1);
+      for (let i = 0; i < TILES.length; i++) {
+        if (g !== G.gen) return;
+        const [x, y, k] = TILES[i], [w, h] = pics[k], oy = (h - TILE_TH) / 2, p = mk(TILE_SRC[k], x - w / 2, y - oy, w, h, z);
+        p.style.transformOrigin = `${(w / 2).toFixed(1)}px ${oy.toFixed(1)}px`;
+        if (red) { await G.wait(0.05); continue; }
+        if (p.animate) p.animate([
+          { transform: 'translate(0px, -70px) scale(0.7)', filter: 'brightness(1.8)', easing: 'cubic-bezier(.33,1,.68,1)' },
+          { transform: 'translate(0px, 0px) scale(1.06)', filter: 'brightness(1.6)', offset: 0.55, easing: 'ease-in-out' },
+          { transform: 'translate(0px, 3px) scale(1.03)', filter: 'brightness(1.47)', offset: 0.65, easing: 'ease-in-out' },
+          { transform: 'translate(0px, 0px) scale(1)', filter: 'brightness(1.33)', offset: 0.75 },
+          { transform: 'translate(0px, 0px) scale(1)', filter: 'brightness(1)' }], { duration: 800 });
+        setTimeout(() => { if (g === G.gen) G.audio.sfx(i % 2 ? 'sfx_step1' : 'sfx_step2', 0.65); }, 440);
+        setTimeout(() => { if (g === G.gen) G.pfx.play('star_burst', { world: true, parent: V.fx, x, y: y + 6, z: 3000, scale: 1.8 }); }, 430);
+        await G.wait(0.6);
+      }
+      await G.wait(red ? 0.1 : 0.3); if (g === G.gen) G.audio.sfx('sfx_sparkle', 0.7);
+    } finally { fin(); }
+  }
   async function roadLay(V, S) {
     const bl = V.spr.blocks; if (!bl) return;
-    const c0 = { ...V.cam }, to = [1460, 670]; await G.tween(0, 1, G.reduced() ? 0.2 : 0.9, k => V.setCam(c0.x + (to[0] - c0.x) * k, c0.y + (to[1] - c0.y) * k, c0.z), 'io');
-    const lay = p3Install(V, 'blocks');
-    if (!G.reduced()) for (let k = 0; k < 8; k++) setTimeout(() => {   // 깔리는 길 위로 픽셀 별가루가 톡톡
-      const a = ROADWALK[0], b = ROADWALK[1], q = (k + 0.5) / 8, x = a[0] + (b[0] - a[0]) * q, y = a[1] + (b[1] - a[1]) * q, e = G.el('img', 'road-pop', V.fx); e.src = G.asset('assets/ui/px/stardust.png'); e.alt = '';
-      Object.assign(e.style, { left: (x - 24) + 'px', top: (y - 48) + 'px', zIndex: 3000 });
-      if (e.animate) e.animate([{ translate: '0 10px', opacity: 0 }, { translate: '0 -30px', opacity: 1, offset: .4 }, { translate: '0 -60px', opacity: 0 }], { duration: 900, easing: 'steps(9, end)' });
-      setTimeout(() => e.remove(), 950);
-    }, 200 * k);
-    await lay;
+    const c0 = { ...V.cam }, to = [1460, 670], z1 = c0.z * 1.6; await G.tween(0, 1, G.reduced() ? 0.2 : 0.9, k => V.setCam(c0.x + (to[0] - c0.x) * k, c0.y + (to[1] - c0.y) * k, c0.z + (z1 - c0.z) * k), 'io');   // 11/7: 블록이 잘 보이게 조금 가까이(체험판처럼)
+    await blockDrop(V, bl);   // 11/7 선생님(플레이 감각 4단계, 결정판 vis1107): 체험판처럼 크게 6묶음이 하나씩 위에서 내려와 툭 놓임 (예전: 그림 한 장을 옆으로 쓸어 보임)
     const hw = (S.gatherWalk || {}).haesol, h = V.spr.haesol; if (!hw || !h) return;
     const e = ROADWALK[ROADWALK.length - 1], r = h.rect, dest = [e[0] - r[2] / 2, e[1] + 18 - r[3], r[2], r[3]];
-    const c1 = { ...V.cam }; G.tween(0, 1, G.reduced() ? 0.2 : 4, k => V.setCam(c1.x + (1580 - c1.x) * k, c1.y + (610 - c1.y) * k, c1.z), 'io');
+    const c1 = { ...V.cam }; G.tween(0, 1, G.reduced() ? 0.2 : 4, k => V.setCam(c1.x + (1580 - c1.x) * k, c1.y + (610 - c1.y) * k, c1.z + (c0.z - c1.z) * k), 'io');
     const hh = (S.hotspots || []).find(q => q.id === 'haesol'), nm = hh && hh.img.split('/').pop().replace(/\.\w+$/, '');   // 떠난 자리의 빛 테두리는 숨김
     if (nm) for (const e of V.fx.querySelectorAll('img.hot-glow')) if (e.src.includes(nm)) e.style.visibility = 'hidden';
-    await V.walkPath('haesol', dest, { ...hw, path: ROADWALK, noOcc: true }, G.fast() ? 0 : 5);   // 노란 길은 건물 앞이라 가림 없이 (깊이 그림이 상체를 지우던 것)
+    const g = G.gen; await V.walkPath('haesol', dest, { ...hw, path: ROADWALK, noOcc: true }, G.fast() ? 0 : 5);   // 노란 길은 건물 앞이라 가림 없이 (깊이 그림이 상체를 지우던 것)
     V.stand('haesol', 'SW', hw);
+    if (g === G.gen && !G.reduced()) { G.pfx.play('snap_twinkle', { world: true, parent: V.fx, x: e[0], y: dest[1] + 20, z: 9000, scale: 1.5, times: 2 }); G.audio.sfx('sfx_chime', 0.6); }   // 체험판처럼 문 앞에 닿으면 크림빛 반짝(e3b)·딩
   }
   function tiles() {
     return new Promise(async (res) => {
@@ -7497,7 +7696,7 @@ G.p4 = (() => {
     });
   }
   P.bellGuide = bellGuide;
-  P.libPole = libPole; P.tiles = tiles; P.wipe = wipe; P.fireflies = fireflies; P.mirrors = mirrors; P.door = door;   // 점검용 (퀴즈 QA 모드도 씀)
+  P.roadLay = roadLay; P.libPole = libPole; P.tiles = tiles; P.wipe = wipe; P.fireflies = fireflies; P.mirrors = mirrors; P.door = door;   // 점검용 (퀴즈 QA 모드도 씀)
   return P;
 })();
 
@@ -9082,6 +9281,7 @@ G.s2 = (() => {
   async function starCard() {
     const s = G.STARS.find(q => q.id === 'sound'), m = G.el('div', 'modal starget', G.$('#overlay')), sh = G.el('div', 'sheet', m);
     const pic = G.el('div', 'star-pic', sh, G.starSvg(s));
+    requestAnimationFrame(() => G.pfx.rays(pic));   // 11/7 결정판 e4a: 별을 되찾은 순간 빛살(한 화면에만)
     G.el('div', 'get-title', sh, s.name);
     G.el('div', 'get-desc', sh, s.job);
     G.el('div', 'star-count', sh, G.icon('icon_star') + ' 되찾은 별 2/9');
@@ -10719,6 +10919,7 @@ G.s3 = (() => {
   async function starCard() {
     const s = G.STARS.find(q => q.id === 'word'), m = G.el('div', 'modal starget', G.$('#overlay')), sh = G.el('div', 'sheet', m);
     const pic = G.el('div', 'star-pic', sh, G.starSvg(s));
+    requestAnimationFrame(() => G.pfx.rays(pic));   // 11/7 결정판 e4a: 별을 되찾은 순간 빛살(한 화면에만)
     G.el('div', 'get-title', sh, s.name);
     G.el('div', 'get-desc', sh, s.job);
     G.el('div', 'star-count', sh, G.icon('icon_star') + ' 되찾은 별 3/9');
@@ -12006,6 +12207,7 @@ G.s4 = (() => {
   async function starCard() {
     const s = G.STARS.find(q => q.id === 'door'), m = G.el('div', 'modal starget', G.$('#overlay')), sh = G.el('div', 'sheet', m);
     const pic = G.el('div', 'star-pic', sh, G.starSvg(s));
+    requestAnimationFrame(() => G.pfx.rays(pic));   // 11/7 결정판 e4a: 별을 되찾은 순간 빛살(한 화면에만)
     G.el('div', 'get-title', sh, s.name);
     G.el('div', 'get-desc', sh, s.job);
     G.el('div', 'star-count', sh, G.icon('icon_star') + ' 되찾은 별 4/9');
@@ -12966,6 +13168,7 @@ G.s5 = (() => {
   async function starCard() {
     const s = G.STARS.find(q => q.id === 'heart'), m = G.el('div', 'modal starget', G.$('#overlay')), sh = G.el('div', 'sheet', m);
     const pic = G.el('div', 'star-pic', sh, G.starSvg(s));
+    requestAnimationFrame(() => G.pfx.rays(pic));   // 11/7 결정판 e4a: 별을 되찾은 순간 빛살(한 화면에만)
     G.el('div', 'get-title', sh, s.name);
     G.el('div', 'get-desc', sh, s.job);
     G.el('div', 'star-count', sh, G.icon('icon_star') + ' 되찾은 별 5/9');
@@ -14005,6 +14208,7 @@ G.s6 = (() => {
   async function starCard() {
     const s = G.STARS.find(q => q.id === 'speed'), m = G.el('div', 'modal starget', G.$('#overlay')), sh = G.el('div', 'sheet', m);
     const pic = G.el('div', 'star-pic', sh, G.starSvg(s));
+    requestAnimationFrame(() => G.pfx.rays(pic));   // 11/7 결정판 e4a: 별을 되찾은 순간 빛살(한 화면에만)
     G.el('div', 'get-title', sh, s.name);
     G.el('div', 'get-desc', sh, s.job);
     G.el('div', 'star-count', sh, G.icon('icon_star') + ' 되찾은 별 6/9');
@@ -15155,7 +15359,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-11-07)';
-G.BUILT = '2026-11-07 13:15';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-11-07 21:29';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
