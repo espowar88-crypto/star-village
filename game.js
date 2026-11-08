@@ -1709,7 +1709,9 @@ const pxStall = () => (matchMedia('(pointer: coarse)').matches ? 30000 : 20000);
 const pxLate = (p, ms, what) => new Promise((ok, no) => { const tm = setTimeout(() => { console.warn('[늦음]', what); no(new Error('late')); }, ms); p.then((v) => { clearTimeout(tm); ok(v); }, (e) => { clearTimeout(tm); no(e); }); });
 const pxLoad1 = (r, url) => { const p = r.p = G.px.P.Assets.load(url); r.bad = false; p.catch(() => { if (r.p === p) r.bad = true; }); };
 G.pxGet = (url) => { url = pxAbs(url); let r = pxRC.get(url); if (!r) { r = { n: 0 }; pxLoad1(r, url); pxRC.set(url, r); } else if (r.bad) pxLoad1(r, url); r.n++; clearTimeout(r.tm);
-  return r.p.then((t) => { r.t = t; if (t) { t.source.scaleMode = 'linear'; t.source.alphaMode = 'premultiply-alpha-on-upload'; } return t; }); };   // 줄여 보일 때 일렁이지 않게, 반투명 겹이 두 번 곱해지지 않게
+  // 11/8 사파리 검토 도구가 찾음: 놓은 그림을 1초 뒤 내리는(unload) 사이에 같은 그림을 다시 부르면 이미 지워진 그림(source 없음)을 받을 수 있음 → 한 번 새로 받음
+  const fix = (t, again) => { if (t && (t.destroyed || !t.source)) { if (again) return null; pxLoad1(r, url); return r.p.then((u) => fix(u, true)); } r.t = t; if (t) { t.source.scaleMode = 'linear'; t.source.alphaMode = 'premultiply-alpha-on-upload'; } return t; };
+  return r.p.then((t) => fix(t, false)); };   // 줄여 보일 때 일렁이지 않게, 반투명 겹이 두 번 곱해지지 않게
 G.pxPut = (url) => { url = pxAbs(url); const r = pxRC.get(url); if (!r || --r.n > 0) return; clearTimeout(r.tm);
   r.tm = setTimeout(() => { if (r.n > 0) return; pxRC.delete(url); r.p.then(() => G.px.P.Assets.unload(url)).catch(() => { }); }, 1000); };
 // 10/30 메모리 계기판(memmeter.js): 그래픽 칩에 올린 그림 크기. 압축 그림(ASTC·BC7·ETC2)은 점 하나 1바이트, 아니면 4
@@ -1729,7 +1731,7 @@ const pxKit = (V, X, keepDepth) => {
   const { P, app } = X; let gone = false, dep = null; const dk = new Float32Array([1, 1, 1]), meshes = new Set();
   const T = new Map();
   const tex = (url, near) => { if (!url) return null; let r = T.get(url); if (!r) { r = { t: null }; T.set(url, r);
-    G.pxGet(url).then((t) => { if (gone || !t) return; t.source.scaleMode = near ? 'nearest' : 'linear'; r.t = t; G.pxDirty = true; }, () => { }); } return r.t; };
+    G.pxGet(url).then((t) => { if (gone || !t || !t.source) return; t.source.scaleMode = near ? 'nearest' : 'linear'; r.t = t; G.pxDirty = true; }, () => { }); } return r.t; };
   const empty = P.Texture.EMPTY.source;
   // 판 자리: uP = 왼위 x, y, 가로 축 x, y / uQ = 세로 축 x, y (기울어진 그림자도 그대로)
   const vertex = `in vec2 aPosition; out vec2 vUV; out vec2 vP; out vec2 vL;
@@ -1899,9 +1901,12 @@ const pxWorld = (V, X, root) => {
     if (run) clock += dt;
     if (!K.hasDepth() && V.depth) K.depth();
     pxFollow(V.el, root); syncChars(now); syncUnder(now, run, lite); syncFount(); syncWater();
+    for (const f of hooks) if (f(now, run, lite)) sig++;   // 11/7 탐험(explore.js): 갈대·바닥 조각처럼 DOM 없이 여기 판에 직접 그리는 것
     return sig + '|' + (run && !G.reduced() ? Math.floor(clock * G.pxAmb) : 0); };
+  // 11/7 탐험: 다른 코드가 인물 판(발 y 순서)·인물 아래 판에 스프라이트를 직접 얹게. hooks의 함수는 매 화면 불림(참이면 다시 그림)
+  const hooks = new Set(); V.pxApi = { P, K, chars, under, hooks, kick: () => { sig++; G.pxDirty = true; } };
   el.classList.add('pxw'); X.cv.style.display = ''; G.pxDirty = true; G.pxTick.add(tick);
-  const dispose = () => { G.pxTick.remove(tick); for (const f of founts.values()) f.destroy(true); founts.clear(); for (const f of waters.values()) f.destroy(true); waters.clear(); top.destroy({ children: true }); K.dispose(); items.clear(); };
+  const dispose = () => { G.pxTick.remove(tick); hooks.clear(); if (V.pxApi && V.pxApi.hooks === hooks) V.pxApi = null; for (const f of founts.values()) f.destroy(true); founts.clear(); for (const f of waters.values()) f.destroy(true); waters.clear(); top.destroy({ children: true }); K.dispose(); items.clear(); };
   return { dispose };
 };
 // 지도 세상 판: 밤 덧칠·구름·빛 캔버스(mapfx.js) → 나무·굴뚝 연기(worldmap.js mfxu) → [등불 → 발자국 → 걷는 사람·장소 앞 사람·분수를 발 y 순서로]
@@ -2010,6 +2015,7 @@ const pxMapWorld = (V, X, root) => {
 G.pxScene = (V, colSrc, warmSrc) => {
   const X = G.px, K = window.KTX || {}; if (!X || !K[colSrc]) return null;
   const { P, app, cv } = X, W = V.W, H = V.H, [cUrl, cw, ch, ow = W, oh = H] = K[colSrc], wk = warmSrc && K[warmSrc];   // 늘린 크기 cw·ch, 원래 크기 ow·oh
+  { const gl = app.renderer && app.renderer.gl, mx = gl ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : 0; if (mx && Math.max(cw, ch) > mx) return null; }   // 11/7 갈대밭(4800 넓이): 큰 그림을 못 올리는 옛 기기는 지금 방식(DOM)으로
   const NR = 24, RN = [...Array(NR).keys()];   // 색 되찾기 동그라미 uR0~uR23: x, y, 반지름, 진하기 (장면 좌표). 배열 uniform은 PixiJS가 잘못 올려 하나씩 둠
   const vertex = `in vec2 aPosition; in vec2 aUV; out vec2 vUV; out vec2 vP;
 uniform mat3 uProjectionMatrix; uniform mat3 uWorldTransformMatrix; uniform mat3 uTransformMatrix;
@@ -3323,7 +3329,7 @@ G.map = (() => {
     if (p.call && G.p4 && G.p4.calling()) return 'open';   // 10/1: 도서관 문에서 막히면 광장(촌장)에 다녀옴
     if (st.cleared.includes(p.id)) { const a = p.again; return a && st.cleared.includes(a.after) && !st.cleared.includes(a.scene) ? 'open' : 'done'; }   // 9/30: 숲 뒤에 광장이 다시 열림
     const u = p.unlock;
-    const open = u === 'start' ? st.done.includes('meet_lumi') : (u.startsWith('clear:') && st.cleared.includes(u.slice(6)));
+    const open = u === 'start' ? st.done.includes('meet_lumi') : u.startsWith('done:') ? st.done.includes(u.slice(5)) : (u.startsWith('clear:') && st.cleared.includes(u.slice(6)));   // 11/7 done: 할 일을 마치면 열림(갈대밭)
     return open ? 'open' : 'locked';
   };
   // 이 장소를 누르면 들어갈 장면 (광장은 숲을 끝낸 뒤 두 번째 광장)
@@ -4628,7 +4634,7 @@ G.sceneEnvFx = (V) => {
     const c = G.el('i', '', d); c.style.backgroundImage = `url("${G.asset('assets/scenes/fx_v2_' + n + '.png')}")`; colEls.push(c);
   }
   // 10/30 선생님 아이패드 사파리 광장 꺼짐: 장면 전체 크기 빛 그림을 섞기(screen)로 얹으면 사파리가 장면 크기 화면 판을 여러 장 더 만듦 → 사파리는 이 빛 겹을 뺌(등불 빛은 그대로)
-  if (!V.pxw && G.duskOK) { const gw = G.el('div', '', U); gw.style.cssText = 'position:absolute;inset:0'; const gi = G.el('img', 'gl', gw); gi.src = G.asset(F.glow); gi.alt = ''; gi.style.width = W + 'px'; gi.style.height = H + 'px'; colEls.push(gw); }
+  if (!V.pxw && G.duskOK && F.glow) { const gw = G.el('div', '', U); gw.style.cssText = 'position:absolute;inset:0'; const gi = G.el('img', 'gl', gw); gi.src = G.asset(F.glow); gi.alt = ''; gi.style.width = W + 'px'; gi.style.height = H + 'px'; colEls.push(gw); }
   for (const l of V.lamps) { l.el.classList.add('fxf'); const x = parseFloat(l.el.style.left), y = parseFloat(l.el.style.top); moving.push([l.el, x - 165, y - 165, 330, 330]); }
   // 10/25 N20: 캔버스는 장면 전체(반 크기)가 아니라 화면에 보이는 곳(+여유)만. 그리는 방법·모양은 그대로
   const cv = G.el('canvas', 'fxo', null); V.fx.insertBefore(cv, V.chars.nextSibling);
@@ -4784,6 +4790,7 @@ G.scene = (() => {
     }
     sizeHots();
     if (def.roam) roamSetup(def);
+    if (G.explore) G.explore.enter(V, def);   // 11/7 탐험 0단계: 장면 json explore·near (가까이 반응·발견 연출·손등 탐지)
     G.resizers.add(onResize);
     G.dialog.onSpeaker = (sp) => { for (const k in V?.spr || {}) { const s = V.spr[k]; s.img.classList.toggle('talking', k === sp); } talkCam(sp); };
     G.hud.scene(def, () => Sc.leave());
@@ -4957,7 +4964,7 @@ G.scene = (() => {
     if (!V) { busy = false; return; }
     if (S.missions.every(m => G.st.done.includes(m)) && !G.st.cleared.includes(id)) { await G.wait(0.9); busy = false; if (g !== G.gen) return; return clear(); }
     // 10/1 선생님: 이미 끝낸 장소에 다시 들어와 누르면 진행이 멈춘 것처럼 보임 → 다음에 갈 곳을 알려 줌
-    if (G.st.cleared.includes(id) && S.onClear && S.onClear.now) { const np = G.hud.nextPlace(); G.hud.say(np ? 'S92_now_' + np.id : S.onClear.now); }   // 10/1: 촌장에게 쪽지를 받은 뒤에는 도서관
+    if (G.st.cleared.includes(id) && S.onClear && S.onClear.now && !(G.reedField && G.reedField.pending)) { const np = G.hud.nextPlace(); G.hud.say(np ? 'S92_now_' + np.id : S.onClear.now); }   // 10/1: 촌장에게 쪽지를 받은 뒤에는 도서관
     busy = false;
   }
   // 10/9 선생님: 인물을 누르면 주인공이 그 옆까지 픽셀 걸음으로 걸어감 (장면 걷기와 같은 빠르기, 빠르게 모드·움직임 줄이기면 바로 옆에 섬)
@@ -5020,6 +5027,7 @@ G.scene = (() => {
       if (cx == null) return; const to = [(cx - r.left) / s, (cy - r.top) / s];
       if (tapWalk) { roamCur.next = to; if (roamCur.cut.stop) roamCur.cut.stop(); } else roamTo(to, true); });
     if (G.D.places.map.free && G.joyMake) joyOn();
+    V.roamPath = (a, b) => roamPath(a, b);   // 11/7 탐험: 따라 걷는 사람(갈대밭 하랑)도 같은 길 찾기
   }
   // 10/24 선생님: 걷는 장면에서도 조이스틱(지도와 같은 느낌 — 1.2초 뒤 달리기로, 손 떼면 천천히 섬). 걷는 곳 밖으로는 못 감, 벽을 따라 미끄러짐
   let joyOff = null, driving = false;
@@ -5166,6 +5174,10 @@ G.scene = (() => {
     if (g === G.gen && V) G.hud.goMap(() => Sc.leave());   // 10/1 선생님: 끝나면 가운데 버튼으로 지도로
   }
   let leaving = false;   // 10/15: 지도 버튼을 빨리 두 번 누르면 지도를 두 번 만들던 것(두 번째는 처음 화면으로 간 뒤에도 돌아 오류)
+  Sc.moveHot = (hid, r) => { const H = hots.find(q => q.def.id === hid); if (!H) return; H.rect = r; Object.assign(H.glow.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px' }); if (H.star) Object.assign(H.star.style, { left: (r[0] + r[2] / 2) + 'px', top: Math.max(r[1] - 6, 130) + 'px' }); sizeHots(); };   // 11/7 탐험: 따라 걷는 사람(갈대밭 하랑)의 누를 곳도 같이 옮김
+  Sc.hotHide = (hid, on) => { const H = hots.find(q => q.def.id === hid); if (!H) return; const v = on ? 'hidden' : ''; H.glow.style.visibility = v; if (H.star) H.star.style.visibility = v; };   // 11/8 선생님: 따라 걷는 하랑의 노란 테두리가 옛 자리에 남던 것 → 걷는 동안 숨김
+  Sc.isBusy = () => busy;
+  Sc.tap = (hid) => { const H = hots.find(q => q.def.id === hid); return H ? tapHot(H) : null; };   // 11/7 탐험: 걷다가 별을 찾으면 그 장면 흐름을 누른 것처럼 시작
   Sc.leave = async () => {
     if (!V || busy || leaving) return;
     leaving = true;
@@ -6326,6 +6338,499 @@ G.pfx = (() => {
     if (r.el) { r.el.style.left = '0'; r.el.style.top = '0'; pic.insertBefore(r.el, pic.firstChild); for (const c of pic.children) if (c !== r.el) { c.style.position = 'relative'; c.style.zIndex = 1; } }
     return r; };
   return { play, atEl, rays, has: (n) => !!sheet(n), trial: /[?&]pfx=1/.test(location.search) };
+})();
+
+/* ---- explore.js ---- */
+// 11/7 탐험 0단계 (선생님 결정판 SxWijQNRHyzT4VGdctBM3P, 모두 추천 a)
+//  I02 가까이 가면 대답하는 세계: 장면 json `near` 칸. 주인공이 걸을 때(V.onStep) 0.25초에 한 번만 거리를 봄(새 rAF·타이머 없음)
+//  I21 발견하는 순간: 별가루를 얻으면(p4·별 3~6 모두 '.p4-dust-pop'이 생김) 잠깐 멈춤·살짝 다가감·화음·주인공 콩
+//  I16 손등 별무늬: 화면 구석 손등 그림이 남은 별가루와 가까울수록 빨리 깜빡
+//  지금은 장면 json에 `explore: true`인 곳(하랑이네·갈대밭)만. 14절: 장면을 나가면(dispose) 만든 것·듣기 모두 지움, 가벼운 모드·움직임 줄이기면 움직임 뺌
+// 11/7 1단계 갈대밭(결정판 N1kiht6VRmWhJKQrARug5k plan/reed1107): `near`의 act 'field' 하나가 갈대 약 2,400줄기·무작위 만남·하랑 함께 걷기·별 찾기를 맡음
+//  그림은 PixiJS 세상 판(V.pxApi, pxscene.js)이면 그 판에 스프라이트로, 아니면 DOM(화면 둘레만 만들고 나가면 지움)
+G.explore = (() => {
+  const X = {};
+  let C = null;   // 지금 장면 { V, def, items, last, hand, mo, band }
+  const now = () => performance.now();
+  const done = (m) => !!(m && G.st && (G.st.done || []).includes(m));
+  const quiet = (V) => G.reduced() || (V && V.lite) || (G.settings && G.settings.light);
+  const colorAmt = (V) => { const c = V.colorImg; return !c || c.style.visibility === 'hidden' ? 0 : (c.style.opacity === '' ? 1 : +c.style.opacity); };   // pxscene amt()와 같은 셈
+
+  // ---- 그림 조각 판: 한 장 그림(sheet)의 칸을 장면에 여러 개. o = {x, y, w, h, fc:[컬러 칸 x, y], fm:[저녁빛 칸 x, y], ox(뿌리 x 비율), z, under, flip, sway} ----
+  //  PixiJS면 인물 판(발 y 순서, 인물과 같은 셈 z*64)·인물 아래 판에 스프라이트, 아니면 DOM 칸을 화면 둘레(M)에만. 기울기 sk(도)는 뿌리 기준
+  function pieces(V, url) {
+    const L = { list: [], col: null, base: null, fr: new Map(), pool: [], hook: null };
+    const M = 180, src = G.asset(url);
+    L.add = (o) => { o.sk = 0; o.wob = null; L.list.push(o); return o; };
+    const inView = (o, v) => !(o.x + o.w < v[0] - M || o.x > v[2] + M || o.y + o.h < v[1] - M || o.y > v[3] + M);
+    const tf = (o, c) => { const k = c[0] + ',' + c[1] + ',' + o.w + ',' + o.h; let t = L.fr.get(k);
+      if (!t) { const P = V.pxApi.P; t = new P.Texture({ source: L.base.source, frame: new P.Rectangle(c[0], c[1], o.w, o.h) }); L.fr.set(k, t); } return t; };
+    // DOM 한 칸: 바깥(자리·기울기) + 안(그림, 바람 흔들림 css)
+    const domMake = (o) => { const e = L.pool.pop() || (() => { const d = G.el('div', 'xp-pc', null); G.el('i', '', d); return d; })();
+      Object.assign(e.style, { left: o.x + 'px', top: o.y + 'px', width: o.w + 'px', height: o.h + 'px', zIndex: o.under ? 1 : o.z, transformOrigin: `${o.ox * 100}% 100%`, transform: '' });
+      const i = e.firstChild; i.style.backgroundImage = `url("${src}")`; i.style.transform = o.flip ? 'scaleX(-1)' : ''; i.style.animationDelay = (-((o.x / 610 + o.y / 1300) % 3.6)).toFixed(2) + 's';
+      e.classList.toggle('sway', !!o.sway && !quiet(V)); e.dataset.c = ''; V.chars.appendChild(e); o.el = e; o.sk0 = null; };
+    const domSet = (o, c) => { const e = o.el, k = c ? 'c' : 'm'; if (e.dataset.c !== k) { e.dataset.c = k; const f = c ? o.fc : o.fm; e.firstChild.style.backgroundPosition = `${-f[0]}px ${-f[1]}px`; }
+      if (o.sk !== o.sk0 && !o.wob) { o.sk0 = o.sk; e.style.transform = o.sk ? `skewX(${o.sk.toFixed(1)}deg)` : ''; } };
+    L.sync = () => {
+      const v = V.view || [0, 0, V.W, V.H], c = colorAmt(V) >= 0.5, X = V.pxw ? V.pxApi : null;
+      if (X) {
+        if (!L.base) { L.base = X.K.tex(src, true); if (!L.base) return; }
+        if (!L.hook) { L.hook = (t) => L.pxTick(t); X.hooks.add(L.hook); }
+        for (const o of L.list) { const on = inView(o, v);
+          if (!o.sp) { if (!on) continue; const P = X.P, s = new P.Sprite(tf(o, c ? o.fc : o.fm)); s.anchor.set(o.flip ? 1 - o.ox : o.ox, 1); s.position.set(o.x + o.ox * o.w, o.y + o.h);
+            if (o.flip) s.scale.x = -1; s.zIndex = o.z * 64 + 63; (o.under ? X.under : X.chars).addChild(s); o.sp = s; o.spc = c; }
+          o.sp.visible = on; if (on && o.spc !== c) { o.spc = c; o.sp.texture = tf(o, c ? o.fc : o.fm); } }
+        X.kick(); return;
+      }
+      for (const o of L.list) { const on = inView(o, v);
+        if (on && !o.el) domMake(o); else if (!on && o.el) { o.el.getAnimations && o.el.getAnimations().forEach(a => a.cancel()); o.el.remove(); L.pool.push(o.el); o.el = null; o.wob = null; continue; }
+        if (o.el) domSet(o, c); }
+    };
+    // 기울기 바꾸기(가르기): DOM은 바로, PixiJS는 다음 화면에
+    L.lean = (o, sk) => { o.sk = sk; o.wob = null; if (o.el) { o.el.getAnimations && o.el.getAnimations().forEach(a => a.cancel()); o.el.style.transform = sk ? `skewX(${sk.toFixed(1)}deg)` : ''; o.sk0 = sk; } };
+    // 출렁이며 제자리로(1.1초): DOM은 animate, PixiJS는 매 화면 계산
+    const WK = [0, -0.55, 0.3, -0.12, 0];
+    L.wobble = (o, amp) => { o.sk = 0; o.sk0 = 0;
+      if (o.el) { if (o.el.animate && !quiet(V)) { o.el.style.transform = ''; o.el.animate(WK.map(f => ({ transform: `skewX(${(amp * f || 0).toFixed(1)}deg)` })), { duration: 1100, easing: 'ease-out' }); } else o.el.style.transform = ''; }
+      else o.wob = quiet(V) ? null : { t0: now(), amp }; };
+    L.pxTick = (t) => { if (!V.pxApi) return false; const run = !quiet(V), ph = t / 1000, v = V.view; let ch = false;
+      for (const o of L.list) { const s = o.sp; if (!s || !s.visible) continue; let sk = o.sk;
+        if (o.wob) { const q = (t - o.wob.t0) / 1100; if (q >= 1) o.wob = null; else { const i = Math.min(3, Math.floor(q * 4)), f = q * 4 - i, e = 1 - (1 - f) * (1 - f); sk = o.wob.amp * (WK[i] + (WK[i + 1] - WK[i]) * e); ch = true; } }
+        if (o.sway && run && !sk) sk = 1.1 * Math.sin((ph / 3.6 + o.x / 610 + o.y / 1300) * Math.PI * 2);
+        s.skew.x = sk * Math.PI / 180; }   // PixiJS skew.x = css skewX(같은 쪽)
+      return ch || (run && v); };
+    L.kill = () => { for (const o of L.list) { if (o.el) o.el.remove(); if (o.sp) o.sp.destroy(); o.el = o.sp = null; }
+      if (L.hook && V.pxApi) V.pxApi.hooks.delete(L.hook); for (const t of L.fr.values()) t.destroy(false); L.fr.clear(); L.pool = []; L.list = []; };
+    return L;
+  }
+
+  // ---- 장면 속 작은 동물(걷기 그림 시트 9칸×4줄, 한 칸 200×260). 'scene-walker'라 PixiJS 세상 판이 그대로 옮겨 그림 ----
+  const ROW = { SE: 0, SW: 1, NW: 2, NE: 3 };
+  function critter(V, img, x, y, dir) {
+    const kk = V.K || 1, cw = 200 * kk, ch = 260 * kk;
+    const el = G.el('div', 'xp-critter scene-walker', V.chars);
+    Object.assign(el.style, { position: 'absolute', width: cw + 'px', height: ch + 'px', left: (x - 100 * kk) + 'px', top: (y - 250 * kk) + 'px', zIndex: Math.round(y),
+      backgroundImage: `url("${G.asset(`assets/chars/ani_${img}${G.halfSheet ? '_h' : ''}.png`)}")`, backgroundSize: `${1800 * kk}px ${1040 * kk}px`, imageRendering: 'pixelated', pointerEvents: 'none' });
+    const o = { el, x, y, dir: dir || 'SE', cw, ch, frame: 8 };
+    o.draw = () => { el.style.backgroundPosition = `${-o.frame * cw}px ${-ROW[o.dir] * ch}px`; };
+    o.draw(); return o;
+  }
+  // 갈대밭 새 동물(xp_critters.png 한 칸 72×64: 0 앉은 개구리, 1 뛰는 개구리, 2 잠자리)
+  function bug(V, i, x, y, flip) {
+    const el = G.el('div', 'xp-critter scene-walker', V.chars);
+    Object.assign(el.style, { position: 'absolute', width: '72px', height: '64px', left: (x - 36) + 'px', top: (y - 60) + 'px', zIndex: Math.round(y) + 1,
+      backgroundImage: `url("${G.asset('assets/chars/xp_critters.png')}")`, backgroundSize: '216px 64px', backgroundPosition: `${-i * 72}px 0px`, imageRendering: 'pixelated', pointerEvents: 'none', transform: flip ? 'scaleX(-1)' : '' });
+    return el;
+  }
+  const fly = (el, kf, ms, ease) => el.animate ? el.animate(kf, { duration: ms, easing: ease || 'ease-out', fill: 'forwards' }).finished.catch(() => { }) : Promise.resolve();
+
+  // ---- 반응 만들기 ----
+  const MAKE = {
+    // 새 떼: 가까이 가면 푸드덕 날아감(한 번)
+    birds(V, n) {
+      const B = []; const k = n.n || 3;
+      for (let i = 0; i < k; i++) B.push(critter(V, 'sparrow', n.at[0] + (i - 1) * 34 + (i % 2) * 8, n.at[1] + (i % 2 ? -14 : 10), i % 2 ? 'SW' : 'SE'));
+      return { at: n.at, r: n.r || 240, once: true, kill: () => B.forEach(b => b.el.remove()), go(V, hx) { flock(V, B, hx); } };
+    },
+    // 고양이: 가까이 가면 주인공 쪽으로 돌아보고 꼬리를 흔듦(멀어지면 다시 가만히)
+    cat(V, n) {
+      const c = critter(V, n.img || 'cat1', n.at[0], n.at[1], n.dir || 'SW'); let t = 0;
+      return { at: n.at, r: n.r || 200, cool: 4, kill: () => c.el.remove(),
+        go(V, hx, hy) { c.dir = hy >= c.y ? (hx >= c.x ? 'SE' : 'SW') : (hx >= c.x ? 'NE' : 'NW'); c.draw(); if (!quiet(V)) G.pfx.play('thanks_heart', { world: true, parent: V.fx, x: c.x, y: c.y - 70 * (V.K || 1), z: 9000 }); },
+        tick(V, inside) { if (!inside || quiet(V)) { if (c.frame !== 8) { c.frame = 8; c.draw(); } return; } t = (t + 1) % 8; c.frame = t; c.draw(); } };
+    },
+    // 가로등: 밑을 지나면 불이 한 번 깜빡
+    lamp(V, n) {
+      const L = V.lamps && V.lamps[n.i]; const p = (V.S.lamps || [])[n.i]; if (!L || !p) return null;
+      return { at: [p[0], p[1] + (n.dy || 120)], r: n.r || 160, cool: 8,
+        go(V) {
+          const was = L.el.classList.contains('on'); L.el.classList.add('on');
+          if (L.el.animate && !quiet(V)) L.el.animate([{ opacity: 0.2 }, { opacity: 1 }, { opacity: 0.35 }, { opacity: 1 }], { duration: 700 }).finished.then(() => { if (!was) L.el.classList.remove('on'); }).catch(() => { });
+          else if (!was) setTimeout(() => L.el.classList.remove('on'), 700);
+          if (!quiet(V)) G.pfx.play('dust_twinkle', { world: true, parent: V.fx, x: p[0], y: p[1] + 10, z: 9000 });
+        } };
+    },
+    // 수풀: 곁을 지나면 바스락 + (그 안에 별이 남아 있으면) 작은 반짝
+    rustle(V, n) {
+      return { at: n.at, r: n.r || 190, cool: 6, until: n.until,
+        go(V) { G.audio.sfx('sfx_wind', 0.25, 1.4); if (!quiet(V) && !done(n.until)) G.pfx.play('snap_twinkle', { world: true, parent: V.fx, x: n.at[0] + (Math.random() - 0.5) * 40, y: n.at[1] - 20, z: 9000, scale: 1.4 }); } };
+    },
+    // 11/7 선생님 "갈대가 지나갈 때 흔들리고, 갈라졌다가 돌아오게": 장면 그림에서 오린 갈대 덤불(도구/탐험/reeds.py)
+    //  덤불을 뿌리 기준 왼쪽·오른쪽 반으로 나눠, 주인공이 가운데면 양옆으로 갈라지고 한쪽이면 반대로 눕고, 멀어지면 출렁이며 제자리로.
+    //  걸을 때마다(onStep) 덤불 몇 개 거리만 봄(새 rAF 없음). 밑에는 갈대를 지운 바닥 조각을 깔아 겹쳐 보이지 않게
+    reeds(V, n) {
+      const P = pieces(V, n.sheet), R = [];
+      for (const c of n.list) {
+        const [x, y, w, h] = c.rect, rx = c.root[0], lw = Math.max(1, Math.min(w - 1, rx - x));
+        P.add({ x, y, w, h, fc: [2 * w, c.sy], fm: [3 * w, c.sy], ox: 0, z: 1, under: true });
+        const L = P.add({ x, y, w: lw, h, fc: [0, c.sy], fm: [w, c.sy], ox: 1, z: c.root[1] }), Rt = P.add({ x: rx, y, w: w - lw, h, fc: [lw, c.sy], fm: [w + lw, c.sy], ox: 0, z: c.root[1] });
+        R.push({ c, L, Rt, a: 0, b: 0, in: false });
+      }
+      const MAX = 13, rr = n.r || 95;
+      return { at: [0, 0], r: 0, live: true, kill: () => P.kill(), sync: P.sync,
+        step(V, hx, hy) {
+          P.sync(); const still = quiet(V);
+          for (const o of R) {
+            const [px, py] = o.c.root, d = Math.hypot(hx - px, (hy - py) * 1.6), inside = d < rr;
+            if (inside) {
+              if (!o.in) { G.audio.sfx('sfx_wind', 0.22, 1.5 + Math.random() * 0.2); if (o.c.star && !done(n.starUntil) && !still) G.pfx.play('snap_twinkle', { world: true, parent: V.fx, x: px, y: o.c.rect[1] + 20, z: 9000, scale: 1.4 }); }
+              o.in = true; if (still) continue;
+              const s = 1 - d / rr, off = Math.max(-1, Math.min(1, (hx - px) / rr));
+              o.a = MAX * s * Math.max(-1.2, Math.min(1.2, 0.6 + off)); o.b = MAX * s * Math.max(-1.2, Math.min(1.2, 0.6 - off));
+              P.lean(o.L, o.a); P.lean(o.Rt, -o.b);
+            } else if (o.in) { o.in = false; if (!still) { P.wobble(o.L, o.a); P.wobble(o.Rt, -o.b); } o.a = o.b = 0; }
+          }
+        } };
+    },
+    // 사람: 가까이 가면 머리 위 느낌표(아직 이야기 안 했을 때만)
+    notice(V, n) {
+      const s = V.spr[n.who]; if (!s) return null; const r = s.rect;
+      return { at: [r[0] + r[2] / 2, r[1] + r[3] - 18], r: n.r || 280, once: true, until: n.until,
+        go(V) { const e = s.stand || s.img; if (!e || e.style.display === 'none') return; G.audio.sfx('sfx_ibell', 0.35); G.pfx.play('notice_mark', { world: true, parent: V.fx, x: r[0] + r[2] / 2, y: r[1] - 6, z: 9000 }); } };
+    },
+    field: (V, n) => G.reedField ? G.reedField.make(V, C.def, { pieces, critter, bug, flock, fly, quiet, done, found: (...a) => X.found(...a) }) : null
+  };
+  // 새 떼 날려 보내기(새 떼 반응·갈대밭 만남이 같이 씀)
+  function flock(V, B, hx) {
+    G.audio.sfx('sfx_flap', 0.55);
+    B.forEach((b, i) => {
+      const away = b.x >= hx ? 1 : -1; b.dir = away > 0 ? 'NE' : 'NW'; b.draw();
+      if (quiet(V) || !b.el.animate) { b.el.remove(); return; }
+      let f = 0; const tm = setInterval(() => { if (!b.el.isConnected) return clearInterval(tm); f = (f + 1) % 8; b.frame = f; b.draw(); }, 40);   // 날갯짓(PixiJS 판도 따라 그리게 그림 칸을 바꿈)
+      b.el.animate([{ transform: 'translate(0,0)', opacity: 1 }, { transform: `translate(${away * (220 + i * 40)}px,${-260 - i * 50}px)`, opacity: 0 }], { duration: 1200 + i * 120, delay: i * 70, easing: 'cubic-bezier(.3,.1,.6,1)', fill: 'forwards' })
+        .finished.then(() => { clearInterval(tm); b.el.remove(); }).catch(() => clearInterval(tm));
+    });
+  }
+
+  // ---- 손등 별무늬 (I16) ----
+  function starsUp() { const s = (G.st && G.st.story) || {}; let n = 0; for (let i = 1; i <= 9; i++) if (s['emb' + i]) n = i; return n; }
+  function handMake() {
+    const root = G.$('#hud'); if (!root) return null;
+    const n = starsUp(), h = G.el('div', 'xp-hand', root, `<img src="${G.asset(`assets/ui/emblem/hand_${Math.max(1, n)}.webp`)}" alt=""><i></i>`);
+    h.setAttribute('role', 'img'); h.setAttribute('aria-label', '손등 별무늬'); return h;
+  }
+  function targets() {
+    const V = C.V, out = [];
+    for (const b of V.fx.querySelectorAll('.p4-dust')) if (b.style.pointerEvents !== 'none') out.push([parseFloat(b.style.left), parseFloat(b.style.top)]);
+    // 별 3: 물건 속 별가루(s3dustHot)
+    const sd = (G.st && G.st.s3dust) || [];
+    for (const id of C.def.s3dustHot || []) { const h = (C.def.hotspots || []).find(q => q.id === id); if (h && !sd.includes(C.def.id + ':h:' + id)) out.push([h.rect[0] + h.rect[2] / 2, h.rect[1] + h.rect[3] / 2]); }
+    for (const it of C.items) if (it.targets) out.push(...it.targets());   // 갈대밭: 별·떨어진 카드 조각
+    return out;
+  }
+  const BANDS = [[260, 0.45], [620, 0.9], [1100, 1.7]];
+  function handTick(x, y) {
+    if (!C.hand || !C.hand.isConnected) C.hand = handMake(); if (!C.hand) return;
+    let d = 1e9, best = null; for (const t of targets()) { const q = Math.hypot(t[0] - x, t[1] - y); if (q < d) { d = q; best = t; } }
+    let b = BANDS.findIndex(q => d < q[0]); if (b < 0) b = 9;
+    if (b === C.band) return;
+    const closer = b < C.band; C.band = b;
+    C.hand.classList.toggle('on', b < 9); C.hand.style.setProperty('--xp-blink', (b < 9 ? BANDS[b][1] : 2) + 's');
+    if (closer && b < 9) {
+      G.audio.sfx('sfx_ibell', 0.12 + (2 - b) * 0.08, 1 + (2 - b) * 0.12);
+      if (b === 0 && best && G.level() === 'easy' && !quiet(C.V)) G.pfx.play('snap_twinkle', { world: true, parent: C.V.fx, x: best[0], y: best[1], z: 9000, scale: 1.6, times: 2 });   // 결정 D7: 쉽게면 가까울 때 그 자리를 반짝여 알려 줌
+    }
+  }
+
+  // ---- 발견하는 순간 (I21) ----
+  X.found = (V, x, y, big) => {
+    if (!V || V.gone) return;
+    G.audio.sfx('sfx_chime', 0.45, big ? 0.85 : 1.15);
+    if (C && C.hand && C.hand.isConnected && C.hand.animate) C.hand.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 500, delay: 250 });
+    if (quiet(V)) return;   // 움직임 줄이기·가벼운 모드: 소리만
+    G.busy++; setTimeout(() => { G.busy--; }, big ? 1400 : 400);   // 잠깐 멈춤(누르기만 막음)
+    const z0 = V.cam.z, zz = z0 * (big ? 1.1 : 1.05);
+    G.tween(z0, zz, 0.18, (z) => { if (!V.gone) V.setCam(V.cam.x, V.cam.y, z); }).then(() => G.wait(big ? 1 : 0.22)).then(() => G.tween(zz, z0, 0.35, (z) => { if (!V.gone) V.setCam(V.cam.x, V.cam.y, z); }));
+    const s = V.spr.hero, e = s && (s.stand || s.img); if (e && e.animate && e.style.visibility !== 'hidden') e.animate([{ translate: '0 0' }, { translate: '0 -16px' }, { translate: '0 0' }], { duration: 320, easing: 'ease-out' });
+    if (big && V.fx) G.pfx.play('star_burst', { world: true, parent: V.fx, x, y, z: 9000, scale: 1.8 });
+  };
+
+  // ---- 장면 들어갈 때·나갈 때 ----
+  X.enter = (V, def) => {
+    X.leave();
+    if (!def || !def.explore || !def.roam) return;
+    C = { V, def, items: [], last: 0, hand: null, band: -1, mo: null };
+    for (const n of def.near || []) {
+      if (n.until && done(n.until)) continue;
+      const mk = MAKE[n.act]; const it = mk && mk(V, n); if (it) { it.n = n; it.in = false; it.t = -1e9; C.items.push(it); }
+    }
+    // 별가루를 얻는 순간: p4·별 3~6이 모두 장면 판에 '.p4-dust-pop'을 붙임 → 그걸 보고 연출(별 js를 고치지 않음)
+    if (window.MutationObserver) { C.mo = new MutationObserver((ms) => { for (const m of ms) for (const a of m.addedNodes) if (a.classList && a.classList.contains('p4-dust-pop')) X.found(V, parseFloat(a.style.left), parseFloat(a.style.top) + 70, false); }); C.mo.observe(V.fx, { childList: true }); }
+    const prev = V.onStep; V.onStep = (x, y) => { if (prev) prev(x, y); X.step(x, y); };
+    const d0 = V.dispose; V.dispose = () => { X.leave(); if (d0) d0(); };
+    const h = V.spr.hero && V.spr.hero.rect; if (h) { C.last = 0; X.step(h[0] + h[2] / 2, h[1] + h[3] - 18, true); }
+    // 카메라만 움직일 때(대사 카메라·별 연출)도 화면 둘레 갈대를 채움: 걸음이 없을 때 0.5초에 한 번
+    C.cam = setInterval(() => { if (!C || C.V.gone) return; const v = C.V.view; const k = v ? v.join() : ''; if (k !== C.vk) { C.vk = k; for (const it of C.items) if (it.sync) it.sync(); } }, 500);
+  };
+  X.step = (x, y, first) => {
+    if (!C || C.V.gone) return;
+    for (const it of C.items) if (it.live) { if (first) it.sync(); else it.step(C.V, x, y); }   // 갈대처럼 걸음마다 움직이는 것
+    const t = now(); if (!first && t >= C.last && t - C.last < 250) return; C.last = t;   // 시계가 뒤로 가면(시험 가짜 시계) 거르지 않음
+    if (!first) for (const it of C.items) {
+      if (it.dead || it.live) continue;
+      if (it.until && done(it.until)) { it.dead = true; if (it.kill) it.kill(); continue; }
+      const inside = Math.hypot(it.at[0] - x, it.at[1] - y) < it.r;
+      if (inside && !it.in && t - it.t > (it.cool || 0) * 1000 && !G.dialog.active) { it.t = t; it.go(C.V, x, y); if (it.once) it.dead = true; }
+      it.in = inside; if (it.tick) it.tick(C.V, inside);
+    }
+    for (const it of C.items) if (it.slow) it.slow(C.V, x, y, first);   // 갈대밭: 만남·하랑 따라오기(0.25초에 한 번)
+    handTick(x, y);
+  };
+  X.leave = () => {
+    if (!C) return; const c = C; C = null;
+    if (c.mo) c.mo.disconnect(); clearInterval(c.cam);
+    for (const it of c.items) if (it.kill) it.kill();
+    if (c.hand) c.hand.remove();
+  };
+  X.item = (act) => C && C.items.find(i => i.n.act === act);
+  X.state = () => C && { items: C.items.map(i => ({ act: i.n.act, dead: !!i.dead, in: i.in, ...(i.state ? i.state() : {}) })), band: C.band };   // QA용
+  return X;
+})();
+
+/* ---- reedfield.js ---- */
+// 11/7 탐험 1단계: 별 3 갈대밭(s3reeds) — 선생님 결정판 N1kiht6VRmWhJKQrARug5k(plan/reed1107) 제출 그대로
+//  Q1 하랑이네 앞 강 건너 연못 서쪽 들판(다리로 감) · Q2 1.5배 넓이 · Q3 주인공 둘레만 갈라지고 나머지는 바람에 살랑 · Q9 허리까지 가려지고 흐린 몸이 보임
+//  Q4 걷다 만나는 것: 개구리·참새·잠자리·하랑 그림 카드 조각 · Q5 모두 무작위(걷는 동안 가끔, 너무 잦지 않게)
+//  Q6 하랑 그림 카드 + 손등 별무늬, 하랑이 가끔 화살표 카드로 알려 줌, '쉽게'면 별 쪽으로 빛 발자국 · Q7 하랑이 함께 찾다가 직접 꺼냄
+//  그림·자리는 도구/탐험/reedfield.py가 만든 장면 json `field` 칸. 그리기는 explore.js의 조각 판(PixiJS 판이면 그 판, 아니면 DOM)
+G.reedField = (() => {
+  const F = {};
+  const SC = 's3reeds';
+  F.on = () => !!(G.D.scenes[SC] && G.D.scenes[SC].field && G.scene.isBusy);
+  // 하랑이네 갈대 → 갈대밭: 지금 흐름(누른 곳)이 끝나면 어두워지며 들어감
+  F.pending = false;   // 들어가기를 기다리는 중(이때는 '지금 할 일' 안내를 말하지 않음)
+  F.go = (boat) => new Promise((res) => {   // boat: 11/8 나루터에서 바우 아저씨 배로 건너감
+    const g = G.gen; F.pending = true;
+    const t = setInterval(async () => {
+      if (g !== G.gen) { clearInterval(t); F.pending = false; return res(false); }
+      if (G.scene.isBusy() || G.busy > 0 || G.dialog.active) return;
+      clearInterval(t); G.$('#fade').classList.add('on'); await G.wait(0.45); if (g !== G.gen) { F.pending = false; return res(false); }
+      if (boat) { G.audio.sfx('sfx_wind', 0.3, 0.7); await G.wait(G.fast() ? 0.1 : 1.1); if (g !== G.gen) { F.pending = false; return res(false); } }   // 노 젓는 동안 잠깐 어둠
+      F.pending = false; await G.scene.enter(SC); res(true);
+    }, 120);
+  });
+  let Z = null;   // 지금 갈대밭 { V, ... } (QA용 F.state)
+
+  F.make = (V, def, T) => {
+    const f = def.field, K = V.K || 1, st = G.st;
+    const P = T.pieces(V, f.sheet), CELL = 200, grid = new Map();
+    const key = (x, y) => (Math.floor(x / CELL)) + ',' + (Math.floor(y / CELL));
+    let starP = null;
+    for (const [x, y, k, fl, ci] of f.list) {
+      const [sx, sy, w, h, rt] = f.kinds[k], rf = fl ? (w - rt) / w : rt / w;
+      const o = P.add({ x: x - rf * w, y: y - h + 4, w, h, fc: [sx, sy], fm: [sx + f.cell[0], sy], ox: rf, z: y, flip: !!fl, sway: true, rx: x, ry: y, ci });
+      const kk = key(x, y); if (!grid.has(kk)) grid.set(kk, []); grid.get(kk).push(o);
+      if (ci === f.starClump && !starP) starP = o;
+    }
+    const near = (x, y, r) => { const out = []; const a = Math.floor((x - r) / CELL), b = Math.floor((x + r) / CELL), c = Math.floor((y - r) / CELL), d = Math.floor((y + r) / CELL);
+      for (let i = a; i <= b; i++) for (let j = c; j <= d; j++) { const L = grid.get(i + ',' + j); if (L) for (const o of L) out.push(o); } return out; };
+    const STAR = f.star, MAX = 16, RR = 92;
+    const Zs = Z = { V, P, pieces: (st.reedPieces || 0), enc: 0, encT: performance.now() + 2500, cool: 4, lastXY: null, hw: false, hintT: performance.now() + 9000, found: false, cards: [], trail: [], trailT: 0 };
+    Zs.pieces = Math.min(3, (G.st.reedPieces = G.st.reedPieces || 0));
+    const live = new Set(); let vk = '', rustleT = 0;
+    // ---- 흐린 주인공(갈대 뒤에서도 보이게): 주인공 그림을 그대로 따라 그림 ----
+    const ghost = G.el('div', 'xp-ghost scene-walker', V.chars); ghost.style.zIndex = 99990; ghost.style.display = 'none';
+    let hw = null;
+    const ghostSync = () => {
+      if (!hw || !hw.isConnected) hw = [...V.chars.querySelectorAll(':scope > .scene-walker:not(.xp-ghost):not(.xp-critter)')].find(e => /walk_hero/.test(e.style.backgroundImage)) || null;
+      const s = hw && hw.style.display !== 'none' ? hw.style : null, hs = V.spr.hero;
+      if (s) { ghost.style.display = ''; for (const k of ['left', 'top', 'width', 'height', 'backgroundImage', 'backgroundSize', 'backgroundPosition']) if (ghost.style[k] !== s[k]) ghost.style[k] = s[k]; return; }
+      const im = hs && (hs.stand && hs.stand.style.display !== 'none' ? hs.stand : hs.img);
+      if (!im || im.style.visibility === 'hidden' || im.style.display === 'none') { ghost.style.display = 'none'; return; }
+      ghost.style.display = '';
+      if (im.tagName === 'IMG') { const r = hs.rect; Object.assign(ghost.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px', backgroundImage: `url("${im.src}")`, backgroundSize: `${r[2]}px ${r[3]}px`, backgroundPosition: '0px 0px' }); }
+      else for (const k of ['left', 'top', 'width', 'height', 'backgroundImage', 'backgroundSize', 'backgroundPosition']) ghost.style[k] = im.style[k];
+    };
+    const gt = setInterval(() => { if (!V.gone) ghostSync(); }, 250);
+    // ---- 모은 카드 조각(왼쪽 위, 손등 아래) ----
+    const hud = G.$('#hud'), pc = hud ? G.el('div', 'xp-pieces', hud) : null;
+    const pcs = pc ? [0, 1, 2].map(i => { const e = G.el('i', i < Zs.pieces ? 'on' : '', pc); Object.assign(e.style, { left: (i * 33.3) + '%', backgroundImage: `url("${G.asset(f.card)}")`, backgroundPosition: `${i * 50}% 0` }); return e; }) : [];
+    if (pc) pc.setAttribute('aria-label', `카드 조각 ${Zs.pieces}개`);
+
+    const it = {
+      at: [0, 0], r: 0, live: true,
+      sync: () => { P.sync(); ghostSync(); },
+      state: () => ({ pieces: Zs.pieces, enc: Zs.enc, found: Zs.found, n: P.list.length, shown: P.list.filter(o => o.el || (o.sp && o.sp.visible)).length, live: live.size }),
+      targets: () => { const out = []; if (!Zs.found && !T.done('s3h_star')) out.push([STAR[0], STAR[1] - 30]); for (const c of Zs.cards) out.push([c.x, c.y]); return out; },
+      // 걸음마다: 화면 둘레 갈대 맞추기, 주인공 둘레 갈대 가르기(옆으로 눕고 멀어지면 출렁이며 제자리)
+      step(V, hx, hy) {
+        const v = V.view, k = v ? Math.round(v[0] / 40) + ',' + Math.round(v[1] / 40) + ',' + Math.round((v[2] - v[0]) / 40) : ''; if (k !== vk) { vk = k; P.sync(); }
+        ghostSync();
+        const still = T.quiet(V), now = performance.now(), cur = new Set();
+        for (const o of near(hx, hy, RR + 10)) {
+          const d = Math.hypot(hx - o.rx, (hy - o.ry) * 1.7); if (d >= RR) continue;
+          cur.add(o); const s = 1 - d / RR, dir = o.rx >= hx ? 1 : -1;
+          if (!live.has(o) && now - rustleT > 280) { rustleT = now; G.audio.sfx('sfx_wind', 0.18, 1.5 + Math.random() * 0.3); }
+          if (!still) P.lean(o, -MAX * Math.min(1, s * 1.4) * dir);
+        }
+        for (const o of live) if (!cur.has(o)) { if (!still) P.wobble(o, o.sk); else P.lean(o, 0); }
+        live.clear(); for (const o of cur) live.add(o);
+      },
+      // 0.25초에 한 번: 만남·하랑 따라오기·화살표 카드·카드 조각 줍기·별 찾기·쉽게 빛 발자국
+      slow(V, x, y, first) {
+        if (first || V.gone) return;
+        const now = performance.now(), moved = Zs.lastXY ? Math.hypot(x - Zs.lastXY[0], y - Zs.lastXY[1]) : 0; Zs.lastXY = [x, y];
+        const free = !G.dialog.active && G.busy === 0 && !Zs.found;
+        // 카드 조각 줍기
+        for (const c of Zs.cards.slice()) if (Math.hypot(c.x - x, (c.y - y) * 1.3) < 62 && free) pick(c);
+        // 별: 가까이 오면 하랑이 먼저 알아챔
+        if (free && !T.done('s3h_star') && Math.hypot(x - STAR[0], (y - STAR[1]) * 1.4) < 150) { foundStar(); return; }
+        // 무작위 만남: 갈대 속을 걷는 중에만, 쉬는 틈(3.5~6초)이 지난 뒤 가끔
+        if (free && moved > 12 && now > Zs.encT && near(x, y, 80).some(o => Math.hypot(o.rx - x, (o.ry - y) * 1.6) < 80) && Math.random() < 0.17) encounter(x, y, moved);
+        // 하랑: 멀어지면 따라옴
+        follow(x, y);
+        // 화살표 카드: 하랑이 곁에 있고 한참 못 찾으면 가끔
+        if (free && now > Zs.hintT && !Zs.hw && harangNear(x, y) < 330) { Zs.hintT = now + 16000 + Math.random() * 6000; arrow(); }
+        // '쉽게': 별 쪽으로 빛 발자국(4초마다 다시)
+        if (G.level() === 'easy' && !Zs.found && now > Zs.trailT) { Zs.trailT = now + 4000; trail(x, y); }
+      },
+      kill() { clearInterval(gt); ghost.remove(); if (pc) pc.remove(); for (const c of Zs.cards) c.el.remove(); Zs.trail.forEach(e => e.remove()); P.kill(); if (Z === Zs) Z = null; }
+    };
+
+    // ---- 만남 ----
+    const WEI = { frog: 3, sparrow: 2, dfly: 2, card: 3 };
+    function encounter(x, y, moved) {
+      const now = performance.now(); Zs.encT = now + 3500 + Math.random() * 2500; Zs.enc++;
+      const canCard = Zs.pieces + Zs.cards.length < 3 && Zs.cards.length === 0 && Zs.enc > 1;
+      let w = Object.entries(WEI).filter(([k]) => k !== 'card' || canCard);
+      if (canCard && (Zs.sinceCard = (Zs.sinceCard || 0) + 1) >= 4) w = [['card', 1]];   // 네 번째 만남까지 조각이 없으면 조각
+      let r = Math.random() * w.reduce((a, b) => a + b[1], 0), kind = w[0][0]; for (const [k, v] of w) { if ((r -= v) < 0) { kind = k; break; } }
+      if (kind === 'card') Zs.sinceCard = 0;
+      // 나올 자리: 걸어가는 쪽 앞 갈대 뿌리(없으면 둘레)
+      const L = Zs.prev ? [x - Zs.prev[0], y - Zs.prev[1]] : [1, 0]; Zs.prev = [x, y];
+      const n = Math.hypot(L[0], L[1]) || 1, ax = x + L[0] / n * 120, ay = y + L[1] / n * 70;
+      const cand = near(ax, ay, 140).filter(o => Math.hypot(o.rx - x, o.ry - y) > 70); const o = cand[Math.floor(Math.random() * cand.length)] || { rx: ax, ry: ay };
+      ({ frog, sparrow, dfly, card })[kind](o.rx, o.ry, x, y);
+    }
+    function frog(fx, fy, hx, hy) {
+      const V = Zs.V, away = fx >= hx ? 1 : -1, e = T.bug(V, 0, fx, fy, away < 0);
+      G.audio.sfx('sfx_kung', 0.22, 1.9);
+      const fl = away < 0 ? ' scaleX(-1)' : '';
+      if (T.quiet(V) || !e.animate) { setTimeout(() => e.remove(), 900); return; }
+      (async () => {
+        await T.fly(e, [{ transform: 'translate(0,14px)' + fl, opacity: 0 }, { transform: 'translate(0,0)' + fl, opacity: 1 }], 220);
+        await G.wait(0.35); let tx = 0, ty = 0;
+        for (let i = 0; i < 3 && e.isConnected; i++) {
+          e.style.backgroundPosition = '-72px 0px'; G.audio.sfx('sfx_tap', 0.12, 1.8);
+          const dx = away * (70 + Math.random() * 40), dy = (Math.random() - 0.4) * 50;
+          await T.fly(e, [{ transform: `translate(${tx}px,${ty}px)` + fl }, { transform: `translate(${tx + dx / 2}px,${ty + dy / 2 - 42}px)` + fl }, { transform: `translate(${tx + dx}px,${ty + dy}px)` + fl }], 380, 'linear');
+          tx += dx; ty += dy; e.style.backgroundPosition = '0px 0px'; await G.wait(0.18);
+        }
+        await T.fly(e, [{ transform: `translate(${tx}px,${ty}px)` + fl, opacity: 1 }, { transform: `translate(${tx}px,${ty + 10}px)` + fl, opacity: 0 }], 300); e.remove();
+      })();
+    }
+    function sparrow(bx, by, hx) {
+      const V = Zs.V, B = [0, 1, 2].map(i => T.critter(V, 'sparrow', bx + (i - 1) * 30, by + (i % 2 ? -10 : 8), i % 2 ? 'SW' : 'SE'));
+      setTimeout(() => T.flock(V, B, hx), 60);
+    }
+    function dfly(bx, by, hx, hy) {
+      const V = Zs.V, e = T.bug(V, 2, hx, hy + 6, false); e.style.zIndex = 99980;   // 하늘을 나니 갈대 위
+      G.audio.sfx('sfx_wind', 0.12, 2.2);
+      if (T.quiet(V) || !e.animate) { setTimeout(() => e.remove(), 1200); return; }
+      const sx = STAR[0] - hx, sy = STAR[1] - hy, sn = Math.hypot(sx, sy) || 1, ex = sx / sn * Math.min(520, sn), ey = sy / sn * Math.min(520, sn);
+      const pts = [[-90, -120], [-30, -150], [50, -130], [80, -95], [20, -80], [-60, -105]].map(([a, b]) => ({ transform: `translate(${a}px,${b}px)` }));
+      T.fly(e, [{ transform: 'translate(-140px,-170px)', opacity: 0 }, ...pts, { transform: `translate(${ex * .5}px,${ey * .5 - 110}px)`, opacity: 1 }, { transform: `translate(${ex}px,${ey - 90}px)`, opacity: 0 }], 3200, 'ease-in-out').then(() => e.remove());
+    }
+    function card(cx, cy) {
+      const V = Zs.V, e = G.el('img', 'xp-cardp', V.chars); e.src = G.art('card_blank') || G.asset('assets/ui/art/card_blank.png'); e.alt = '카드 조각';
+      Object.assign(e.style, { position: 'absolute', left: (cx - 22) + 'px', top: (cy - 40) + 'px', width: '44px', height: '44px', zIndex: Math.round(cy), transform: 'rotate(-12deg)', pointerEvents: 'none' });
+      const c = { el: e, x: cx, y: cy - 12 }; Zs.cards.push(c);
+      G.audio.sfx('sfx_page', 0.4, 1.2);
+      if (!T.quiet(V)) { G.pfx.play('snap_twinkle', { world: true, parent: V.fx, x: cx, y: cy - 30, z: 9000, scale: 1.4, times: 2 }); if (e.animate) e.animate([{ transform: 'translateY(-90px) rotate(30deg)', opacity: 0 }, { transform: 'translateY(0) rotate(-12deg)', opacity: 1 }], { duration: 650, easing: 'ease-out' }); }
+    }
+    async function pick(c) {
+      const V = Zs.V; Zs.cards.splice(Zs.cards.indexOf(c), 1); c.el.remove();
+      Zs.pieces = G.st.reedPieces = Math.min(3, (G.st.reedPieces || 0) + 1); G.save.write();
+      if (pcs[Zs.pieces - 1]) pcs[Zs.pieces - 1].classList.add('on'); if (pc) pc.setAttribute('aria-label', `카드 조각 ${Zs.pieces}개`);
+      T.found(V, c.x, c.y, false);
+      const g = G.gen;
+      if (Zs.pieces === 1) { await G.wait(0.5); if (g === G.gen && !V.gone) await G.dialog.play(['WD04_rumi_42']); }
+      else if (Zs.pieces === 3) {   // 다 모으면 별 자리 그림이 크게
+        await G.wait(0.5); if (g !== G.gen || V.gone) return;
+        const big = hud && G.el('img', 'xp-bigcard', hud); if (big) { big.src = G.asset(f.card); big.alt = '하랑이 그림: 큰 바위 옆 작은 연못가 갈대 속 별'; }
+        G.audio.sfx('sfx_sparkle', 0.6);
+        await G.dialog.play(['WD04_rumi_43']); if (big) { if (big.animate) await big.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400 }).finished.catch(() => { }); big.remove(); }
+      }
+    }
+    // ---- 하랑: 따라 걷기·화살표 카드 ----
+    const hfoot = () => { const s = V.spr.harang; if (!s) return null; const r = s.rect; return [r[0] + r[2] / 2, r[1] + r[3] - 18]; };
+    const harangNear = (x, y) => { const p = hfoot(); return p ? Math.hypot(p[0] - x, p[1] - y) : 1e9; };
+    const HW = () => ({ sheet: 'assets/chars/walk_harang.png', k: K, fx: 100, fy: 252, foot: 15 * K, minD: 0 });
+    function walkHarang(to, sp) {
+      const s = V.spr.harang, a = hfoot(); if (!s || !a || !V.roamPath) return Promise.resolve();
+      const Pp = V.roamPath(a, to); if (!Pp || Pp.length < 2) return Promise.resolve();
+      let L = 0; for (let i = 1; i < Pp.length; i++) L += Math.hypot(Pp[i][0] - Pp[i - 1][0], Pp[i][1] - Pp[i - 1][1]); if (L < 30) return Promise.resolve();
+      const e = Pp[Pp.length - 1], r0 = s.rect, r = [e[0] - r0[2] / 2, e[1] + 18 - r0[3], r0[2], r0[3]];
+      Zs.hw = true; if (G.scene.hotHide) G.scene.hotHide('harang', true);
+      return V.walkPath('harang', r, { ...HW(), path: Pp }, G.fast() ? 0 : L / (sp || 300)).catch(() => { }).finally(() => { Zs.hw = false; if (!V.gone && G.scene.moveHot) G.scene.moveHot('harang', [r[0] - 8, r[1] - 8, r[2] + 16, r[3] + 16]); if (!V.gone && G.scene.hotHide) G.scene.hotHide('harang', false); });
+    }
+    function follow(x, y) {
+      if (Zs.hw || Zs.found || G.dialog.active) return; const a = hfoot(); if (!a) return;
+      const d = Math.hypot(a[0] - x, a[1] - y); if (d < 230) return;
+      const n = d || 1, to = [x + (a[0] - x) / n * 105, y + (a[1] - y) / n * 60];
+      walkHarang(to, d > 600 ? 420 : 320);
+    }
+    function arrow() {
+      const p = hfoot(); if (!p) return; const s = V.spr.harang, r = s.rect;
+      const ang = Math.atan2((STAR[1] - p[1]) * 0.9, STAR[0] - p[0]) * 180 / Math.PI;
+      const c = G.el('div', 'xp-card', V.fx, `<img src="${G.asset('assets/ui/art/xp_arrow.png')}" alt="">`); c.setAttribute('role', 'img'); c.setAttribute('aria-label', '하랑이의 화살표 카드');
+      Object.assign(c.style, { left: (r[0] + r[2] / 2) + 'px', top: (r[1] - 6) + 'px' }); c.firstChild.style.transform = `rotate(${ang.toFixed(0)}deg)`;
+      G.audio.voice('S93_card_go');
+      if (c.animate && !T.quiet(V)) c.animate([{ transform: 'translateY(16px) scale(.6)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 260, easing: 'ease-out' });
+      setTimeout(() => { if (c.animate && !T.quiet(V)) c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).finished.then(() => c.remove()).catch(() => c.remove()); else c.remove(); }, 2600);
+      Zs.arrows = (Zs.arrows || 0) + 1;
+    }
+    F.arrow = arrow;
+    // '쉽게': 주인공에서 별까지 길(걷는 길 찾기)을 따라 빛 발자국 몇 개
+    function trail(x, y) {
+      Zs.trail.forEach(e => e.remove()); Zs.trail = []; if (!V.roamPath) return;
+      const Pp = V.roamPath([x, y], [STAR[0], STAR[1] + 10]); if (!Pp) return;
+      let acc = 0, left = 7; const out = [];
+      for (let i = 1; i < Pp.length && left > 0; i++) { const [ax, ay] = Pp[i - 1], [bx, by] = Pp[i], L = Math.hypot(bx - ax, by - ay);
+        for (let s = 90 - acc; s < L && left > 0; s += 90) { out.push([ax + (bx - ax) * s / L, ay + (by - ay) * s / L]); left--; } acc = (acc + L) % 90; }
+      for (const [px, py] of out.slice(1)) { const e = G.el('img', 'xp-trail', V.chars); e.src = G.asset('assets/ui/px/trail_dust_glow.png'); e.alt = ''; Object.assign(e.style, { left: px + 'px', top: py + 'px', zIndex: 2 }); Zs.trail.push(e); }
+    }
+    // ---- 별: 하랑이 먼저 알아채고 함께 다가가 직접 꺼냄 ----
+    async function foundStar() {
+      Zs.found = true; const g = G.gen, V = Zs.V; Zs.trail.forEach(e => e.remove()); Zs.trail = [];
+      G.busy++;
+      try {
+        if (!T.quiet(V)) G.pfx.play('snap_twinkle', { world: true, parent: V.fx, x: STAR[0], y: STAR[1] - 50, z: 9000, scale: 1.8, times: 3 });
+        G.audio.sfx('sfx_sparkle', 0.5);
+        await walkHarang([STAR[0] + 70, STAR[1] + 34], 420); if (g !== G.gen || V.gone) return;
+      } finally { G.busy--; }
+      G.scene.tap('harang');   // 하랑 누름과 같은 흐름(G.flows.s3_reeds): 주인공이 하랑 곁으로 → 하랑이 꺼냄 → 별 이야기
+    }
+    it.starClump = () => starP;
+    F.solve = () => { const s = V.spr.hero; if (s) V.walk('hero', [STAR[0] - 60 - s.rect[2] / 2, STAR[1] + 50 + 18 - s.rect[3], s.rect[2], s.rect[3]], 0); Zs.found = false; foundStar(); };   // 교사 바로 풀기·시험
+    // 처음 들어오면 루미가 한마디
+    if (!G.st.seen.includes(SC + ':in')) { G.st.seen.push(SC + ':in'); const g = G.gen; V.ready.then(() => G.wait(0.6)).then(async () => { if (g !== G.gen || V.gone) return; await G.dialog.play(['WD04_rumi_41']); if (g === G.gen && !V.gone) await G.dialog.play(['WD04_harang_41'], { partner: 'harang' }); }); }
+    return it;
+  };
+  F.state = () => Z && { pieces: Z.pieces, enc: Z.enc, found: Z.found, arrows: Z.arrows || 0, cards: Z.cards.length };
+
+  // ---- 갈대밭에서 하랑을 누름(또는 별을 찾아 이어짐) ----
+  G.flows.s3_reeds = async (ctx) => {
+    const { V, g } = ctx, ok = () => g === G.gen && !V.gone, o = { partner: 'harang' };
+    if (ctx.H.def.id === 'bau') {   // 11/8 나루에서 기다리는 바우 아저씨: 찾은 뒤에는 배로 돌아감(지도의 나루터)
+      if (!G.st.done.includes('s3h_star')) { await G.dialog.play(['WD03_bau_42'], { partner: 'bau' }); return; }
+      await G.dialog.play(['WD03_bau_43'], { partner: 'bau' }); if (!ok()) return;
+      const t = setInterval(() => { if (g !== G.gen) return clearInterval(t); if (!G.scene.isBusy() && !G.dialog.active) { clearInterval(t); G.scene.leave(); } }, 120); return;   // 이 흐름이 끝난 뒤 나감(흐름 중에는 leave가 안 됨)
+    }
+    if (G.st.done.includes('s3h_star')) { await G.dialog.play(['WD04_harang_12'], o); return; }
+    if (!Z || !Z.found) { await G.dialog.play(['WD04_harang_42'], o); if (ok() && F.arrow) F.arrow(); return; }   // 아직: 하랑이 화살표 카드로 알려 줌
+    // 찾음: 하랑이 갈대 속에 손을 넣어 별을 꺼냄(선생님 Q7 "하랑이가 함께 찾다가 꺼내기")
+    const f = ctx.S.field, s = Z.P.list.filter(q => q.ci === f.starClump);
+    await G.dialog.play(['WD04_harang_43'], o); if (!ok()) return;
+    s.forEach((q, i) => Z.P.lean(q, (i % 2 ? 1 : -1) * 24)); G.audio.sfx('sfx_wind', 0.4, 1.3);
+    await G.wait(G.fast() ? 0.1 : 0.7); if (!ok()) return;
+    s.forEach(q => Z.P.wobble(q, q.sk));
+    if (G.s3StarRest) await G.s3StarRest(ctx, f.star[0], f.star[1] - 40);   // 별 3 원래 이야기(별 떠오름·루미·하랑 표지·단서·별 얻기·색 되찾기)
+    if (!ok()) return;
+    if (G.st.done.includes('s3h_star') && !G.st.cleared.includes('s3harang')) G.st.cleared.push('s3harang');   // 하랑이네 할 일도 끝남(지도·광장 열림은 하랑이네 기준)
+  };
+  return F;
 })();
 
 /* ---- pzpages.js ---- */
@@ -10180,7 +10685,18 @@ G.s3 = (() => {
   G.flows.s3_dock = async (ctx) => {
     const { S, V, H, g, complete } = ctx, ok = () => g === G.gen, id = H.def.id, o = { partner: 'bau' };
     if (id === 'bauFar') { G.audio.sfx('sfx_wind', 0.15, 1.2); await play(['WD03_bau_01', 'WD03_rumi_02']); return; }
-    if (id === 'bau') { await play(['WD03_bau_04'], o); return; }
+    if (id === 'bau') {
+      // 11/8 선생님: 갈대밭은 나루터 배로 건너감. 하랑이 카드를 주인공이 바우 아저씨께 건네 하랑이 말하게 함 → 배를 타고 갈대밭으로(갈대밭은 하랑과 주인공만)
+      if (G.reedField && G.reedField.on() && done('s3h_reedgo') && !done('s3h_star')) {
+        await play(['WD03_bau_40'], o); if (!ok()) return;
+        await play(['WD04_rumi_45']); if (!ok()) return;
+        const w = await cardsToBau(V); if (!ok() || !w) return;
+        await play(['WD04_harang_44'], { partner: 'harang' }); if (!ok()) return;
+        await play(['WD03_bau_41'], o); if (!ok()) return;
+        G.reedField.go(true); return;
+      }
+      await play(['WD03_bau_04'], o); return;
+    }
     if (id === 'sign') {
       if (done('s3dock_sign')) { await play(['WD03_rumi_08']); return; }
       await play(['WD03_rumi_03', 'WD03_rumi_32', 'WD03_rumi_04']); if (!ok()) return;   // 10/9 개선 6: 퍼즐 까닭
@@ -10498,30 +11014,43 @@ G.s3 = (() => {
     }
     if (id === 'reeds') {
       if (done('s3h_star')) return;
+      if (G.reedField && G.reedField.on()) {   // 11/7 탐험 1단계(plan/reed1107): 넓은 갈대밭으로 들어가 직접 걸으며 찾음
+        // 11/8 선생님: 갈대밭은 강 건너 → 하랑이 그림 카드로 "바우 아저씨, 배, 가자" → 나루터에서 바우 아저씨께 부탁
+        await play(['WD04_rumi_40']); if (!ok()) return;
+        await play(['WD04_harang_40'], o); if (!ok()) return;
+        await play(['WD04_rumi_44']); if (!ok()) return;
+        mark('s3h_reedgo'); return;
+      }
       await play(['WD04_rumi_13']); if (!ok()) return;
       const w = await hold(); if (!ok() || !w) return;
-      const r = H.def.rect, s = G.STARS.find(q => q.id === 'word'), st = G.el('div', 's2-star', V.fx, G.artImg('px_star_piece', 'px') || G.artImg('item_piece_word') || G.starSvg(s));
-      Object.assign(st.style, { left: (r[0] + r[2] / 2) + 'px', top: (r[1] + r[3] / 2) + 'px', width: '150px', height: '150px', filter: 'grayscale(.7)' });
-      await G.tween(0, 1, G.reduced() ? 0.2 : 1.0, k => st.style.transform = `translate(-50%,${-50 - 80 * k}%) scale(${0.4 + 0.6 * k})`, 'out'); if (!ok()) return;
-      await play(['WD04_rumi_14', 'WD04_rumi_15']); if (!ok()) return;
-      { const cv = coverShow(true); await play(['WD04_harang_10'], o); if (ok()) await play(['WD04_rumi_17']); cv.remove(); } if (!ok()) return;   // 10/5 B4: 표지 별과 찾은 별을 나란히
-      if (G.D.dialogues.WD08_ply_01) {   // 10/31 ③: 그날 밤 단서 셋째 조각 — 하랑의 그림 카드에 큰 별 옆 작은 별. 루미는 말없이 오래 봄
-        const cv = G.el('div', 's3-cover', G.$('#closeup'), G.artImg('clue_stars') || G.starSvg(G.STARS.find(q => q.id === 'word')));
-        await play(['WD08_ply_01'], { ...o, keep: true }); if (!ok()) { cv.remove(); return; }
-        G.dialog.close(); await G.story.flicker('blink'); await G.wait(G.fast() ? 0.3 : 1.4); cv.remove(); if (!ok()) return;
-        await G.story.clue(2); if (!ok()) return;
-      }
-      await play(['WD04_harang_11'], o); if (!ok()) return;
-      await play(['WD04_rumi_16']); if (!ok()) return;
-      st.remove();
-      await presentItem('piece_word'); if (!ok()) return;
-      await play(['WD04_harang_12', 'WD04_harang_20'], o); if (!ok()) return;
-      await play(['WD04_rumi_22']); if (!ok()) return;   // 10/9 개선 6: 하랑이 카드로 지름길 안내
-      await colorIn(V); if (!ok()) return;
-      complete('s3h_star');
+      const r = H.def.rect; await starRest(ctx, r[0] + r[2] / 2, r[1] + r[3] / 2); return;
     }
     if (id === 'cardbox') { G.audio.voice('S93_card_' + shuffle(['hi', 'friend', 'star', 'draw'])[0]); }
   };
+  // 별을 찾은 뒤 이야기(갈대 수풀 hold 퍼즐 뒤, 또는 넓은 갈대밭에서 찾은 뒤 reedfield.js가 부름)
+  async function starRest(ctx, x, y) {
+    const { V, g, complete } = ctx, ok = () => g === G.gen && !V.gone, o = { partner: 'harang' };
+    const s = G.STARS.find(q => q.id === 'word'), st = G.el('div', 's2-star', V.fx, G.artImg('px_star_piece', 'px') || G.artImg('item_piece_word') || G.starSvg(s));
+    Object.assign(st.style, { left: x + 'px', top: y + 'px', width: '150px', height: '150px', filter: 'grayscale(.7)' });
+    await G.tween(0, 1, G.reduced() ? 0.2 : 1.0, k => st.style.transform = `translate(-50%,${-50 - 80 * k}%) scale(${0.4 + 0.6 * k})`, 'out'); if (!ok()) return;
+    await play(['WD04_rumi_14', 'WD04_rumi_15']); if (!ok()) return;
+    { const cv = coverShow(true); await play(['WD04_harang_10'], o); if (ok()) await play(['WD04_rumi_17']); cv.remove(); } if (!ok()) return;   // 10/5 B4: 표지 별과 찾은 별을 나란히
+    if (G.D.dialogues.WD08_ply_01) {   // 10/31 ③: 그날 밤 단서 셋째 조각 — 하랑의 그림 카드에 큰 별 옆 작은 별. 루미는 말없이 오래 봄
+      const cv = G.el('div', 's3-cover', G.$('#closeup'), G.artImg('clue_stars') || G.starSvg(G.STARS.find(q => q.id === 'word')));
+      await play(['WD08_ply_01'], { ...o, keep: true }); if (!ok()) { cv.remove(); return; }
+      G.dialog.close(); await G.story.flicker('blink'); await G.wait(G.fast() ? 0.3 : 1.4); cv.remove(); if (!ok()) return;
+      await G.story.clue(2); if (!ok()) return;
+    }
+    await play(['WD04_harang_11'], o); if (!ok()) return;
+    await play(['WD04_rumi_16']); if (!ok()) return;
+    st.remove();
+    await presentItem('piece_word'); if (!ok()) return;
+    await play(['WD04_harang_12', 'WD04_harang_20'], o); if (!ok()) return;
+    await play(['WD04_rumi_22']); if (!ok()) return;   // 10/9 개선 6: 하랑이 카드로 지름길 안내
+    await colorIn(V); if (!ok()) return;
+    complete('s3h_star');
+  }
+  G.s3StarRest = starRest;
   // 10/5 기획 리뷰 B4: 하랑이 카드 책 표지 (#closeup: 대사 창 아래 층이라 [다음]을 누를 수 있음)
   // 10/31 1부 이야기 살리기 ②: 루미가 재촉하자 하랑이 카드 상자를 두고 갈대 쪽으로 가 버림 → 학생이 상자를 끌어다 하랑에게 돌려줌
   function harangLeaves(S, V, hs) {
@@ -10542,6 +11071,24 @@ G.s3 = (() => {
       const give = async () => { if (fin) return; fin = true; tip.remove(); tgt.remove(); G.help.off(); G.audio.sfx('sfx_page', 0.6); spark(box, 10); box.remove();
         try { await go(far, home, 1.6); } catch (_) { }
         if (hs) hs.style.transform = 'scaleX(-1)'; res(ok()); };
+      G.p4.dragTo(box, () => fin ? [] : [tgt], give, { tap: true });
+      G.help.set({ l1: () => tip.classList.add('on'), l2: () => box.classList.add('s3-hint'), l3: () => { box.classList.add('s3-hint'); tgt.classList.add('s3-hint'); }, clear: () => { box.classList.remove('s3-hint'); tgt.classList.remove('s3-hint'); } });
+    });
+  }
+  // 11/8 나루터: 하랑이 내민 카드 석 장(갈대·배·가자)을 주인공이 끌어다 바우 아저씨께 건넴(누르기로도 됨)
+  function cardsToBau(V) {
+    return new Promise((res) => {
+      const g = G.gen, ok = () => g === G.gen; G.dialog.close();
+      const hr = V.spr.harang && V.spr.harang.rect, br = V.spr.bau && V.spr.bau.rect;
+      if (!hr || !br) return res(true);
+      const bw = 120, box = G.el('div', 's3-dragbox s3-cards3', V.fx, ['reed', 'boat', 'go'].map((k, i) => `<img src="${cardImg(k)}" alt="${cardWord(k)}" style="transform:rotate(${(i - 1) * 12}deg)">`).join(''));
+      box.setAttribute('aria-label', '하랑이 카드');
+      Object.assign(box.style, { left: (hr[0] + hr[2] / 2 - bw / 2) + 'px', top: (hr[1] - bw * 0.7) + 'px', width: bw + 'px', height: bw + 'px' });
+      if (box.animate && !G.reduced()) box.animate([{ transform: 'translateY(30px) scale(.6)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 400, easing: 'ease-out' });
+      const tgt = G.el('div', 's3-droptgt', V.fx); Object.assign(tgt.style, { left: br[0] + 'px', top: br[1] + 'px', width: br[2] + 'px', height: br[3] + 'px' });
+      const tip = G.el('div', 's3-wtip s3-boxtip', G.$('#overlay'), '하랑이 카드를 바우 아저씨께 건네주어요');
+      let fin = false;
+      const give = () => { if (fin) return; fin = true; tip.remove(); tgt.remove(); G.help.off(); G.audio.sfx('sfx_page', 0.6); spark(box, 10); box.remove(); res(ok()); };
       G.p4.dragTo(box, () => fin ? [] : [tgt], give, { tap: true });
       G.help.set({ l1: () => tip.classList.add('on'), l2: () => box.classList.add('s3-hint'), l3: () => { box.classList.add('s3-hint'); tgt.classList.add('s3-hint'); }, clear: () => { box.classList.remove('s3-hint'); tgt.classList.remove('s3-hint'); } });
     });
@@ -15387,8 +15934,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-11-07)';
-G.BUILT = '2026-11-07 23:10';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-11-08)';
+G.BUILT = '2026-11-08 13:20';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
