@@ -1498,7 +1498,7 @@ G.mapView = (parent, o = {}) => {
   }
   function occlude(w) {
     const D = V.depth, cv = w.occ;
-    if (!D || !w.el.isConnected || w.el.style.display === 'none') { cv.style.display = 'none'; w.hid = false; return; }
+    if (!D || w.noOcc || !w.el.isConnected || w.el.style.display === 'none') { cv.style.display = 'none'; w.hid = false; return; }   // 11/8 noOcc: 땅에 깔린 것(점자블록)
     if (!V.inCam(w.x, w.y, 300)) { cv.style.display = 'none'; w.hid = false; w.occLater = true; occFree(w); return; }   // 10/16 휴대폰 끊김: 화면 밖 인물은 가림 계산을 미룸(화면에 들어오면 V.cull이 다시)
     w.occLater = false;
     const a = (w.age || 1) * (M.charK || 1), fx = Math.round(w.x), fy = Math.round(w.y), x0 = fx - 50 * a, y0 = fy - 125 * a;   // 10/15: 줄어든 인물은 발 둘레의 더 좁은 땅을 봄
@@ -1970,7 +1970,7 @@ const pxMapWorld = (V, X, root) => {
     let uv = [-bp[0] / bs[0], -bp[1] / bs[1], (-bp[0] + 100) / bs[0], (-bp[1] + 130) / bs[1]], cx = 0, cy = 0, cw = 100, ch = 130;
     // 10/30 메모리 예산 2단계: 빈칸 자른 묶음 그림(mapview w.at, data/atlas.json)이면 칸 안 그림 네모만 그 자리에
     if (w.at) { const A = w.at, f = A.f[(w.r ?? 0) * A.n + (w.c ?? 0)], q = A.s; if (f) { cx = f[2] * q; cy = f[3] * q; cw = f[4] * q; ch = f[5] * q; uv = [f[0] / A.w, f[1] / A.h, (f[0] + f[4]) / A.w, (f[1] + f[5]) / A.h]; } else { cw = ch = 0; uv = [0, 0, 0, 0]; } }
-    const o = occOf(Math.round(x), Math.round(y), s), bx = x - 50 * s + cx * s, by = y - 125 * s + cy * s;
+    const o = w.noOcc ? null : occOf(Math.round(x), Math.round(y), s), bx = x - 50 * s + cx * s, by = y - 125 * s + cy * s;
     if (hero) { K.setTex(m.ring, ringT()); K.rect(m.ring, x - 72 * mk, y - 26 * mk, 144 * mk, 52 * mk); m.ring.zIndex = key + .1; }
     // 발 그림자: 두 발 자리(feet, 인라인 자리) 또는 둥근 그림자(가운데 56x20). 기준점은 발(0,0)
     const feet = w.sh.classList.contains('feet'), sl = feet ? pxNum(hs.left) : -28, st = feet ? pxNum(hs.top) : -10, sw = feet ? pxNum(hs.width) : 56, sh2 = feet ? pxNum(hs.height) : 20;
@@ -7211,7 +7211,7 @@ G.p4 = (() => {
     return tiles;
   }
   function mapStamp(V, src, x, y) {
-    const w = V.walker(src); w.draw = () => { };
+    const w = V.walker(src); w.draw = () => { }; w.noOcc = true;   // 11/8 땅에 깔린 블록: 가림 셈 빼기(건물 앞에서 흐려지지 않게, 감사 23_ R1)
     Object.assign(w.spr.style, { backgroundSize: '100px 130px', backgroundPosition: '0px 0px', clipPath: '' });
     w.sh.style.opacity = '0'; w.el.style.pointerEvents = 'none'; w.el.classList.add('acc-tile');
     w.put = (px, py) => { w.set(px, py); w.el.style.zIndex = 2; };   // 앞뒤 순서는 늘 땅바닥(2): 사람은 늘 블록 위, 가로등은 깊이 그림으로 블록을 가림
@@ -15935,7 +15935,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-11-08)';
-G.BUILT = '2026-11-08 13:20';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-11-08 18:42';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
