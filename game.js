@@ -4083,7 +4083,7 @@ G.map = (() => {
   // ---- 배경 주민 (GDD 8장): 단계마다 걷는 속도·멈춤·한숨 구름 ----
   function makeVillager(d, stage) {
     const w = V.walker(d.sheet, 'villager');
-    const pts = d.path; w.set(pts[0][0], pts[0][1]);
+    const U = useOf(d.id), pts = U ? usePath(d.path, U) : d.path, stand = U && pts[U.at + U.go.length]; w.set(pts[0][0], pts[0][1]);   // 11/8 탐험 2단계(결정판 plan/wake1108 W3): 별을 올린 뒤엔 바뀐 물건을 지나는 길
     const sigh = G.el('div', 'sigh', w.el, G.artImg('sigh') || '<svg viewBox="0 0 40 26"><path d="M8 20a7 7 0 0 1 2-13 9 9 0 0 1 17-1 7 7 0 0 1 5 14z" fill="#d9dcea" stroke="#6b7090" stroke-width="2"/></svg>');
     const hit = G.el('button', 'whit', V.fx); hit.type = 'button'; hit.style.zIndex = 2995;   // 10/1 선생님: 장소 위를 걸어도 주민이 먼저 눌리게 (장소 단추 2990보다 위)
     const set0 = w.set; w.set = (x, y) => { set0(x, y); hit.style.transform = w.el.style.transform; }; w.set(w.x, w.y); hit.setAttribute('aria-label', G.D.dialogues[d.line]?.name || '마을 사람');
@@ -4108,14 +4108,15 @@ G.map = (() => {
       if (gift && G.p4.villagerHas(d.id)) { bub = true; await G.p4.villagerDust(d.id, w.el, V.fx, w.x, w.y - 120); gift.remove(); bub = null; }
     });
     const speed = G.D.mood.speed[stage];
-    const v = { w, hit, i: 1, step: 1, pause: Math.random() * 2, look: 0, sighT: Math.random() * 4 };
+    const v = { w, hit, pts, i: 1, step: 1, pause: Math.random() * 2, look: 0, sighT: Math.random() * 4 };
     v.update = (dt) => {
+      if (v.hold) return;   // 11/8 깨어남 장면이 이 주민을 움직이는 동안
       if (stage === 0) { v.sighT += dt; sigh.classList.toggle('on', (v.sighT % 7) < 2.4); sigh.classList.toggle('l', w.dir === 'SW' || w.dir === 'NW'); }   // 10/1 한숨은 입 옆에서 (보는 쪽)
       // 10/10 A2: 주인공이 가까이 오면 걸음을 멈추고 돌아보며 고개를 끄덕 (움직임 줄이기면 안 함)
       if (hero && !bub && !G.reduced() && !(G.settings && G.settings.light)) {
         const dh = Math.hypot(hero.x - w.x, hero.y - w.y);
-        if (dh < 170 && !v.greet) { v.greet = true; w.greet = performance.now() + 150; v.pause = Math.max(v.pause, 1.6); }
-        else if (dh > 260) v.greet = false;
+        if (dh < 170 && !v.greet) { v.greet = true; w.greet = performance.now() + 150; v.pause = Math.max(v.pause, 1.6); if (U) useBubble(w, U, true); }
+        else if (dh > 260 && v.greet) { v.greet = false; if (U) useBubble(w, U, false); }
         if (v.greet && v.pause > 0) w.face(hero.x - w.x, hero.y - w.y);
       }
       if (v.pause > 0) {
@@ -4129,12 +4130,103 @@ G.map = (() => {
         if (d.pingpong) { if (v.i + v.step < 0 || v.i + v.step >= pts.length) v.step *= -1; v.i += v.step; }
         else v.i = (v.i + 1) % pts.length;
         v.pause = stage === 0 ? (Math.random() < 0.7 ? 1.5 + Math.random() * 2.5 : 0) : (Math.random() < 0.3 ? 0.8 + Math.random() : 0);
+        if (tgt === stand) { v.pause = U.sec; w.face(U.spot[0] - w.x, U.spot[1] - w.y); w.frame = 8; w.draw(); }   // 바뀐 물건 앞에서 잠깐 멈춰 그쪽을 봄
         return;
       }
       w.set(w.x + dx / dist * mv, w.y + dy / dist * mv); w.face(dx, dy);
       w.walkT = (w.walkT || 0) + dt; w.frame = Math.floor(w.walkT * (4 + speed * 0.03)) % 8; w.draw();
     };
     return v;
+  }
+
+  // ---- 11/8 탐험 2단계 ①(결정판 plan/wake1108): 별을 올린 뒤 동네 깨어남(I07) + 주민이 바뀐 물건을 씀(I20) ----
+  //  길은 도구/탐험/wake_paths.py가 지도 걷기 칸으로 미리 찾아 data/wake.json에 둠(실행 중 길 찾기 없음). 새 마을 지도(V2)만
+  //  주민 수는 그대로, 걷는 길만 바뀐 물건 앞을 지나게. 말풍선은 글씨 없이 물건 픽셀 그림 + 마음 표시(선생님 W3 의견)
+  function useOf(id) {
+    const U = G.D.wake && G.D.wake.use && G.D.wake.use[id];
+    return U && U.key && G.mapV2() && ((G.st && G.st.stars) || 0) >= U.star ? U : null;
+  }
+  function usePath(path, U) {   // 제 길 at번째 점에서 물건 앞까지 갔다가 같은 길로 돌아옴(왔다 갔다 길이라 거꾸로 걸어도 같음)
+    const back = U.go.slice(0, -1).reverse();
+    return [...path.slice(0, U.at + 1), ...U.go, ...back, ...path.slice(U.at)];
+  }
+  function useBubble(w, U, on) {   // 주인공이 가까이 오면 머리 위에 (물건 그림 + 하트/음표), 멀어지면 숨김. 하나만 만들어 다시 씀
+    let b = w.useB;
+    if (!b) {
+      if (!on) return;
+      // 11/8: 말풍선은 인물 칸 밖(지도 위 겹)에 두어 앞에 선 사람·길벗에 가려지지 않게. 인물이 움직이면 함께 옮김(set 감쌈)
+      const h = w.useH = G.el('div', 'wuse-at', V.fx); if (w.age !== 1) h.style.setProperty('--age', w.age);
+      const s0 = w.set; w.set = (x, y) => { s0(x, y); h.style.transform = w.el.style.transform; h.style.visibility = w.el.style.visibility; }; w.set(w.x, w.y);
+      b = w.useB = G.el('div', 'wuse pxbox', h);   // 11/8 선생님: 둥근 도트 말풍선(모양은 css .pxbox)
+      { const t = G.el('img', 'wuse-tail', b); t.src = G.asset('assets/ui/px/bubble_px_tail.png'); t.alt = ''; t.draggable = false; }
+      if (U.key) { const a = G.el('img', 'wuse-obj', b); a.src = G.asset('assets/map/acc_' + U.key + '.png'); a.alt = ''; a.draggable = false; }
+      const e = G.el('img', 'wuse-emo', b); e.src = G.asset(U.emo === 'note' ? 'assets/ui/px/note_1.png' : 'assets/ui/px/emo_heart.png'); e.alt = ''; e.draggable = false;
+    }
+    b.classList.toggle('on', on);
+  }
+  Mp.useOf = useOf;
+  // 별을 올리고 지도로 나온 바로 그때 한 번(새로 올리는 별만, W1·W4): 화면이 그 동네로 가서 주민이 바뀐 것을 쓰고 한마디(녹음된 대사, W5) → 주인공에게 돌아옴
+  //  10초 안팎(이야기 짧게면 주민 한 명 5초, W2). 화면을 누르면 넘어감. 임시로 세운 주민은 끝나면 지움
+  Mp.wake = async (n) => {
+    const st = G.st, key = 'wake' + n, W = G.D.wake && G.D.wake.use;
+    if (!V || !hero || !W || !G.mapV2() || !st || (st.seenCutscenes || []).includes(key) || (G.dialog && G.dialog.active) || (G.cut && G.cut.active)) return;   // 다른 이야기가 이미 돌고 있으면 겹치지 않게 건너뜀
+    let acts = Object.entries(W).filter(([, u]) => u.star === n);
+    if (!acts.length) return;
+    (st.seenCutscenes = st.seenCutscenes || []).push(key); G.save.write();
+    const short = G.story && G.story.short && G.story.short(); if (short) acts = acts.slice(0, 1);
+    const g = G.gen, v0 = V, rm = G.reduced(), ok = () => g === G.gen && V === v0;
+    let skip = false; const tapSkip = () => { skip = true; G.audio.stopVoice(); };
+    const cover = G.el('div', 'wake-skip', G.$('#overlay')); cover.setAttribute('aria-label', '누르면 넘어가요'); cover.addEventListener('click', tapSkip);
+    const cap = G.el('div', 'wake-cap pxbox', cover), capN = G.el('b', '', cap), capT = G.el('span', '', cap); cap.hidden = true;
+    const wait = async (s) => { const t = performance.now() + s * 1000; while (!skip && ok() && performance.now() < t) await G.wait(0.1); };
+    const temp = [], back = { ...V.cam };
+    G.busy++; Mp.camFree = true;
+    try {
+      const Z = back.z * 1.35, at = (u) => { const e = u.go[u.go.length - 1]; return { x: e[0], y: e[1] - 110, z: Z }; };   // 말풍선이 화면 위에 잘리지 않게 사람을 화면 가운데보다 조금 아래에
+      await camTween(at(acts[0][1]), skip ? 0 : 1.1); if (!ok()) return;
+      // 1) 주민들이 한꺼번에 바뀐 물건 앞으로 걸어옴  2) 한 사람씩 물건을 쓰며 한마디(목소리가 끝나면 바로 다음 사람)
+      const cast = [];
+      for (const [id, u] of acts) {
+        let vl = vills.find(q => q.id === id), w;
+        if (vl) { w = vl.w; vl.hold = true; }
+        else {   // 지도에 아직 없는 사람(별 1 해솔 사서 등)은 이 장면에서만 세움
+          const d = (((G.D.story.s2 || {}).map || {}).mood || {}).villagers; const dd = d && d.find(q => q.id === id); if (!dd) continue;
+          w = V.walker(dd.sheet, 'villager'); temp.push(w);
+        }
+        const end = u.go[u.go.length - 1], from = u.go.length > 1 ? u.go[u.go.length - 2] : [end[0] - 90, end[1] + 30];
+        const st0 = [from[0] + (from[0] - end[0]) * 0.3, from[1] + (from[1] - end[1]) * 0.3];
+        w.set(st0[0], st0[1]); w.face(end[0] - st0[0], end[1] - st0[1]); w.draw();
+        cast.push({ id, u, vl, w, from, end });
+      }
+      await Promise.all(cast.map(c => walkW(c.w, [c.from, c.end], rm || skip ? 0.1 : 1.1, ok))); if (!ok()) return;
+      for (const c of cast) { c.w.frame = 8; if (c.u.spot) c.w.face(c.u.spot[0] - c.w.x, c.u.spot[1] - c.w.y); c.w.draw(); }
+      for (const { u, w } of cast) {
+        if (skip || !ok()) break;
+        if (u.spot) G.pfx.play('star_burst', { world: true, parent: V.fx, x: u.spot[0], y: u.spot[1] - 30, z: Math.round(u.spot[1]) + 5, scale: 1.6 });
+        { const c = at(u); if (Math.hypot(c.x - V.cam.x, c.y - V.cam.y) > 220 && !skip) { await camTween(c, rm ? 0 : 0.7); if (!ok()) break; } }   // 멀리 떨어진 두 번째 사람에게로
+        useBubble(w, u, true); G.audio.sfx('sfx_sparkle', 0.5);
+        const L = G.D.dialogues[u.line]; cap.hidden = !L; if (L) { capN.textContent = L.name || ''; capT.textContent = L.text; }   // 자막은 말하는 사람 이름과 함께(길벗 말풍선 아님)
+        await Promise.race([G.audio.voice(u.line), (async () => { while (!skip && ok()) await G.wait(0.1); })()]);
+        await wait(0.4); useBubble(w, u, false);
+      }
+      for (const { id, vl } of cast) if (vl) { vl.hold = false; vl.pause = 1; const U = useOf(id); vl.i = U ? U.at + U.go.length : Math.min(2, vl.pts.length - 1); }   // 선 자리에서 제 길을 이어 걸음
+      if (!ok()) return;
+      await camTween(back, skip || rm ? 0 : 0.9);
+    } finally {
+      cover.remove(); for (const w of temp) { w.el.remove(); if (w.useH) w.useH.remove(); const k = (v0.walkers || []).indexOf(w); if (k >= 0) v0.walkers.splice(k, 1); }   // 임시 주민은 지도 걷는 이 목록에서도 뺌(쌓이지 않게)
+      for (const v of vills) v.hold = false;
+      G.busy = Math.max(0, G.busy - 1); Mp.camFree = false;
+    }
+  };
+  function walkW(w, pts, dur, ok) {   // 깨어남 장면에서 주민을 몇 점 따라 걷게(정해진 시간 안에)
+    const segs = []; let L = 0; for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); segs.push(d); L += d; }
+    if (!L) return Promise.resolve();
+    return new Promise(res => { let t = 0; const off = G.every(dt => {
+      if (!ok()) { off(); res(); return; }
+      t = Math.min(1, t + dt / dur); let r = t * L, i = 0; while (i < segs.length - 1 && r > segs[i]) { r -= segs[i]; i++; }
+      const a = pts[i], b = pts[i + 1], k = segs[i] ? Math.min(1, r / segs[i]) : 1;
+      w.set(a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k); w.face(b[0] - a[0], b[1] - a[1]); w.walkT = (w.walkT || 0) + dt; w.frame = Math.floor(w.walkT * 7) % 8; w.draw();
+      if (t >= 1) { off(); res(); } }); offs.push(off); });
   }
 
   // ---- 도움 ----
@@ -6043,6 +6135,7 @@ Object.assign(G.flows, {
     G.$('#fade').classList.add('on'); await G.wait(0.45); if (!ok()) return;
     await G.map.show();
     G.$('#fade').classList.remove('on');
+    await G.map.wake(1);   // 11/8 탐험 2단계: 별을 올린 동네가 깨어남(결정판 plan/wake1108)
     G.hud.hide(false);
   },
 });
@@ -9787,6 +9880,7 @@ G.s2 = (() => {
       G.$('#fade').classList.add('on'); await G.wait(0.45); if (!ok()) return;
       await G.map.show();
       G.$('#fade').classList.remove('on');
+      await G.map.wake(2);   // 11/8 탐험 2단계: 별을 올린 동네가 깨어남(결정판 plan/wake1108)
     } finally {
       if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.hide(false); }
     }
@@ -11467,6 +11561,7 @@ G.s3 = (() => {
       G.$('#fade').classList.add('on'); await G.wait(0.45); if (!ok()) return;
       await G.map.show();
       G.$('#fade').classList.remove('on');
+      await G.map.wake(3);   // 11/8 탐험 2단계: 별을 올린 동네가 깨어남(결정판 plan/wake1108)
     } finally {
       if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.hide(false); }
     }
@@ -12755,6 +12850,7 @@ G.s4 = (() => {
       G.$('#fade').classList.add('on'); await G.wait(0.45); if (!ok()) return;
       await G.map.show();
       G.$('#fade').classList.remove('on');
+      await G.map.wake(4);   // 11/8 탐험 2단계: 별을 올린 동네가 깨어남(결정판 plan/wake1108)
     } finally {
       if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.hide(false); }
     }
@@ -13716,6 +13812,7 @@ G.s5 = (() => {
       G.$('#fade').classList.add('on'); await G.wait(0.45); if (!ok()) return;
       await G.map.show();
       G.$('#fade').classList.remove('on');
+      await G.map.wake(5);   // 11/8 탐험 2단계: 별을 올린 동네가 깨어남(결정판 plan/wake1108)
     } finally {
       if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.hide(false); }
     }
@@ -14758,6 +14855,7 @@ G.s6 = (() => {
       G.$('#fade').classList.add('on'); await G.wait(0.45); if (!ok()) return;
       await G.map.show();
       G.$('#fade').classList.remove('on');
+      await G.map.wake(6);   // 11/8 탐험 2단계: 별을 올린 동네가 깨어남(결정판 plan/wake1108)
     } finally {
       if (g === G.gen) { G.busy = Math.max(0, G.busy - 1); G.hud.hide(false); }
     }
@@ -15935,7 +16033,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-11-08)';
-G.BUILT = '2026-11-08 18:42';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-11-08 19:07';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
