@@ -552,16 +552,18 @@ G.save = (() => {
   // ---- U2 저장 칸 고르기 (9/30 선생님): [시작하기] → [새로 하기] / [이어 하기] → 번호 카드가 빙글 돌아가는 고르기 ----
   // 새로 하기: 빈 번호만, 이어 하기: 저장된 번호만. 가운데 카드를 누르거나 [이 번호로]를 누르면 고름. 양옆 화살표·밀기·방향키로 돌림
   // 고른 칸 번호를 돌려줌 { slot, data } (새로 하기는 data 없음)
-  S.screen = () => new Promise(async (done) => {
-    let mode = null;
+  // 11/8 타이틀 메뉴(왼쪽 아래): preset 'new'(시작하기)·'cont'(이어 하기)면 새로·이어 고르기를 건너뜀. 이어 하기는 마지막에 놀던 칸을 먼저 보여 주고 [다른 번호]도 둠
+  S.screen = (preset) => new Promise(async (done) => {
+    let mode = preset === 'new' || preset === 'cont' ? preset : null;
     // 10/19 선생님(평가 U3): 저장이 하나도 없는 기기(처음 켬)는 고르기 두 단계를 건너뛰고 1번 칸에 바로 시작 → 이름 쓰기
     let any = false; for (let i = 1, n = S.count(); i <= n; i++) if (S.load(i)) { any = true; break; }
     if (!any) { done({ slot: 1, data: null }); return; }
+    if (mode === 'cont') { const r = await lastPick(); if (r) { done(r); return; } }
     for (;;) {
       if (!mode) mode = await chooseMode();
       const list = [];
       for (let i = 1, n = S.count(); i <= n; i++) { const d = S.load(i); if (mode === 'new' ? !d : !!d) list.push({ slot: i, data: d }); }
-      if (mode === 'cont' && !list.length) { mode = null; continue; }   // 다 지웠으면 처음 고르기로
+      if (!list.length) { mode = null; continue; }   // 다 지웠거나(이어) 빈 칸이 없으면(새로) 처음 고르기로   // 다 지웠으면 처음 고르기로
       const r = await bookPick(mode, list);
       if (r && r.deleted) continue;   // 지운 뒤에는 남은 번호로 다시 보여 줌
       if (r) { done(r); return; }
@@ -581,6 +583,23 @@ G.save = (() => {
     return h;
   }
   const say = (id, fb) => G.audio.voice(id, (G.D.dialogues[id] || {}).text || fb);
+  // 11/8 이어 하기: 마지막에 놀던 칸 (교실 기기를 여럿이 쓰니 번호·이름을 보여 주고 한 번 더 누름)
+  function lastPick() {
+    let best = null; for (let i = 1, n = S.count(); i <= n; i++) { const d = S.load(i); if (d && (!best || String(d.updated || '') > String(best.data.updated || ''))) best = { slot: i, data: d }; }
+    if (!best) return Promise.resolve(null);
+    return new Promise((pick) => {
+      const scr = screenBase('mode-screen last-screen');
+      head(scr, '하던 곳에서 이어서 할까요?', 'S92_btn_continue');
+      const row = G.el('div', 'mode-row', scr);
+      const nm = best.data.name ? ' ' + esc(best.data.name) : '';
+      const card = (cls, ico, label, sub, v) => { const b = G.el('button', 'mode-card ' + cls, row); b.type = 'button'; b.setAttribute('aria-label', label + ' ' + sub);
+        G.el('div', 'mc-ico', b, G.icon(ico)); G.el('div', 'mc-label', b, label); G.el('div', 'mc-sub', b, sub);
+        G.onTap(b, () => { G.audio.stopVoice(); G.audio.sfx('sfx_tap', 0.7); pick(v); }); return b; };
+      const go = card('cont', 'icon_next', best.slot + '번' + nm, '이어서 하기', best);
+      card('new', 'icon_star', '다른 번호', '내 번호 고르기', null);
+      setTimeout(() => { if (go.isConnected) try { go.focus({ preventScroll: true }); } catch (e) { } }, 50);
+    });
+  }
   // 새로 하기 / 이어 하기
   function chooseMode() {
     return new Promise((pick) => {
@@ -15825,6 +15844,363 @@ G.teacher = (() => {
 // 그림판은 1920x1080 (덮인 책 그림 1376x768을 1.395배). 책 표지 자리 x 656~1281, y 105~910 / 그림 칸 x 66~1246, y 113~900 (3:2)
 // 10/15 메모리: 창 크기 맞춤 함수를 titleBook 밖에 둠(안에 두면 제목 그림 약 30MB를 게임 내내 붙잡았음)
 G.tbResize = () => { const f = G.$('.tb-stage'); if (f && f._fit) f._fit(); };
+
+// 11/8 타이틀 리뉴얼 3단계(결정판 9vAXi9wLy245m7JZukhJeo): 끝 장면 그림을 9겹으로 나눠 깊이(패럴랙스)+늘 숨쉬기
+// - 겹: 하늘·구름·먼 산·마을·강·언덕·나뭇가지·주인공·앞 풀꽃 (assets/ui/title_depth, 원본·도구 공유 폴더 에셋원본/타이틀겹_1108)
+// - 그림 경로를 이어 붙여 적음: 그대로 적으면 build.py가 첫 화면 묶음에 넣어 첫 화면이 무거워짐
+// - 쌓임 없게: 듣기는 제목 화면 요소에만(화면과 함께 사라짐), 도는 그리기는 화면이 바뀌면(G.gen) 스스로 멈추고 그림을 놓음
+// - 못 받으면(12초) 지금 한 장 그림 그대로. 움직임 줄이기면 멈춘 그림. 느린 기기·가벼운 모드는 20fps·가지 흔들림 없음
+G.titleDepth = (() => {
+  const DIR = 'assets/ui/' + 'title_depth/';
+  // [이름, 그림판 자리 x,y,w,h(1920x1280), 움직임(px), 숨쉬기 비율]
+  const L = [['1_sky', [0, 0, 1920, 1280], 2], ['2_cloud', [0, 0, 1920, 724], 3], ['3_mount', [0, 522, 1920, 758], 4], ['4_town', [0, 497, 1920, 783], 7], ['4_river', [835, 935, 1085, 345], 10],
+    ['5_hill', [0, 328, 1807, 952], 13], ['5_branch', [0, 0, 832, 403], 14], ['5_hero', [348, 619, 462, 394], 13], ['6_front', [0, 616, 1920, 664], 16, 150]];
+  const OVER = 1.022;   // 가장자리 틈이 안 보이게 전체를 조금 크게(16px 움직임 + 숨쉬기)
+  const preload = (fail) => {
+    const imgs = L.map(([n]) => n).concat('5_lumi').map((n) => { const i = new Image(); i.decoding = 'async'; i.alt = ''; i.src = G.asset(DIR + n + '.webp'); return i; });
+    const ok = (i) => (i.decode ? i.decode() : new Promise((r, j) => { i.onload = r; i.onerror = j; }));
+    let to = 0;
+    const p = Promise.race([Promise.all(imgs.map(ok)), new Promise((_, j) => { to = setTimeout(() => j(new Error('12초 넘게 안 옴')), 12000); })])
+      .then(() => { clearTimeout(to); return imgs; }, (e) => { clearTimeout(to); const bad = imgs.find((i) => !i.complete || !i.naturalWidth); fail(bad ? bad.src : DIR, String(e && e.message || e)); imgs.forEach((i) => { i.src = ''; }); return null; });
+    return p;
+  };
+  // stage: 1920x1080 판, before: 이 앞에 끼움(한 장 그림), host: 손 움직임을 받을 화면, floats: 제목 글씨(5px)
+  const build = (stage, before, host, all, floats) => {
+    const gen = G.gen, imgs = all.slice(0, L.length); all.slice(L.length).forEach((i) => { i.src = ''; });   // 5_lumi는 WebGL 장면만 씀
+    const root = G.el('div', 'td', null); stage.insertBefore(root, before);
+    const els = imgs.map((im, k) => { const [, [x, y, w, h], , dy] = L[k]; const d = G.el('div', 'td-l td-' + L[k][0], root);
+      Object.assign(d.style, { left: x + 'px', top: (y + (dy || 0)) + 'px', width: w + 'px', height: h + 'px' }); im.className = 'td-img'; d.appendChild(im); return d; });
+    const branch = els[6], hero = els[7];
+    let tx = 0, ty = 0, cx = 0, cy = 0, last = 0, t0 = 0, lite = !!(G.settings && G.settings.light), frames = 0, sum = 0, pv = 0, still = false, raf = 0, gone = false, chk = 0;
+    const set = (e) => { const r = host.getBoundingClientRect(); tx = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1)); ty = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1)); };
+    const home = () => { tx = 0; ty = 0; };
+    const onMove = (e) => { if (e.pointerType === 'mouse' || e.buttons) set(e); };
+    const onUp = (e) => { if (e.pointerType !== 'mouse') home(); };
+    host.addEventListener('pointermove', onMove, { passive: true });
+    host.addEventListener('pointerdown', onMove, { passive: true });
+    host.addEventListener('pointerup', onUp, { passive: true });
+    host.addEventListener('pointercancel', home, { passive: true });
+    host.addEventListener('pointerleave', home, { passive: true });
+    const dispose = () => { if (gone) return; gone = true; cancelAnimationFrame(raf); clearInterval(chk);
+      host.removeEventListener('pointermove', onMove); host.removeEventListener('pointerdown', onMove); host.removeEventListener('pointerup', onUp);
+      host.removeEventListener('pointercancel', home); host.removeEventListener('pointerleave', home);
+      imgs.forEach((i) => { i.src = ''; }); root.remove(); };
+    const place = (bx, by, t) => {
+      els.forEach((d, k) => { const a = L[k][2]; d.style.transform = `translate3d(${(-(cx + bx) * a).toFixed(2)}px,${(-(cy + by) * a * 0.6).toFixed(2)}px,0)`; });
+      if (!lite && t) { branch.style.transform += ` rotate(${(Math.sin(t / 6000 * 6.283) * 0.55).toFixed(3)}deg)`; hero.style.transform += ` scaleY(${(1 + Math.sin(t / 4200 * 6.283) * 0.006).toFixed(4)})`; }
+      floats.forEach((f) => { f.style.transform = `translate3d(${(-(cx + bx) * 5).toFixed(2)}px,${(-(cy + by) * 3).toFixed(2)}px,0)`; });
+    };
+    const tick = (now) => {
+      if (gone) return;
+      if (gen !== G.gen || !root.isConnected) return dispose();
+      raf = requestAnimationFrame(tick);
+      if (!t0) { t0 = now; last = now; }
+      const dt = now - last, step = lite ? 50 : 33;   // 30fps(느리면 20fps)
+      // 1~3초 사이 실제 그리기 간격을 재서 느리면(평균 50ms 넘음) 멈춘 그림으로: 겹 움직임이 게임 시계(G.every)까지 늦추지 않게
+      if (frames >= 0 && now - t0 > 1000 && now - t0 < 3000) { frames++; sum += now - (pv || now); }
+      else if (frames >= 0 && now - t0 >= 3000) { const avg = frames > 1 ? sum / frames : 999; frames = -1; if (avg > 50 && !G.titleDepth.keep) return freeze(); if (avg > 34) lite = true; }
+      pv = now;
+      if (dt < step - 2) return;
+      last = now;
+      if (G.reduced()) { if (!still) { still = true; cx = cy = 0; place(0, 0, 0); root.classList.add('td-still'); } return; }
+      if (still) { still = false; root.classList.remove('td-still'); }
+      const k = 1 - Math.exp(-Math.min(dt, 200) / 600);   // 천천히 따라가 멈춤
+      cx += (tx - cx) * k; cy += (ty - cy) * k;
+      const t = now - t0;
+      place(Math.sin(t / 14000 * 6.283) * 0.35, Math.sin(t / 11000 * 6.283 + 1) * 0.25, t);
+    };
+    const freeze = () => { cancelAnimationFrame(raf); cx = cy = 0; place(0, 0, 0); root.classList.add('td-still', 'td-slow');
+      chk = setInterval(() => { if (gen !== G.gen || !root.isConnected) dispose(); }, 1000); };
+    // 들어올 때: 한 장 그림 위로 겹이 나타나고 조금 크게(깊어짐)
+    root.style.opacity = 0;
+    requestAnimationFrame(() => { if (gone) return; root.classList.add('on'); root.style.opacity = 1; root.style.transform = `scale(${OVER})`; });
+    raf = requestAnimationFrame(tick);
+    return { root, dispose };
+  };
+  return { preload, build, L };
+})();
+// 11/8 타이틀 입체 4단계(선생님 "이대로 올리자", 미리보기 VXsGp38yPEWWAsrtfERhcB v7): 같은 겹 그림을 WebGL 한 판에 그림
+// - 겹마다 28x28 격자: 꼭짓점마다 깊이가 달라 한 겹 안에서도 아래가 가깝게 움직임. 카메라는 8자로 천천히 돌고 손을 따라감
+// - 효과는 모두 그리는 식(그림·영상 더 받지 않음): 윤슬·물결, 창문 차례로 켜짐, 구름 그림자, 해 빛줄기, 안개, 굴뚝 연기, 별·반딧불·별똥별·나뭇잎·새떼, 루미 돌기
+// - 메모리: 그림은 판에 올린 뒤 바로 놓음(img src 지움). 화면이 바뀌면(G.gen·요소 떨어짐) 판·버퍼·프로그램을 지우고 문맥을 놓음. 듣기는 제목 화면 요소에만
+// - 못 그리면(WebGL 없음·셰이더 실패) null → 부르는 쪽이 CSS 겹(G.titleDepth.build)으로. 문맥을 잃으면 onLost(한 장 그림으로)
+// - 느린 기기(1~3초 평균 그리기 간격 50ms 넘음) → 멈춘 한 장면. 34ms 넘음·가벼운 모드 → 20fps·해상도 1배. 움직임 줄이기 → 멈춘 한 장면
+G.titleGL = (() => {
+  // [이름, 자리 x,y,w,h(그림판 1920x1280), 위 깊이, 아래 깊이, 종류] 깊이 0 = 먼 하늘, 1 = 바로 앞
+  // 종류 0 보통, 1 앞 풀(바람), 2 나뭇가지, 3 강(윤슬), 4 마을(창문), 5 구름, 6 주인공(목도리·머리카락), 7 언덕(구름 그림자), 8 루미(돌기)
+  const L = [['1_sky', [0, 0, 1920, 1280], 0.02, 0.05, 0], ['2_cloud', [0, 0, 1920, 724], 0.06, 0.14, 5], ['3_mount', [0, 522, 1920, 758], 0.16, 0.26, 0],
+    ['4_town', [0, 497, 1920, 783], 0.3, 0.5, 4], ['4_river', [835, 935, 1085, 345], 0.42, 0.7, 3], ['5_hill', [0, 328, 1807, 952], 0.55, 1.0, 7],
+    ['5_branch', [0, 0, 832, 403], 0.82, 0.86, 2], ['5_hero', [348, 619, 462, 394], 0.74, 0.78, 6], ['6_front', [0, 766, 1920, 664], 1.05, 1.25, 1], ['5_lumi', [660, 766, 78, 80], 0.78, 0.78, 8]];
+  const CUT = [305 / 462, 140 / 394, 415 / 462, 232 / 394];   // 주인공 그림에서 옛 루미 자리를 비움(루미는 따로 돎)
+  const WIN = [[1748, 980], [1269, 995], [1327, 876], [1363, 882], [1310, 1009], [1798, 1003], [1146, 970], [1496, 826], [1626, 950], [1046, 806], [1460, 838], [1550, 962], [1480, 817], [1733, 957], [1557, 939], [1511, 819], [1172, 826], [1528, 929], [871, 895], [1905, 780], [1405, 883], [1395, 898], [1145, 1006], [1538, 820], [1465, 913], [1643, 818], [820, 932]];
+  const MOVE = 95, PUSH = 0.05, NW = WIN.length, T_STILL = 24;
+  const VS_COMMON = `
+precision highp float; precision highp int;
+uniform vec2 u_view; uniform float u_s; uniform vec2 u_cam; uniform float u_push; uniform float u_t; uniform float u_dive; uniform vec2 u_ptr; uniform float u_pon;
+vec2 cam(vec2 P, float z){ float over = 1.0 + ${MOVE.toFixed(1)} * z * 2.7 / 1920.0; float sc = over + ${PUSH.toFixed(3)} * z * u_push;
+  vec2 C = vec2(960.0, 640.0); vec2 Q = C + (P - C) * sc + vec2(-u_cam.x, -u_cam.y * 0.55) * ${MOVE.toFixed(1)} * z;
+  vec2 D = vec2(1180.0, 860.0); float dv = u_dive * u_dive; Q = D + (Q - D) * (1.0 + dv * (0.35 + z * 1.8)); return Q; }
+vec4 clip(vec2 Q){ vec2 sc = (Q - vec2(960.0, 640.0)) * u_s + u_view * 0.5; return vec4(sc.x / u_view.x * 2.0 - 1.0, 1.0 - sc.y / u_view.y * 2.0, 0.0, 1.0); }`;
+  const NOISE = `
+float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * vn(p); p *= 2.03; a *= 0.5; } return s; }`;
+  const LVS = VS_COMMON + `
+attribute vec2 a_uv; uniform vec4 u_rect; uniform vec2 u_z; uniform int u_kind; uniform vec4 u_lumiR;
+varying vec2 v_uv; varying vec2 v_P;
+void main(){ vec2 P = u_rect.xy + a_uv * u_rect.zw; float z = mix(u_z.x, u_z.y, a_uv.y);
+  if (u_kind == 1) { float w = pow(1.0 - a_uv.y, 1.6); P.x += (sin(u_t * 1.3 + P.x * 0.006) * 26.0 + sin(u_t * 3.1 + P.x * 0.02) * 8.0 + sin(u_t * 0.45) * 10.0) * w; }
+  if (u_kind == 2) { vec2 pv = vec2(110.0, 420.0); float a = sin(u_t * 1.1) * 0.032 + sin(u_t * 2.6) * 0.011 + sin(u_t * 0.45) * 0.012; vec2 d = P - pv; P = pv + vec2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a));
+    P += vec2(sin(u_t * 3.0 + P.y * 0.05), cos(u_t * 2.4 + P.x * 0.04)) * 4.5 * (1.0 - a_uv.y); }
+  if (u_kind == 5) { P.x += sin(u_t * 0.12) * 60.0 + sin(u_t * 0.35 + P.y * 0.012) * 8.0; }
+  if (u_kind == 6) { P.y += (1.0 - a_uv.y) * sin(u_t * 1.6) * 2.2; P.x += (1.0 - a_uv.y) * sin(u_t * 0.8) * 1.2;
+    float sc = smoothstep(0.36, 0.02, a_uv.x) * smoothstep(0.3, 0.95, a_uv.y); P.x += sc * (sin(u_t * 2.2 + a_uv.y * 5.0) * 13.0 + sin(u_t * 5.1) * 3.0 + sin(u_t * 0.45) * 5.0); P.y += sc * sin(u_t * 1.7 + a_uv.x * 9.0) * 5.0;
+    float hb = smoothstep(0.25, 0.3, a_uv.x) * smoothstep(0.7, 0.62, a_uv.x) * smoothstep(0.3, 0.5, a_uv.y) * smoothstep(0.6, 0.5, a_uv.y); P.x += hb * sin(u_t * 2.0 + a_uv.x * 12.0) * 4.5; }
+  if (u_kind == 8) { vec2 c0 = u_rect.xy + u_rect.zw * 0.5; vec2 d = P - c0; float r = u_lumiR.z; d *= u_lumiR.w; P = c0 + u_lumiR.xy + vec2(d.x * cos(r) - d.y * sin(r), d.x * sin(r) + d.y * cos(r)); }
+  v_uv = a_uv; v_P = P; gl_Position = clip(cam(P, z)); }`;
+  const LFS = `precision highp float; precision highp int;
+uniform sampler2D u_tex; uniform int u_kind; uniform float u_t; uniform vec3 u_win[${NW}]; uniform float u_allOn; uniform vec4 u_rect; uniform vec4 u_cut; uniform float u_lumi;
+varying vec2 v_uv; varying vec2 v_P;` + NOISE + `
+void main(){ vec2 uv = v_uv;
+  if (u_kind == 3) uv.x += (sin(v_P.y * 0.22 + u_t * 1.8) * 0.6 + sin(v_P.y * 0.07 - u_t * 1.1) * 0.8) / u_rect.z;
+  vec4 c = texture2D(u_tex, uv);
+  if (u_kind == 6) { vec2 e = smoothstep(u_cut.xy - 0.012, u_cut.xy, uv) * smoothstep(u_cut.zw + 0.012, u_cut.zw, uv); c *= 1.0 - e.x * e.y; }
+  if (u_kind == 8) { c.rgb += vec3(1.0, 0.85, 0.45) * c.a * u_lumi * 0.35; }
+  if (u_kind == 3 || u_kind == 4 || u_kind == 7) { float sh = smoothstep(0.52, 0.72, fbm(v_P * 0.0016 + vec2(u_t * 0.018, u_t * 0.004))); c.rgb *= 1.0 - 0.2 * sh; }
+  if (u_kind == 3 && c.a > 0.01) {
+    vec3 col = c.rgb / c.a; float lum = dot(col, vec3(0.3, 0.55, 0.15));
+    vec2 q = vec2(v_P.x * 0.045 + u_t * 0.35, v_P.y * 0.42);
+    float n = vn(q) * 0.6 + vn(q * 2.3 + vec2(u_t * 0.6, 0.0)) * 0.4;
+    float sp = smoothstep(0.72, 0.93, n) * (0.25 + 1.4 * smoothstep(0.45, 0.85, lum));
+    float tw = 0.5 + 0.5 * sin(u_t * 6.0 + v_P.x * 0.3 + v_P.y * 0.9);
+    col += vec3(1.0, 0.86, 0.6) * sp * (0.6 + 0.6 * tw);
+    c.rgb = col * c.a; }
+  if (u_kind == 4 && c.a > 0.01) {
+    vec3 col = c.rgb / c.a; float lum = dot(col, vec3(0.3, 0.55, 0.15));
+    float warm = smoothstep(0.62, 0.86, lum) * smoothstep(0.05, 0.22, col.r - col.b);
+    float lit = u_allOn;
+    for (int i = 0; i < ${NW}; i++) { float d = distance(v_P, u_win[i].xy); lit = max(lit, u_win[i].z * (1.0 - smoothstep(14.0, 30.0, d))); }
+    vec3 dark = vec3(lum * 0.42, lum * 0.42, lum * 0.55);
+    col = mix(col, dark, warm * (1.0 - lit));
+    col += vec3(1.0, 0.7, 0.35) * warm * lit * 0.18 * (0.7 + 0.3 * sin(u_t * 2.0 + v_P.x));
+    c.rgb = col * c.a; }
+  gl_FragColor = c; }`;
+  // 빛·안개 판: 0 둥근 빛, 1 해 빛줄기, 2 안개, 3 굴뚝 연기
+  const FVS = VS_COMMON + `
+attribute vec2 a_uv; uniform vec4 u_rect; uniform float u_z; varying vec2 v_uv; varying vec2 v_P;
+void main(){ vec2 P = u_rect.xy + a_uv * u_rect.zw; v_uv = a_uv; v_P = P; gl_Position = clip(cam(P, u_z)); }`;
+  const FFS = `precision highp float; precision highp int; uniform int u_type; uniform vec4 u_col; uniform float u_t; varying vec2 v_uv; varying vec2 v_P;` + NOISE + `
+void main(){ vec2 d = v_uv * 2.0 - 1.0; float r = length(d);
+  if (u_type == 0) { float g = exp(-r * r * 4.5); gl_FragColor = vec4(u_col.rgb * g * u_col.a, 0.0); return; }
+  if (u_type == 1) { float ang = atan(d.y, d.x); float rays = pow(0.5 + 0.5 * sin(ang * 13.0 + u_t * 0.15) * sin(ang * 7.0 - u_t * 0.11), 3.0);
+    float g = rays * exp(-r * 2.2) * smoothstep(1.0, 0.2, r) * step(d.y, 0.25); gl_FragColor = vec4(u_col.rgb * g * u_col.a, 0.0); return; }
+  if (u_type == 3) { float y = 1.0 - v_uv.y; float cx = 0.5 + sin(y * 4.0 + u_t * 0.8) * 0.12 * y; float w = 0.08 + y * 0.22;
+    float col = exp(-pow((v_uv.x - cx) / w, 2.0)); float n = fbm(vec2(v_uv.x * 4.0, v_uv.y * 3.0 + u_t * 0.5) + u_col.a * 10.0);
+    float a = col * smoothstep(0.25, 0.75, n) * smoothstep(1.0, 0.15, y) * smoothstep(0.0, 0.08, y) * 0.55; gl_FragColor = vec4(vec3(0.82, 0.78, 0.88) * a, a); return; }
+  float f = fbm(v_P * 0.0032 + vec2(u_t * 0.025, u_t * 0.004)); float band = smoothstep(0.0, 0.45, v_uv.y) * smoothstep(1.0, 0.55, v_uv.y);
+  float a = smoothstep(0.35, 0.8, f) * band * u_col.a; gl_FragColor = vec4(u_col.rgb * a, a); }`;
+  // 점: 0 별, 1 반딧불, 2 별똥별, 3 나뭇잎, 4 새, 7 반짝 가루(누른 곳·루미)
+  const PVS = VS_COMMON + `
+attribute vec4 a_p; attribute vec4 a_q; varying float v_a; varying float v_type; varying vec2 v_q;
+void main(){ vec2 P = a_p.xy; float z = a_p.z, size = a_p.w, type = a_q.x, ph = a_q.y; float a = 1.0; v_q = vec2(0.0);
+  if (type < 0.5) { a = 0.25 + 0.75 * pow(0.5 + 0.5 * sin(u_t * (1.2 + fract(ph * 7.0) * 1.6) + ph * 6.28), 2.0); }
+  else if (type < 1.5) { P += vec2(sin(u_t * (0.21 + fract(ph * 3.0) * 0.2) + ph * 9.0) * 70.0 + sin(u_t * 0.9 + ph) * 12.0, sin(u_t * (0.17 + fract(ph * 5.0) * 0.2) + ph * 4.0) * 45.0 + cos(u_t * 0.7 + ph * 2.0) * 10.0);
+    a = smoothstep(0.0, 1.0, 0.5 + 0.5 * sin(u_t * (0.8 + fract(ph * 11.0)) + ph * 20.0));
+    vec2 orb = u_ptr + vec2(cos(u_t * (0.9 + ph) + ph * 30.0), sin(u_t * (1.1 + ph) + ph * 17.0)) * (40.0 + ph * 90.0); P = mix(P, orb, u_pon * step(ph, 0.6) * 0.85); a = max(a, u_pon * step(ph, 0.6) * 0.7); }
+  else if (type > 2.5 && type < 3.5) { float per = 6.5 + fract(ph * 7.0) * 4.0; float u = mod(u_t + ph * per, per) / per; P += vec2(u * 900.0 + sin(u * 18.0 + ph * 6.0) * 60.0, u * 700.0); a = smoothstep(0.0, 0.06, u) * smoothstep(1.0, 0.8, u); }
+  else if (type > 3.5 && type < 4.5) { float u = mod(u_t + 3.0 + a_q.w * 8.0, 16.0) / 7.0; P += vec2(-u * 2300.0, sin(u * 6.0 + ph * 3.0) * 30.0 - u * 120.0); a = (u > 0.0 && u < 1.0) ? 0.85 : 0.0; v_q = a_q.yz; }
+  else if (type > 6.5) { float age = u_t - a_q.z; a = (age > 0.0 && age < 1.4) ? (1.0 - age / 1.4) : 0.0; P += vec2(cos(ph * 6.283), sin(ph * 6.283)) * (1.0 - exp(-age * 3.0)) * a_q.w + vec2(0.0, age * age * 60.0); size *= (1.0 - age / 1.6); }
+  else if (type < 2.5) { float per = a_q.z, k = a_q.w; float tt = mod(u_t + ph, per); float u = tt / 1.1 - k * 0.018;
+    a = (u > 0.0 && u < 1.0) ? (1.0 - k / 14.0) * sin(u * 3.1416) : 0.0; P += vec2(-460.0, 240.0) * clamp(u, 0.0, 1.0); size *= (1.0 - k / 16.0); }
+  v_a = a; v_type = type; gl_Position = clip(cam(P, z)); gl_PointSize = max(size * u_s, 0.0); }`;
+  const PFS = `precision highp float; precision highp int; varying float v_a; varying float v_type; varying vec2 v_q; uniform float u_t;
+void main(){ vec2 d = gl_PointCoord * 2.0 - 1.0; float r = length(d); vec3 c; float g;
+  if (v_type < 0.5) { float cross = max(1.0 - abs(d.x) * 9.0, 0.0) * (1.0 - abs(d.y)) + max(1.0 - abs(d.y) * 9.0, 0.0) * (1.0 - abs(d.x)); g = cross * 0.9 + exp(-r * r * 18.0); c = vec3(1.0, 0.97, 0.88); }
+  else if (v_type < 1.5) { g = exp(-r * r * 6.0) + exp(-r * r * 40.0); c = vec3(1.0, 0.9, 0.55); }
+  else if (v_type < 2.5) { g = exp(-r * r * 8.0); c = vec3(1.0, 0.96, 0.85); }
+  else if (v_type < 3.5) { vec2 q = mat2(0.8, 0.6, -0.6, 0.8) * d; float leaf = smoothstep(1.0, 0.8, length(q * vec2(1.0, 2.4))); gl_FragColor = vec4(vec3(0.62, 0.66, 0.3) * leaf * v_a * 0.85, leaf * v_a * 0.85); return; }
+  else if (v_type < 4.5) { float f = sin(u_t * 9.0 + v_q.x * 20.0); float y = -abs(d.x) * (0.5 + 0.5 * f) * 0.9; float b = smoothstep(0.16, 0.0, abs(d.y - y)) * step(abs(d.x), 0.95); gl_FragColor = vec4(vec3(0.16, 0.13, 0.22) * b * v_a, b * v_a); return; }
+  else { float cross = max(1.0 - abs(d.x) * 6.0, 0.0) * (1.0 - abs(d.y)) + max(1.0 - abs(d.y) * 6.0, 0.0) * (1.0 - abs(d.x)); g = cross + exp(-r * r * 9.0); c = vec3(1.0, 0.92, 0.6); }
+  gl_FragColor = vec4(c * g * v_a, 0.0); }`;
+
+  // o: { host(제목 화면), before(이 앞에 판을 끼움), imgs(G.titleDepth.preload 순서, 끝이 5_lumi), floats(제목 글씨), menu, onLost }
+  // 11/9 쌓임 고침: 제목에 올 때마다 새 캔버스·문맥을 만들면 다 쓴 문맥도 브라우저가 쥐고 있어 하나씩 쌓였음(20바퀴 시험·CDP 셈)
+  //   → 캔버스·문맥·프로그램·격자는 한 벌만 만들어 다시 씀. 그림 판(약 31MB)·점 버퍼는 제목을 떠날 때마다 지우고, 캔버스는 1x1로 줄여 떼어 둠
+  let SH = null;
+  const shared = () => {
+    if (SH && !SH.gl.isContextLost()) return SH;
+    SH = null;
+    const cv = document.createElement('canvas'); let gl = null;
+    try { gl = cv.getContext('webgl', { alpha: false, antialias: false, premultipliedAlpha: true, powerPreference: 'low-power', failIfMajorPerformanceCaveat: false }); } catch (e) { gl = null; }
+    if (!gl) return null;
+    const shs = [];
+    const sh = (t, s) => { const x = gl.createShader(t); shs.push(x); gl.shaderSource(x, s); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+    const prog = (v, f) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, v)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, f)); gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+      const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); u[a.name.replace('[0]', '')] = gl.getUniformLocation(p, a.name); }
+      return { p, u, a: gl.getAttribLocation(p, 'a_uv'), ap: gl.getAttribLocation(p, 'a_p'), aq: gl.getAttribLocation(p, 'a_q') }; };
+    const buf = (kind, data) => { const b = gl.createBuffer(); gl.bindBuffer(kind, b); gl.bufferData(kind, data, gl.STATIC_DRAW); return b; };
+    try {
+      const PL = prog(LVS, LFS), PF = prog(FVS, FFS), PP = prog(PVS, PFS);
+      shs.forEach((x) => gl.deleteShader(x));   // 프로그램에 붙었으니 셰이더는 놓음
+      const GR = 28, grid = [], idx = [];
+      for (let y = 0; y <= GR; y++) for (let x = 0; x <= GR; x++) grid.push(x / GR, y / GR);
+      for (let y = 0; y < GR; y++) for (let x = 0; x < GR; x++) { const a = y * (GR + 1) + x; idx.push(a, a + 1, a + GR + 1, a + 1, a + GR + 2, a + GR + 1); }
+      SH = { cv, gl, PL, PF, PP, nIdx: idx.length, gb: buf(gl.ARRAY_BUFFER, new Float32Array(grid)), ib: buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx)), qb: buf(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])) };
+      return SH;
+    } catch (e) { console.warn('[제목 화면] 입체 그리기를 못 해 겹 그림으로:', e && e.message || e); try { const lc = gl.getExtension('WEBGL_lose_context'); if (lc) lc.loseContext(); } catch (er) { } return null; }
+  };
+  const build = (o) => {
+    const gen = G.gen, host = o.host, imgs = o.imgs;
+    const S0 = shared(); if (!S0) return null;
+    const { cv, gl, PL, PF, PP, gb, ib, qb, nIdx } = S0;
+    cv.className = 'tgl'; host.insertBefore(cv, o.before);
+    const texs = []; gl.getError();   // 앞 방문의 오류 표시를 비움
+    const freeGL = () => { try { texs.forEach((x) => gl.deleteTexture(x)); if (pb) gl.deleteBuffer(pb); } catch (e) { } texs.length = 0; pb = null; };
+    let pb = null;
+    const tex = {};
+    const R = (a, b) => a + Math.random() * (b - a), pts = [];
+    for (let k = 0; k < 70; k++) pts.push([R(500, 1900), R(10, 470), 0.04, R(5, 16), 0, Math.random(), 0, 0]);
+    for (let k = 0; k < 16; k++) pts.push([R(100, 1300), R(560, 900), R(0.5, 0.75), R(7, 13), 1, Math.random(), 0, 0]);
+    for (let k = 0; k < 10; k++) pts.push([R(80, 1850), R(860, 1220), R(1.0, 1.3), R(18, 34), 1, Math.random(), 0, 0]);
+    for (const [mx, my, per, ph] of [[1700, 90, 13, 4], [1250, 40, 21, 15], [900, 130, 29, 3]]) for (let k = 0; k < 14; k++) pts.push([mx, my, 0.05, 12, 2, ph, per, k]);
+    const iLeaf = pts.length; for (let k = 0; k < 18; k++) pts.push([R(60, 780), R(100, 380), R(0.86, 0.95), R(13, 22), 3, Math.random(), 0, 0]);
+    const iBird = pts.length; for (let k = 0; k < 5; k++) pts.push([2050 + k * 46 + (k % 2) * 20, 330 + Math.abs(k - 2) * 26, 0.12, R(22, 30), 4, Math.random(), k, 0]);
+    for (let k = 0; k < 4; k++) pts.push([2080 + k * 40, 250 + Math.abs(k - 1.5) * 22, 0.1, R(18, 24), 4, Math.random(), k, 1]);
+    const iPool = pts.length, POOL = 64; for (let k = 0; k < POOL; k++) pts.push([0, 0, 1, 0, 7, 0, -99, 0]);
+    const nStar = 70, nFF1 = 16, nFF2 = 10;
+    const pdata = new Float32Array(pts.flat()); let poolAt = 0; pts.length = 0;
+    try {
+      pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, pdata, gl.DYNAMIC_DRAW);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+      L.forEach(([n], k) => { const im = imgs[k]; if (!im || !im.naturalWidth) throw new Error('겹 그림 없음 ' + n);
+        const t = gl.createTexture(); texs.push(t); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); tex[n] = t; });
+      if (gl.getError() !== gl.NO_ERROR || gl.isContextLost()) throw new Error('판 올리기 실패');
+    } catch (e) { console.warn('[제목 화면] 입체 그림 판을 못 올려 겹 그림으로:', e && e.message || e); freeGL(); cv.width = cv.height = 1; cv.remove(); return null; }
+    imgs.forEach((i) => { i.src = ''; });   // 판에 올렸으니 그림(약 31MB)을 놓음
+
+    const LU = [0, 0, 0, 1], ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+    // 루미: 둥둥 떠 있다가 3초쯤 시계방향 두 바퀴, 8초쯤 반시계방향 한 바퀴, 12초 되풀이(11/8 선생님)
+    const lumiAt = (t) => { const c = t % 12; let ox = Math.sin(t * 0.9) * 6, oy = Math.sin(t * 1.9) * 10, r = Math.sin(t * 1.3) * 0.12, sc = 1, spin = 0;
+      if (c > 3 && c < 5.4) { const u = ease((c - 3) / 2.4); r += u * Math.PI * 4; ox += Math.sin(u * Math.PI * 2) * 34; oy -= Math.sin(u * Math.PI) * 40 + (1 - Math.cos(u * Math.PI * 2)) * 10; sc = 1 + Math.sin(u * Math.PI) * 0.18; spin = Math.sin(u * Math.PI); }
+      if (c > 8 && c < 10) { const u = ease((c - 8) / 2); r -= u * Math.PI * 2; ox -= Math.sin(u * Math.PI * 2) * 26; oy -= Math.sin(u * Math.PI) * 28; sc = 1 + Math.sin(u * Math.PI) * 0.12; spin = Math.sin(u * Math.PI); }
+      LU[0] = ox; LU[1] = oy; LU[2] = r; LU[3] = sc; return spin; };
+    let dive = 0, diving = 0, ptr = [960, 640], pon = 0, lumiGlow = 0, lumiTo = 0, lumiT = 0, ponLast = -9, nowT = 0;
+    const order = WIN.map((w, i) => i).sort(() => Math.random() - 0.5), onAt = new Array(NW);
+    order.forEach((i, k) => { onAt[i] = 1.2 + k * 0.55 + Math.random() * 0.35; });
+    const winU = new Float32Array(NW * 3);
+    const burst = (x, y, z, n, sp, size, tt) => { for (let k = 0; k < n; k++) { const i = iPool + poolAt; poolAt = (poolAt + 1) % POOL; pdata.set([x, y, z, size * (0.6 + Math.random() * 0.8), 7, Math.random(), tt, sp * (0.4 + Math.random() * 0.6)], i * 8); }
+      gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferSubData(gl.ARRAY_BUFFER, iPool * 32, pdata.subarray(iPool * 8)); };
+
+    let W = 0, H = 0, dpr = 1, S = 1, lite = !!(G.settings && G.settings.light);
+    const fit = () => { const st = G.stage || {}; const w = st.W || host.clientWidth, h = st.H || host.clientHeight; if (!w || !h) return false;
+      const d = lite ? 1 : Math.min(window.devicePixelRatio || 1, 1.5, 2560 / w); if (w === W && h === H && d === dpr) return false;
+      W = w; H = h; dpr = d; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); S = Math.max(W / 1920, H / 1080); return true; };
+    const common = (P, t, ax, ay, push) => { gl.uniform1f(P.u.u_dive, dive); gl.uniform2f(P.u.u_ptr, ptr[0], ptr[1]); gl.uniform1f(P.u.u_pon, pon); gl.uniform2f(P.u.u_view, W * dpr, H * dpr);
+      gl.uniform1f(P.u.u_s, S * dpr); gl.uniform2f(P.u.u_cam, ax, ay); gl.uniform1f(P.u.u_push, push); gl.uniform1f(P.u.u_t, t); };
+    const quad = (P) => { gl.bindBuffer(gl.ARRAY_BUFFER, qb); gl.enableVertexAttribArray(P.a); gl.vertexAttribPointer(P.a, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); };
+    const fx = (t, ax, ay, push, type, x, y, w, h, z, r, g, b, a) => { gl.useProgram(PF.p); common(PF, t, ax, ay, push); gl.uniform1i(PF.u.u_type, type); gl.uniform4f(PF.u.u_rect, x, y, w, h); gl.uniform1f(PF.u.u_z, z); gl.uniform4f(PF.u.u_col, r, g, b, a); quad(PF); };
+    const drawLayer = (k, t, ax, ay, push, allOn) => { const l = L[k]; gl.useProgram(PL.p); common(PL, t, ax, ay, push);
+      const c = l[0] === '5_hero' ? CUT : null; gl.uniform4f(PL.u.u_cut, c ? c[0] : 2, c ? c[1] : 2, c ? c[2] : 2, c ? c[3] : 2); gl.uniform1f(PL.u.u_lumi, lumiGlow); gl.uniform4f(PL.u.u_lumiR, LU[0], LU[1], LU[2], LU[3]);
+      gl.uniform4f(PL.u.u_rect, l[1][0], l[1][1], l[1][2], l[1][3]); gl.uniform2f(PL.u.u_z, l[2], l[3]); gl.uniform1i(PL.u.u_kind, l[4]); gl.uniform1i(PL.u.u_tex, 0); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[l[0]]);
+      if (l[4] === 4) { gl.uniform3fv(PL.u.u_win, winU); gl.uniform1f(PL.u.u_allOn, allOn); }
+      gl.bindBuffer(gl.ARRAY_BUFFER, gb); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.enableVertexAttribArray(PL.a); gl.vertexAttribPointer(PL.a, 2, gl.FLOAT, false, 0, 0);
+      gl.drawElements(gl.TRIANGLES, nIdx, gl.UNSIGNED_SHORT, 0); };
+    const points = (t, ax, ay, push, from, to) => { gl.useProgram(PP.p); common(PP, t, ax, ay, push); gl.bindBuffer(gl.ARRAY_BUFFER, pb);
+      gl.enableVertexAttribArray(PP.ap); gl.enableVertexAttribArray(PP.aq); gl.vertexAttribPointer(PP.ap, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(PP.aq, 4, gl.FLOAT, false, 32, 16);
+      gl.drawArrays(gl.POINTS, from, to - from); gl.disableVertexAttribArray(PP.aq); };
+    const NORMAL = () => gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA), ADD = () => gl.blendFunc(gl.ONE, gl.ONE);
+    const render = (t, ax, ay, push, calm) => {
+      gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.06, 0.14, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND);
+      for (let i = 0; i < NW; i++) { const u = Math.min(1, Math.max(0, (t - onAt[i]) / 0.9)); const fl = u > 0 && u < 1 ? (0.6 + 0.4 * Math.sin(t * 40 + i)) : 1; winU[i * 3] = WIN[i][0]; winU[i * 3 + 1] = WIN[i][1]; winU[i * 3 + 2] = u * fl; }
+      const allOn = Math.min(1, Math.max(0, (t - 10) / 10));
+      NORMAL(); drawLayer(0, t, ax, ay, push);
+      ADD(); points(t, ax, ay, push, 0, nStar); if (!calm) points(t, ax, ay, push, nStar + nFF1 + nFF2, iLeaf);
+      fx(t, ax, ay, push, 0, 565, 390, 800, 600, 0.2, 1.0, 0.72, 0.45, 0.55 + 0.15 * Math.sin(t * 0.7));
+      NORMAL(); drawLayer(1, t, ax, ay, push);
+      if (!calm) points(t, ax, ay, push, iBird, iPool);
+      ADD(); fx(t, ax, ay, push, 1, 265, 90, 1400, 1200, 0.18, 1.0, 0.8, 0.55, 0.2);
+      NORMAL(); drawLayer(2, t, ax, ay, push);
+      fx(t, ax, ay, push, 2, -200, 560, 2320, 340, 0.28, 1.0, 0.86, 0.9, 0.5);
+      drawLayer(3, t, ax, ay, push, allOn);
+      ADD(); for (let i = 0; i < NW; i++) { const v = winU[i * 3 + 2]; if (v > 0.01) fx(t, ax, ay, push, 0, WIN[i][0] - 34, WIN[i][1] - 34, 68, 68, 0.42, 1.0, 0.72, 0.36, 0.55 * v * (0.85 + 0.15 * Math.sin(t * 1.7 + i * 2.3))); }
+      NORMAL(); fx(t, ax, ay, push, 2, 300, 820, 1800, 260, 0.48, 0.92, 0.85, 1.0, 0.35);
+      fx(t, ax, ay, push, 3, 1495, 502, 90, 210, 0.4, 1, 1, 1, 0.1); fx(t, ax, ay, push, 3, 1577, 528, 90, 210, 0.4, 1, 1, 1, 0.4); fx(t, ax, ay, push, 3, 1655, 535, 90, 210, 0.4, 1, 1, 1, 0.7);
+      drawLayer(4, t, ax, ay, push);
+      ADD(); points(t, ax, ay, push, nStar, nStar + nFF1);
+      NORMAL(); drawLayer(5, t, ax, ay, push);
+      ADD(); { const f = 0.85 + 0.1 * Math.sin(t * 2.1) + 0.06 * Math.sin(t * 7.3) * Math.sin(t * 1.3); fx(t, ax, ay, push, 0, -160, 360, 520, 520, 0.8, 1.0, 0.75, 0.4, 0.75 * f); }
+      NORMAL(); drawLayer(6, t, ax, ay, push); drawLayer(7, t, ax, ay, push);
+      { const sp = calm ? (LU[0] = LU[1] = LU[2] = 0, LU[3] = 1, 0) : lumiAt(t), lx = 699 + LU[0], ly = 806 + LU[1], gr = lumiGlow * 40;
+        ADD(); fx(t, ax, ay, push, 0, lx - 80 - gr, ly - 80 - gr, 160 + gr * 2, 160 + gr * 2, 0.78, 1.0, 0.88, 0.5, 0.42 + 0.15 * Math.sin(t * 2.4) + lumiGlow * 0.5);
+        if (!calm && t - lumiT > (lumiGlow > 0.3 || sp > 0.2 ? 0.07 : 0.5)) { lumiT = t; burst(lx + (Math.random() - 0.5) * 50, ly + (Math.random() - 0.5) * 40, 0.78, sp > 0.2 ? 2 : 1, 30 + lumiGlow * 60 + sp * 80, 9, t); } }
+      NORMAL(); drawLayer(9, t, ax, ay, push); if (!calm) points(t, ax, ay, push, iLeaf, iBird);
+      NORMAL(); drawLayer(8, t, ax, ay, push);
+      ADD(); points(t, ax, ay, push, nStar + nFF1, nStar + nFF1 + nFF2); if (!calm) points(t, ax, ay, push, iPool, iPool + POOL);
+    };
+    const floats = o.floats || [];
+    const toPic = (e) => { const r = host.getBoundingClientRect(); return [(e.clientX - r.left - r.width / 2) / (S * r.width / W) + 960, (e.clientY - r.top - r.height / 2) / (S * r.height / H) + 640]; };
+    let tx = 0, ty = 0, cx = 0, cy = 0, last = 0, t0 = 0, frames = 0, sum = 0, pv = 0, raf = 0, chk = 0, gone = false, mode = 'live', nF = 0;
+    const set = (e) => { const r = host.getBoundingClientRect(); tx = Math.max(-1, Math.min(1, (e.clientX - r.left) / r.width * 2 - 1)); ty = Math.max(-1, Math.min(1, (e.clientY - r.top) / r.height * 2 - 1)); ptr = toPic(e); ponLast = nowT; };
+    const home = () => { tx = 0; ty = 0; };
+    const onMove = (e) => { if (e.pointerType === 'mouse' || e.buttons) set(e); };
+    const onDown = (e) => { set(e); if (mode !== 'live' || G.reduced() || e.target.closest('.t-menu, .t-setp')) return; const [x, y] = ptr; burst(x, y, 0.5, 16, 140, 16, nowT); };
+    const onUp = (e) => { if (e.pointerType !== 'mouse') home(); };
+    const onOver = (e) => { if (e.target.closest && e.target.closest('.t-mi')) lumiTo = 1; };
+    const onOut = () => { lumiTo = 0; };
+    const onLost = (e) => { if (e) e.preventDefault(); dispose(); if (o.onLost) o.onLost(); };
+    host.addEventListener('pointermove', onMove, { passive: true }); host.addEventListener('pointerdown', onDown, { passive: true });
+    host.addEventListener('pointerup', onUp, { passive: true }); host.addEventListener('pointercancel', home, { passive: true }); host.addEventListener('pointerleave', home, { passive: true });
+    const menu = o.menu; if (menu) { menu.addEventListener('pointerover', onOver); menu.addEventListener('pointerout', onOut); menu.addEventListener('focusin', onOver); menu.addEventListener('focusout', onOut); }
+    cv.addEventListener('webglcontextlost', onLost);
+    const dispose = () => { if (gone) return; gone = true; cancelAnimationFrame(raf); clearInterval(chk);
+      host.removeEventListener('pointermove', onMove); host.removeEventListener('pointerdown', onDown); host.removeEventListener('pointerup', onUp);
+      host.removeEventListener('pointercancel', home); host.removeEventListener('pointerleave', home);
+      if (menu) { menu.removeEventListener('pointerover', onOver); menu.removeEventListener('pointerout', onOut); menu.removeEventListener('focusin', onOver); menu.removeEventListener('focusout', onOut); }
+      cv.removeEventListener('webglcontextlost', onLost);
+      freeGL(); cv.width = cv.height = 1; cv.remove(); if (gl.isContextLost() && SH && SH.gl === gl) SH = null; if (G.titleGL.cur === api) G.titleGL.cur = null; };
+    const TAU = 6.2832;
+    const frame = (t) => { nowT = t; lumiGlow += (lumiTo - lumiGlow) * 0.12; pon += ((t - ponLast < 2.5 ? 1 : 0) - pon) * 0.05;
+      dive = diving ? Math.min(1, (t - diving) / 1.6) : Math.max(0, dive - 0.05);
+      const ax = cx * 0.8 + Math.sin(t / 21 * TAU) * 0.6 + Math.sin(t / 8.5 * TAU) * 0.08, ay = cy * 0.6 + Math.sin(t / 14 * TAU + 1) * 0.35, push = (Math.sin(t / 26 * TAU - 1.6) + 1) / 2;
+      render(t, ax, ay, push, false); nF++;
+      floats.forEach((f, k) => { f.style.transform = `translate3d(${(-ax * 10).toFixed(2)}px,${(-ay * 5 + Math.sin(t / 6 * TAU + (k > 1 ? 1 : 0)) * 3).toFixed(2)}px,0)`; }); };
+    // 멈춘 한 장면: 창문이 다 켜진 때(T_STILL), 카메라 가운데
+    const still = () => { dive = 0; render(T_STILL, 0, 0, 0.5, true); nF++; floats.forEach((f) => { f.style.transform = ''; }); };
+    const alive = () => !gone && gen === G.gen && cv.isConnected;
+    const freeze = (why) => { cancelAnimationFrame(raf); mode = why; cv.classList.add('tgl-still', 'tgl-' + why); fit(); still();
+      chk = setInterval(() => { if (!alive()) return dispose(); if (fit()) still(); }, 1000); };
+    const tick = (now) => {
+      if (gone) return; if (!alive()) return dispose();
+      raf = requestAnimationFrame(tick);
+      if (!t0) { t0 = now; last = now - 40; }
+      const step = lite ? 48 : 31;   // 30fps(느리면 20fps)
+      // 1~3초 사이 실제 그리기 간격을 잼: 평균 50ms 넘으면 멈춘 그림(게임 시계 G.every를 늦추지 않게), 34ms 넘으면 가볍게
+      if (frames >= 0 && now - t0 > 1000 && now - t0 < 3000) { frames++; sum += now - (pv || now); }
+      else if (frames >= 0 && now - t0 >= 3000) { const avg = frames > 1 ? sum / frames : 999; frames = -1; if (avg > 50 && !G.titleDepth.keep) return freeze('slow'); if (avg > 34 && !lite) { lite = true; fit(); } }   // 2초에 두 번도 못 그리면 아주 느림
+      pv = now;
+      const sized = fit();
+      if (G.reduced()) { if (mode !== 'reduced' || sized) { mode = 'reduced'; cv.classList.add('tgl-still'); still(); } return; }
+      if (mode === 'reduced') { mode = 'live'; cv.classList.remove('tgl-still'); }
+      const dt = now - last; if (dt < step && !sized) return; last = now;
+      const k = 1 - Math.exp(-Math.min(dt, 200) / 700); cx += (tx - cx) * k; cy += (ty - cy) * k;
+      frame((now - t0) / 1000);
+    };
+    const api = { cv, dispose, info: () => ({ mode, frames: nF, lite, dpr, w: cv.width, h: cv.height, dive }),
+      dive: () => { if (!diving && mode === 'live' && !G.reduced()) diving = nowT || 0.001; },
+      cam: () => [cx, cy] };
+    G.titleGL.cur = api;
+    fit();
+    if (G.reduced()) { mode = 'reduced'; cv.classList.add('tgl-still'); still(); } else frame(0);
+    raf = requestAnimationFrame(tick);
+    requestAnimationFrame(() => { if (!gone) cv.classList.add('on'); });
+    return api;
+  };
+  return { build, L, cur: null };
+})();
 G.titleBook = (ov, onStart) => {
   const gen = G.gen; let run = 0; const alive = (r) => gen === G.gen && r === run;
   const A = (p) => G.asset('assets/ui/title/' + p);
@@ -15858,6 +16234,7 @@ G.titleBook = (ov, onStart) => {
   const brush = (cls, name, x, y, w, h) => { const cv = G.el('canvas', 'tb-brush ' + cls, stage); cv.width = w; cv.height = h;
     Object.assign(cv.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); return { cv, y, src: A(name + '.png') }; };
   const T1 = brush('tb-t1', 'title_brush', 400, 70, 1120, 304), T2 = brush('tb-t2', 'motto_brush', 680, 411, 560, 58);   // 10/4 선생님: 부제목 20% 작게 (가운데는 그대로)
+  const glint = G.el('div', 'tb-glint', stage); { const m = `url("${T1.src}")`; glint.style.webkitMaskImage = m; glint.style.maskImage = m; }   // 11/8 끝 모습에서 제목 위로 빛이 7초마다 한 번 지나감(CSS)
   const prep = async (b) => { if (b.ready) return b;
     const ink = await img(b.src); const w = b.cv.width, h = b.cv.height, c = b.cv.getContext('2d');
     b.c = c; b.ink = ink; b.ready = true;
@@ -15867,14 +16244,52 @@ G.titleBook = (ov, onStart) => {
   const reveal = (b, T) => { if (b.broken) return; const w = b.cv.width, h = b.cv.height; b.c.clearRect(0, 0, w, h); b.c.save(); b.c.beginPath(); b.c.rect(0, 0, w * Math.min(1, T), h); b.c.clip(); b.c.drawImage(b.ink, 0, 0, w, h); b.c.restore(); };
   const showAll = (b) => prep(b).then(() => b.full ? b.c.putImageData(b.full, 0, 0) : reveal(b, 1));
   const openB = G.btn('pill gold tb-open', G.icon('icon_star') + ' 책 펴기', t, () => open(), '책 펴기');
-  const startB = G.btn('pill gold t-start', G.icon('icon_star') + ' 시작하기', t, () => { if (t.classList.contains('done')) onStart(); }, '시작하기');
-  startB.style.setProperty('--paper', `url("${A('paper.jpg')}")`);   // 10/4 선생님: 시작하기 단추를 연한 버터색 종이로
+  // 11/8 선생님(타이틀 입체): [시작하기] 한 개 대신 왼쪽 아래 세로 메뉴 시작하기 · 이어 하기 · 설정. 고르거나 손을 올린 줄 앞에 작은 별
+  G.el('div', 't-mshade', t);
+  const menu = G.el('nav', 't-menu', t); menu.setAttribute('aria-label', '처음 메뉴');
+  let anySave = false; try { for (let i = 1, n = G.save.count(); i <= n; i++) if (G.save.load(i)) { anySave = true; break; } } catch (e) { }
+  let going = false;
+  const go = (mode) => { if (!t.classList.contains('done') || going) return; going = true;
+    if (G.titleGL.cur) G.titleGL.cur.dive(); t.classList.add('diving');   // 그림 속으로 들어가는 동안 저장 책 안내 목소리가 나옴
+    onStart(mode); };
+  const item = (cls, label, fn, aria) => G.btn('t-mi ' + cls, label, menu, () => fn(), aria || label);
+  const startB = item('t-start', '시작하기', () => go('new'));
+  const contB = item('t-cont', '이어 하기', () => go(anySave ? 'cont' : 'new'), anySave ? '이어 하기' : '이어 하기 (아직 저장된 게임이 없어요)');
+  if (!anySave) contB.classList.add('off');
+  const setB = item('t-set', '설정', () => { if (t.classList.contains('done')) settings(); });
+  menu.addEventListener('keydown', (e) => { if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return; e.preventDefault();
+    const bs = [...menu.querySelectorAll('.t-mi')], k = bs.indexOf(document.activeElement); const n = bs[(k + (e.key === 'ArrowDown' ? 1 : bs.length - 1)) % bs.length]; if (n) n.focus({ preventScroll: true }); });
+  // 학생용 설정 창: 소리 크기, 목소리, 큰 글씨, 움직임 줄이기, 전체 화면. 한 번 만든 창을 다시 씀(열고 닫을 때마다 쌓이지 않게, 제목 화면과 함께 사라짐)
+  let setP = null;
+  const settings = () => {
+    if (!setP) {
+      setP = G.el('div', 't-setp', t); setP.setAttribute('role', 'dialog'); setP.setAttribute('aria-modal', 'true'); setP.setAttribute('aria-label', '설정'); setP.hidden = true;
+      const box = G.el('div', 'tsp-box', setP); G.el('h2', '', box, '설정');
+      const row = (label, opts, get, set) => { const r = G.el('div', 'tsp-row', box); G.el('div', 'tsp-lab', r, label); const g = G.el('div', 'tsp-opts', r);
+        const bs = opts.map(([v, txt]) => { const b = G.btn('tsp-o', txt, g, () => { set(v); G.applySettings(); paint(); G.audio.sfx('sfx_tap', 0.5); }, label + ' ' + txt); b.dataset.v = String(v); return b; });
+        const paint = () => bs.forEach((b) => { const on = b.dataset.v === String(get()); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }); paint(); };
+      const S = () => G.settings;
+      const lv = (x) => (x <= 0 ? 0 : x < 0.5 ? 0.35 : x < 0.8 ? 0.6 : 0.9);
+      row('소리', [[0, '끔'], [0.35, '작게'], [0.6, '보통'], [0.9, '크게']], () => lv(S().volume ?? 0.9), (v) => { S().volume = v; });
+      row('목소리', [[true, '켬'], [false, '끔']], () => S().voiceOn !== false, (v) => { S().voiceOn = v; });
+      row('글씨', [[false, '보통'], [true, '크게']], () => !!S().textBig, (v) => { S().textBig = v; });
+      row('움직임', [[false, '보통'], [true, '줄이기']], () => !!S().reduceMotion, (v) => { S().reduceMotion = v; });
+      if (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) {
+        const r = G.el('div', 'tsp-row', box); G.el('div', 'tsp-lab', r, '전체 화면'); const g = G.el('div', 'tsp-opts', r);
+        G.btn('tsp-o', '켜기', g, () => G.teacher.fs(true), '전체 화면 켜기'); G.btn('tsp-o', '끄기', g, () => G.teacher.fs(false), '전체 화면 끄기'); }
+      const close = G.btn('pill gold tsp-close', '닫기', box, () => { setP.hidden = true; try { setB.focus({ preventScroll: true }); } catch (e) { } }, '닫기');
+      t.addEventListener('keydown', (e) => { if (e.key === 'Escape' && setP && !setP.hidden) { e.stopPropagation(); close.click(); } });   // 창 밖에 초점이 있어도 Esc로 닫힘
+      setP.addEventListener('pointerdown', (e) => { if (e.target === setP) close.click(); });
+    }
+    setP.hidden = false; G.audio.sfx('sfx_tap', 0.6);
+    const f = setP.querySelector('.tsp-o'); if (f) try { f.focus({ preventScroll: true }); } catch (e) { }
+  };
   if (G.isTouch) G.el('div', 't-note', t, '소리가 안 들리면 옆의 무음 스위치를 확인해 주세요.');
   // 10/4 선생님: 첫 화면 오른쪽 아래 글자(판 날짜, 선생님 설정 안내)는 없앰
   // 10/6 선생님: 최종본 전까지 표지(책 펴기) 화면에서만 오른쪽 아래에 최종 수정 일시를 작게 (개발자 확인용, 책을 펴면 사라짐)
   if (G.BUILT && !/__/.test(G.BUILT)) G.el('div', 'tb-ver', t, '최종 수정 ' + G.BUILT);
   const fit = () => { if (!stage.isConnected) return; const { W, H } = G.stage, s = Math.max(W / 1920, H / 1080); stage.style.transform = `translate(-50%, -50%) scale(${s})`;
-    const c = Math.max(0, (1080 - H / s) / 2); T1.cv.style.top = (T1.y + c) + 'px'; T2.cv.style.top = (T2.y + c) + 'px'; shade.style.top = c + 'px'; }; // 휴대폰처럼 위아래가 잘리면 제목을 내림
+    const c = Math.max(0, (1080 - H / s) / 2); T1.cv.style.top = (T1.y + c) + 'px'; glint.style.top = (T1.y + c) + 'px'; T2.cv.style.top = (T2.y + c) + 'px'; shade.style.top = c + 'px'; }; // 휴대폰처럼 위아래가 잘리면 제목을 내림
   fit(); if (!G._tbFit) { G._tbFit = 1; G.resizers.add(G.tbResize); } stage._fit = fit;
   // 책 (표지 크기 625x805, 표지만 오른쪽에 놓인 덮인 책)
   let pf = null;
@@ -15882,6 +16297,17 @@ G.titleBook = (ov, onStart) => {
   setTimeout(() => { try { openB.focus({ preventScroll: true }); } catch (e) { } }, 100);
   const ready = Promise.all([img(A('sketch.png')), img(A('illust.jpg'))]);
 
+  // 11/8 깊이 겹: 책을 펴면 받기 시작, 끝 모습이 되면 한 장 그림 위로 세움. 겹이 서면 안 보이는 책·그림판 그림을 놓음(메모리)
+  let depthP = null, depthOn = false;
+  const depthLoad = () => { if (!depthP) depthP = G.titleDepth.preload(fail); };
+  const depthShow = () => { depthLoad(); const r = run;
+    depthP.then((imgs) => { if (!imgs || depthOn || gen !== G.gen || !t.isConnected || r !== run) { if (imgs && !depthOn) imgs.forEach((i) => { i.src = ''; }); return; }
+      depthOn = true;
+      // 먼저 WebGL 한 판(입체·효과), 못 그리면 CSS 겹. 문맥을 잃으면 한 장 그림으로 돌아감
+      const gl = G.titleGL.build({ host: t, before: stage, imgs, floats: [T1.cv, glint, T2.cv], menu,
+        onLost: () => { if (!t.isConnected) return; full.src = A('illust.jpg'); full.style.opacity = 1; t.classList.remove('gl'); } });
+      if (gl) t.classList.add('gl'); else G.titleDepth.build(stage, full, t, imgs, [T1.cv, T2.cv]);
+      setTimeout(() => { if (!t.isConnected) return; full.removeAttribute('src'); desk.removeAttribute('src'); co.width = co.height = sk.width = sk.height = 0; }, 900); }); };
   // 끝 모습: 그림이 화면 가득, 제목, 길의 별, 시작하기
   let stuckT = 0;   // 10/15 메모리: 끝나면 40초 감시 타이머를 지움(타이머가 제목 그림 약 30MB를 쥐고 있던 것)
   const finish = () => {
@@ -15891,8 +16317,9 @@ G.titleBook = (ov, onStart) => {
     G.audio.music('music_title');
     try { localStorage.setItem('starvillage.titleSeen2', '1'); } catch (e) { }
     setTimeout(() => { try { startB.focus({ preventScroll: true }); } catch (e) { } }, 50);
+    depthShow();
   };
-  t.addEventListener('pointerdown', (e) => { if (seen && t.classList.contains('open') && !t.classList.contains('done') && !e.target.closest('.t-start')) finish(); });
+  t.addEventListener('pointerdown', (e) => { if (seen && t.classList.contains('open') && !t.classList.contains('done') && !e.target.closest('.t-menu')) finish(); });
 
   // 연필 선: 굵은 붓질이 왼쪽 위부터 지그재그로 지나간 자리만 선이 드러남
   const sketchIn = async (r, sketch, dur) => {
@@ -15986,6 +16413,7 @@ G.titleBook = (ov, onStart) => {
   const stuck = (why) => { console.error('[제목 화면] 연출이 멈춰 끝 모습으로 넘어감:', why); (G.assetErrors || (G.assetErrors = [])).push({ where: 'title', why: String(why && why.message || why) }); finish(); };
   const open = () => {
     if (t.classList.contains('open')) return;
+    depthLoad();
     const r0 = run; clearTimeout(stuckT); stuckT = setTimeout(() => { if (gen === G.gen && run === r0 && t.isConnected && !t.classList.contains('done')) stuck('40초 안에 끝나지 않음'); }, 40000);
     return openAnim().catch(stuck);
   };
@@ -16032,8 +16460,8 @@ G.titleBook = (ov, onStart) => {
 /* ---- main.js ---- */
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
-G.VERSION = '별의 스펙트럼 (2026-11-08)';
-G.BUILT = '2026-11-08 19:07';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.VERSION = '별의 스펙트럼 (2026-11-09)';
+G.BUILT = '2026-11-09 08:05';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;
@@ -16061,17 +16489,17 @@ G.flow = (() => {
   // 10/2 새 제목 「별의 스펙트럼」: 동화책이 펴지고 그림이 그려진 뒤 제목이 써짐 (title.js G.titleBook)
   F.title = () => {
     F.reset(); G.screen = 'title'; G.st = null;
-    G.titleBook(G.$('#overlay'), () => F.start());
+    G.titleBook(G.$('#overlay'), (mode) => F.start(mode));   // 11/8 메뉴: 시작하기('new')·이어 하기('cont')
   };
 
   // 시작하기 = 소리 켜기 (브라우저 규칙상 첫 누르기에서만 소리를 켤 수 있음)
-  F.start = async () => {
+  F.start = async (mode) => {
     if (matchMedia('(pointer: coarse)').matches) G.teacher.fs(true);   // 9/30 선생님: 휴대폰에서는 처음 누를 때 전체 화면 (아이폰 사파리는 지원 안 함 → 홈 화면에 추가)
     G.audio.unlock(); G.audio.sfx('sfx_tap', 0.6); G.audio.music('music_title');
     const g = G.gen;
-    await G.audio.voice('S92_btn_start');
+    await G.audio.voice(mode === 'cont' ? 'S92_btn_continue' : 'S92_btn_start');
     if (g !== G.gen) return;
-    const pick = await G.save.screen();
+    const pick = await G.save.screen(mode);
     if (g !== G.gen) return;
     G.onResize = null;
     let st = pick.data;
