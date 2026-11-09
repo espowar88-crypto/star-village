@@ -1315,7 +1315,7 @@ G.mapView = (parent, o = {}) => {
   const mono = T ? G.mapTiles(V, T, DW ? 'color' : 'mono', 'bg map-mono') : G.el('img', 'bg', V.imgs), col = V.colorImg = T ? G.mapTiles(V, T, 'color', 'bg map-color') : G.el('img', 'bg map-color', V.imgs);
   if (!T) { mono.src = G.asset(M.mono); mono.width = V.W; mono.height = V.H; mono.alt = ''; col.src = G.asset(M.color); col.width = V.W; col.height = V.H; col.alt = ''; }
   // 10/29 PixiJS(pxscene.js G.pxMap): 조각 그림을 PixiJS가 그림(밤빛은 모든 기기, 결정 d3). 조각 묶음은 켜짐·투명도·덮개만 전함
-  V.px = o.px && T && G.pxMap ? G.pxMap(V, T, /map2_mono_h_t$/.test(T.mono || '') ? T.mono.replace(/map2_mono_h_t$/, 'map2_warm.png') : null, mono, col, () => MOOD.zones) : null;
+  V.px = o.px && T && G.pxMap ? G.pxMap(V, T, /map2_mono_h_t$/.test(T.mono || '') ? T.mono.replace(/map2_mono_h_t$/, 'map2_warm.png') : null, mono, col, () => MOOD.zones, M.shade) : null;   // 11/9 M.shade = 물건 그늘
   V.pxw = !!V.px && !!G.pxwOn && G.pxwOn('map');   // 10/29 엔진 결정: 별 1 지도는 걷는 사람·밤빛·불빛·나무까지 PixiJS(pxscene.js pxMapWorld)
   if (DW && !V.px) { const wt = G.mapTiles(V, T, 'color', ''); const n0 = mono.need; mono.need = (i, on, now) => { n0(i, on, now); wt.need(i, on, now); }; G.dusk(mono, V.W, V.H, G.asset(DW), wt); }
   V.fx = G.el('div', 'layer', el);        // 불빛, 표시, 인물 (위치는 지도 px)
@@ -2004,9 +2004,11 @@ const pxMapWorld = (V, X, root) => {
     const gc = gs && gs.display !== 'none' && [...(gs.background || '').matchAll(/rgba?\((\d+),\s*(\d+),\s*(\d+)/g)];
     if (gc && gc.length >= 3) { K.rect(m.gt, bx, by, cw * s, ch * s); const c0 = m.gt.u.uC0, c1 = m.gt.u.uC1; for (let i = 0; i < 3; i++) { c0[i] = gc[0][i + 1] / 255; c1[i] = gc[2][i + 1] / 255; } m.gt.u.uFx[3] = 2; m.gt.zIndex = key + .6; } else m.gt.visible = false; };
   const npc = (e, r, key) => { const s = e.style, a = s.cssText + e.src + e.naturalWidth + '|' + key; if (!r.m) r.m = K.mkItem(sorted);
-    if (a === r.k) return; r.k = a; sig++; const m = r.m, t = K.tex(e.src, true), nw = e.naturalWidth, nh = e.naturalHeight; m.visible = !!t && !!nw && s.display !== 'none' && s.visibility !== 'hidden'; if (!m.visible) return;
+    if (a === r.k) return; r.k = a; sig++; const m = r.m, t = K.tex(e.src, true), nw = e.naturalWidth, nh = e.naturalHeight; m.visible = !!t && !!nw && s.display !== 'none' && s.visibility !== 'hidden'; if (r.sh) r.sh.visible = false; if (!m.visible) return;
     const L = pxNum(s.left), T = pxNum(s.top), w = pxNum(s.width), h = pxNum(s.height), q = Math.min(w / nw, h / nh), dw = nw * q, dh = nh * q, ag = pxNum(s.scale, 1);   // object-fit contain, 아래 가운데
-    const cx = L + w / 2, by = T + h; K.setTex(m, t); K.rect(m, cx - dw * ag / 2, by - dh * ag, dw * ag, dh * ag); m.u.uFx[0] = s.opacity === '' ? 1 : +s.opacity; m.zIndex = key; };
+    const cx = L + w / 2, by = T + h; K.setTex(m, t); K.rect(m, cx - dw * ag / 2, by - dh * ag, dw * ag, dh * ag); m.u.uFx[0] = s.opacity === '' ? 1 : +s.opacity; m.zIndex = key;
+    // 11/9 장소 앞 사람 발 그림자(그림자 결정판): 걷는 사람과 같은 둥근 그림자 텍스처 하나를 같이 씀, 사람 바로 아래
+    if (!r.sh) r.sh = K.mkItem(sorted); const g = r.sh, gw = dw * ag * .62, gh = Math.max(6, gw * .3); K.setTex(g, shT()); K.rect(g, cx - gw / 2, by - gh * .55, gw, gh); g.u.uFx[0] = m.u.uFx[0]; g.visible = true; g.zIndex = key - .5; };
   const fountain = (e, r, key) => { if (!r.s) { r.t = canvasTex(e); r.s = new P.Sprite(r.t); sorted.addChild(r.s); } const s = e.style, x = pxNum(s.left), y = pxNum(s.top), w = pxNum(s.width), h = pxNum(s.height);
     r.s.position.set(x, y); r.s.width = w; r.s.height = h; r.s.zIndex = key; r.s.visible = !V.inCam || V.inCam(x + w / 2, y + h / 2, 200); if (r.s.visible) { r.t.source.update(); sig++; } };
   const hfx = (e, r, key) => { if (!r.s) { r.s = new P.Sprite(dotT()); r.s.anchor.set(0.5); r.s.tint = 0x3c2d28; sorted.addChild(r.s); } const t = pxTf(e.style.transform);
@@ -2020,7 +2022,7 @@ const pxMapWorld = (V, X, root) => {
       if (kind === 'w') { const w = wOf.get(e); if (w) walker(w, r, key); }
       else if (kind === 'l') { r.L.s.zIndex = key; if (r.L.sync(now, lt, light, 1)) sig++; }
       else if (kind === 'n') npc(e, r, key); else if (kind === 'f') fountain(e, r, key); else hfx(e, r, key); }
-    for (const [e, r] of recs) if (r.p !== pass) { if (r.m) for (const m of r.m.u ? [r.m] : Object.values(r.m)) m.destroy(); if (r.s) r.s.destroy(); if (r.t) r.t.destroy(true); if (r.L) r.L.s.destroy(); recs.delete(e); } };
+    for (const [e, r] of recs) if (r.p !== pass) { if (r.m) for (const m of r.m.u ? [r.m] : Object.values(r.m)) m.destroy(); if (r.s) r.s.destroy(); if (r.sh) r.sh.destroy(); if (r.t) r.t.destroy(true); if (r.L) r.L.s.destroy(); recs.delete(e); } };
   const tick = () => { const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
     const run = !document.hidden && !(U && U.classList.contains('pause')); if (run) clock += dt;
     if (!K.hasDepth() && V.depth) K.depth();
@@ -2031,7 +2033,7 @@ const pxMapWorld = (V, X, root) => {
   return { dispose };
 };
 // 장면에 PixiJS 바탕을 붙임. 쓰면 { ready, blit, snapshot, reveal, dispose, col } 아니면 null
-G.pxScene = (V, colSrc, warmSrc) => {
+G.pxScene = (V, colSrc, warmSrc, _, shadeSrc) => {   // 11/9 shadeSrc: 물건 그늘 그림(도구/월드/새방식/shadow_bake.py, 장면 1/4 흑백 = 밝기 곱하기)
   const X = G.px, K = window.KTX || {}; if (!X || !K[colSrc]) return null;
   const { P, app, cv } = X, W = V.W, H = V.H, [cUrl, cw, ch, ow = W, oh = H] = K[colSrc], wk = warmSrc && K[warmSrc];   // 늘린 크기 cw·ch, 원래 크기 ow·oh
   { const gl = app.renderer && app.renderer.gl, mx = gl ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : 0; if (mx && Math.max(cw, ch) > mx) return null; }   // 11/7 갈대밭(4800 넓이): 큰 그림을 못 올리는 옛 기기는 지금 방식(DOM)으로
@@ -2040,14 +2042,16 @@ G.pxScene = (V, colSrc, warmSrc) => {
 uniform mat3 uProjectionMatrix; uniform mat3 uWorldTransformMatrix; uniform mat3 uTransformMatrix;
 void main(){ mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix; gl_Position = vec4((mvp * vec3(aPosition, 1.0)).xy, 0.0, 1.0); vUV = aUV; vP = aPosition; }`;
   const fragment = `in vec2 vUV; in vec2 vP; out vec4 finalColor;
-uniform sampler2D uTex; uniform sampler2D uWarm; uniform float uCol; uniform float uHasWarm; uniform vec2 uWarmK; ${RN.map((i) => `uniform vec4 uR${i};`).join(' ')}   // uWarmK: 장면 좌표 → 불빛 그림 좌표
+uniform sampler2D uTex; uniform sampler2D uWarm; uniform sampler2D uShade; uniform float uCol; uniform float uHasWarm; uniform vec2 uWarmK; uniform float uShOn; uniform vec2 uShK; ${RN.map((i) => `uniform vec4 uR${i};`).join(' ')}   // uWarmK: 장면 좌표 → 불빛 그림 좌표, uShK: 장면 좌표 → 그늘 그림 좌표
 void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152, .0722));
   vec3 v = min(vec3(1.0), (vec3(g) + (c - vec3(g)) * .4) * 1.0488) * vec3(197.0/255.0, 212.0/255.0, 1.0);
   v = 1.0 - (1.0 - v) * (251.0/255.0);
   if (uHasWarm > .5) v = mix(v, c, texture(uWarm, vP * uWarmK).a);
   float a = uCol;
   ${RN.map((i) => `if (uR${i}.w > 0.0) a = max(a, uR${i}.w * (1.0 - smoothstep(.45, 1.0, distance(vP, uR${i}.xy) / uR${i}.z)));`).join('\n  ')}
-  finalColor = vec4(mix(v, c, clamp(a, 0.0, 1.0)), 1.0); }`;
+  a = clamp(a, 0.0, 1.0); vec3 o = mix(v, c, a);
+  if (uShOn > .5) o *= texture(uShade, vP * uShK).r;   // 11/9 물건 그림자(선생님 '그림자 없는데?' 뒤 흑백·저녁빛에서도 그대로 진하게)
+  finalColor = vec4(o, 1.0); }`;
   // 바탕 그림 이름은 uTex: PixiJS Mesh가 uColor(물들이기 색)를 따로 써서 겹치면 매 장면 오류
   let mesh = null, tc = null, tw = null, gone = false, tick = null, col = null, wd = null;   // col: 장면의 빈 색 img(투명도만 읽음), wd: 세상 판(pxWorld)
   // 10/29 엔진 결정: 장면 한 판(root)이 카메라를 따라감. 맨 아래 바탕 그림, 그 위에 세상 판(인물·불빛·나무, G.PXW 장소만)
@@ -2070,8 +2074,8 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
   const paint = () => { if (gone || !cur.c) return;
     const c = cur.c.t, w = cur.w && cur.w.t;
     if (!mesh) {
-      shader = P.Shader.from({ gl: { vertex, fragment }, resources: { uTex: c.source, uWarm: (w || c).source,
-        pxU: { uCol: { value: 1, type: 'f32' }, uHasWarm: { value: w ? 1 : 0, type: 'f32' }, uWarmK: { value: new Float32Array(warmK()), type: 'vec2<f32>' }, ...Object.fromEntries(RN.map((i) => ['uR' + i, { value: new Float32Array(4), type: 'vec4<f32>' }])) } } });
+      shader = P.Shader.from({ gl: { vertex, fragment }, resources: { uTex: c.source, uWarm: (w || c).source, uShade: (shd.t || c).source,
+        pxU: { uCol: { value: 1, type: 'f32' }, uHasWarm: { value: w ? 1 : 0, type: 'f32' }, uWarmK: { value: new Float32Array(warmK()), type: 'vec2<f32>' }, uShOn: { value: shd.t ? 1 : 0, type: 'f32' }, uShK: { value: new Float32Array([1 / W, 1 / H]), type: 'vec2<f32>' }, ...Object.fromEntries(RN.map((i) => ['uR' + i, { value: new Float32Array(4), type: 'vec4<f32>' }])) } } });
       geo.getBuffer('aUV').data = new Float32Array(uvOf(cur.c.k));
       mesh = new P.Mesh({ geometry: geo, shader }); root.addChildAt(mesh, 0);   // 세상 판보다 늘 아래
       tick = () => { const m = follow(), u = shader.resources.pxU.uniforms; if (V.pxFade) root.alpha = +(V.pxFade.style.opacity || 1);   /* 10/31 도착 연출: 연출 겹이 흐려지고 짙어지는 것을 따라감 */ u.uCol = G.pxKicking ? u.uCol : amt();   /* setCam 자리에서는 지난 값(모양 계산을 억지로 안 시킴) */ return m + '|' + u.uCol + '|' + root.alpha + '|' + revealTick(u); };   // 달라지면 그림
@@ -2093,6 +2097,9 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
     return () => clearTimeout(tm);
   };
   const stops = [slot('c', G.asset(cUrl), G.asset(colSrc), colSrc, () => full0())]; if (wk) stops.push(slot('w', G.asset(wk[0]), G.asset(warmSrc), warmSrc));
+  // 11/9 그늘 그림(작은 흑백 PNG, 장면마다 하나·광장 여러 벌은 같은 그림): 오면 판에 얹음. 못 받으면 그림자 없이 그대로(바탕은 안 기다림)
+  const shd = { t: null };
+  if (shadeSrc) { const u = G.asset(shadeSrc); take(u).then((t) => { if (gone || !t) return; shd.t = t; if (shader) { shader.resources.uShade = t.source; shader.resources.pxU.uniforms.uShOn = 1; G.pxDirty = true; } }, (e) => console.warn('PixiJS 그늘 그림 못 읽음', shadeSrc, e && e.message)); }
   // 장면을 여는 쪽(scene.js Sc.enter, 연출)은 바탕이 처음 그려질 때까지, 최대 pxLim 두 배만 기다림. 늦은 바탕은 오는 대로 그림
   const ready = pxLate(drawn, pxLim() * 2, '장면 바탕 ' + colSrc).catch(() => { });
   // 색 되찾기 동그라미 (DOM 판의 radial-gradient 원 R, #000 45% → 투명 100% 와 같은 모양), anim이면 1.8초에 걸쳐 진해짐
@@ -2111,7 +2118,7 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
   // 장면을 떠날 때 지도와 겹쳐 사라지는 사본(scene.js)에 넣을 지금 화면 그림
   const snapshot = () => { if (!mesh) return null; app.render(); const c = app.renderer.extract.canvas({ target: app.stage, frame: new P.Rectangle(0, 0, app.screen.width, app.screen.height) }); return c; };
   const dispose = () => { gone = true; stops.forEach((f) => f()); full0(); if (wd) { wd.dispose(); wd = null; } if (tick) G.pxTick.remove(tick); if (mesh) { mesh.destroy(); mesh = null; } if (shader) shader.destroy(); root.destroy(); geo.destroy(); if (cpu) { cpu.onload = null; cpu.removeAttribute('src'); cpu = null; }
-    held.forEach(G.pxPut); held.length = 0; cur.c = cur.w = null; shader = null;   // 그래픽 칩 메모리를 놓음(지금 그리는 그림·아직 오는 중인 그림 모두)
+    held.forEach(G.pxPut); held.length = 0; cur.c = cur.w = null; shd.t = null; shader = null;   // 그래픽 칩 메모리를 놓음(지금 그리는 그림·아직 오는 중인 그림 모두)
     tc = tw = null; G.pxDirty = true; if (!app.stage.children.length) cv.style.display = 'none'; };
   const world = () => { if (!gone && !wd) wd = pxWorld(V, X, root); };   // scene.js: V.pxw 장소면 sceneView 끝에서
   return { ready, full, blit, snapshot, reveal, dispose, world, col: (e) => { col = e; }, busy: () => !gone && !mesh };
@@ -2121,7 +2128,7 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
 //  색 번짐 구역(타원, mapview applyMask·colorAlphaAt과 같은 모양)·색 다 덮기(fullColor)·밤빛·불빛을 조각 그림을 그리며 한 번에 계산
 //  mono·col 조각 묶음(div)은 그대로 두되 그림은 안 받음. 가림 조각(rgDraw → G.mapBlit)은 d.pxBlit로 조각 그림 사본에서
 const pxGot = new Set();   // 미리 받은 압축 조각 주소(한 번만)
-G.pxMap = (V, T, warmSrc, mono, col, zones) => {
+G.pxMap = (V, T, warmSrc, mono, col, zones, shadeSrc) => {   // 11/9 shadeSrc: 지도 물건 그늘(지도 전체 1/8 흑백, shadow_bake.py)
   const X = G.px, K = window.KTX || {}; if (!X || !T || !K[T.color + '00' + T.ext]) return null;
   const { P, app, cv } = X, W = V.W, H = V.H, NZ = 8, ZN = [...Array(NZ).keys()], wk = warmSrc && K[warmSrc];
   const vertex = `in vec2 aPosition; in vec2 aUV; out vec2 vUV; out vec2 vP;
@@ -2130,6 +2137,7 @@ void main(){ mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMa
   // 구역 하나: t = 타원 거리, 0~0.42 a, 0.72 a*0.55, 1 에서 0 (CSS radial-gradient와 같음). 여러 구역은 1-(1-a)(1-b)로 합침
   const fragment = `in vec2 vUV; in vec2 vP; out vec4 finalColor;
 uniform sampler2D uTex; uniform sampler2D uWarm; uniform float uHasWarm; uniform vec2 uWarmK; uniform float uOp; uniform float uFull;
+uniform sampler2D uShade; uniform float uShOn; uniform vec2 uShK; uniform float uShS;
 ${ZN.map((i) => `uniform vec4 uZ${i}; uniform float uA${i};`).join(' ')}
 float zone(vec4 z, float a){ if (a < .003) return 0.0; float t = length((vP - z.xy) / z.zw);
   return t <= .42 ? a : t <= .72 ? mix(a, a * .55, (t - .42) / .3) : t < 1.0 ? a * .55 * (1.0 - (t - .72) / .28) : 0.0; }
@@ -2138,12 +2146,15 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
   v = 1.0 - (1.0 - v) * (251.0/255.0);
   if (uHasWarm > .5) v = mix(v, c, texture(uWarm, vP * uWarmK).a);
   float a; if (uFull >= 0.0) a = uFull; else { float keep = 1.0; ${ZN.map((i) => `keep *= 1.0 - zone(uZ${i}, uA${i});`).join(' ')} a = 1.0 - keep; }
-  finalColor = vec4(mix(v, c, clamp(a * uOp, 0.0, 1.0)), 1.0); }`;
+  a = clamp(a * uOp, 0.0, 1.0); vec3 o = mix(v, c, a);
+  if (uShOn > .5) o *= mix(1.0, texture(uShade, vP * uShK).r, uShS);   // 11/9 물건 그림자(선생님 '그림자 없는데?' 뒤 흑백·밤에도 진하게, uShS 1)
+  finalColor = vec4(o, 1.0); }`;
   const glProgram = P.GlProgram.from({ vertex, fragment });
   const U = new P.UniformGroup({ uHasWarm: { value: 0, type: 'f32' }, uWarmK: { value: new Float32Array([1, 1]), type: 'vec2<f32>' }, uOp: { value: 1, type: 'f32' }, uFull: { value: -1, type: 'f32' },
+    uShOn: { value: 0, type: 'f32' }, uShK: { value: new Float32Array([1 / W, 1 / H]), type: 'vec2<f32>' }, uShS: { value: 1, type: 'f32' },
     ...Object.fromEntries(ZN.flatMap((i) => [['uZ' + i, { value: new Float32Array([0, 0, 1, 1]), type: 'vec4<f32>' }], ['uA' + i, { value: 0, type: 'f32' }]])) });
   const world = new P.Container(), tl = new P.Container(); world.addChild(tl); app.stage.addChild(world);   // tl: 조각 그림(늘 세상 판 아래)
-  let warm = null, gone = false, pend = 0, waiters = [];
+  let warm = null, shade = null, gone = false, pend = 0, waiters = [];
   const box = { on: [], tex: [], mesh: [], tm: [], cpu: [], rt: [], rn: [] };   // rt·rn: 실패한 조각 다시 받기 타이머·횟수(11/5 W-02)   // 조각마다: 켜짐, 그림, 그리는 판, 끄기 타이머, 가림용 원래 그림
   const n = T.cols * T.rows, want = (i) => !!(mono.tiles[i].on || col.tiles[i].on);
   const settle = () => { if (pend) return; const w = waiters; waiters = []; w.forEach((f) => f()); };
@@ -2155,7 +2166,7 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
       if (gone || !want(i) || box.mesh[i] || !tex) return;
       const u0 = .5 / pw, v0 = .5 / ph, u1 = (ow - .5) / pw, v1 = (oh - .5) / ph;   // 가장자리 반 점 안쪽까지만: 조각 사이에 늘린 칸·옆 점이 섞여 줄이 생기지 않게
       const geo = new P.Geometry({ attributes: { aPosition: [t.x, t.y, t.x + t.w, t.y, t.x + t.w, t.y + t.h, t.x, t.y + t.h], aUV: [u0, v0, u1, v0, u1, v1, u0, v1] }, indexBuffer: [0, 1, 2, 0, 2, 3] });
-      const m = new P.Mesh({ geometry: geo, shader: new P.Shader({ glProgram, resources: { mapU: U, uTex: tex.source, uWarm: (warm || tex).source } }) });
+      const m = new P.Mesh({ geometry: geo, shader: new P.Shader({ glProgram, resources: { mapU: U, uTex: tex.source, uWarm: (warm || tex).source, uShade: (shade || tex).source } }) });
       m.pxGeo = geo; box.tex[i] = { tex, url, ow, oh }; held = false; box.rn[i] = 0; box.mesh[i] = m; tl.addChild(m); G.pxDirty = true; mono.ver = ++col.ver;   // ver: 가림 조각이 새 그림으로 다시 그리게
     } catch (e) { console.warn('PixiJS 지도 조각 못 읽음', i, e);
       // 11/5 W-02: 2초·5초·10초 뒤 세 번 다시 받아 봄(그 뒤에는 조각이 다시 보일 때 need가 부름). 기다리는 동안 화면은 막지 않음(pend에 안 셈)
@@ -2198,10 +2209,12 @@ void main(){ vec3 c = texture(uTex, vUV).rgb; float g = dot(c, vec3(.2126, .7152
   (async () => { if (wk) { pend++; try { warm = await G.pxGet(G.asset(wk[0])); if (gone) return;
     U.uniforms.uHasWarm = 1; U.uniforms.uWarmK = new Float32Array([(wk[3] || wk[1]) / wk[1] / W, (wk[4] || wk[2]) / wk[2] / H]);
     for (const m of box.mesh) if (m) m.shader.resources.uWarm = warm.source; G.pxDirty = true; } catch (e) { console.warn('PixiJS 지도 불빛 그림 못 읽음', e); } finally { pend--; settle(); } } })();
+  // 11/9 그늘 그림: 오면 모든 조각 판에 얹음(못 받으면 그림자 없이). 지도를 여는 쪽은 기다리지 않음(pend에 안 셈)
+  if (shadeSrc) G.pxGet(G.asset(shadeSrc)).then((t) => { if (gone || !t) return; shade = t; U.uniforms.uShOn = 1; for (const m of box.mesh) if (m) m.shader.resources.uShade = t.source; G.pxDirty = true; }, (e) => console.warn('PixiJS 지도 그늘 그림 못 읽음', e && e.message));
   G.pxTick.add(tick); cv.style.display = '';
   const snapshot = () => { app.render(); return app.renderer.extract.canvas({ target: app.stage, frame: new P.Rectangle(0, 0, app.screen.width, app.screen.height) }); };
   let mw = null; const mworld = () => { if (!gone && !mw) mw = pxMapWorld(V, X, world); };   // mapview.js: 별 1 지도면 끝에서
-  const dispose = () => { gone = true; pre.forEach((ac) => ac.abort()); pre.clear(); if (mw) { mw.dispose(); mw = null; } G.pxTick.remove(tick); for (let i = 0; i < n; i++) { clearTimeout(box.tm[i]); clearTimeout(box.rt[i]); drop(i); } world.destroy(); if (warm) G.pxPut(G.asset(wk[0]));
+  const dispose = () => { gone = true; pre.forEach((ac) => ac.abort()); pre.clear(); if (mw) { mw.dispose(); mw = null; } G.pxTick.remove(tick); for (let i = 0; i < n; i++) { clearTimeout(box.tm[i]); clearTimeout(box.rt[i]); drop(i); } world.destroy(); if (warm) G.pxPut(G.asset(wk[0])); if (shadeSrc) G.pxPut(G.asset(shadeSrc)); shade = null;
     G.pxDirty = true; if (!app.stage.children.length) cv.style.display = 'none'; };
   return { snapshot, dispose, world: mworld, busy: () => pend > 0 };
 };
@@ -4368,7 +4381,7 @@ G.sceneView = (parent, id, o = {}) => {
   if (S.pixel) el.classList.add('pix');   // 10/15 선생님(픽셀 배경 통합): 픽셀 장면만 점 그대로(css .world.pix)
   const DW = G.duskOK && /_v2_px_mono\.png$/.test(S.image.mono) ? S.image.mono.replace(/_px_mono\.png$/, '_warm.png') : null, MONO = DW ? S.image.color : S.image.mono;   // 10/26 g3: 흑백 그림 대신 색 그림 + 저녁빛
   // 10/29 PixiJS(pxscene.js): 바탕은 아래 PixiJS 캔버스가 그림. mono·col은 그림 없는 빈 img로 남아 투명도·숨김(색 되찾기 연출이 바꿈)만 전함
-  const PX = V.px = o.px && G.pxScene ? G.pxScene(V, S.image.color, /_v2_px_mono\.png$/.test(S.image.mono) ? S.image.mono.replace(/_px_mono\.png$/, '_warm.png') : null, null) : null;
+  const PX = V.px = o.px && G.pxScene ? G.pxScene(V, S.image.color, /_v2_px_mono\.png$/.test(S.image.mono) ? S.image.mono.replace(/_px_mono\.png$/, '_warm.png') : null, null, S.image.shade) : null;   // 11/9 S.image.shade = 물건 그늘
   V.pxw = !!PX && !!G.pxwOn && G.pxwOn(id);   // 10/29 엔진 결정: 이 장소는 인물·불빛·나무·가림까지 PixiJS(pxscene.js pxWorld)
   const mono = V.monoImg = G.el('img', 'bg', el); mono.width = W; mono.height = H; mono.alt = '';
   const col = V.colorImg = G.el('img', 'bg', el); col.width = W; col.height = H; col.alt = ''; col.style.transition = 'opacity .8s';
@@ -16500,6 +16513,8 @@ void main(){ vec2 d = gl_PointCoord * 2.0 - 1.0; float r = length(d); vec3 c; fl
     };
     const api = { cv, dispose, info: () => ({ mode, frames: nF, lite, dpr, w: cv.width, h: cv.height, dive }),
       dive: () => { if (!diving && mode === 'live' && !G.reduced()) diving = nowT || 0.001; },
+      // 11/9 메뉴 버튼을 누르면 그 자리에서 별빛이 퍼짐. 늘 있는 별빛 묶음(POOL)을 돌려 써서 여러 번 눌러도 쌓이지 않음
+      spark: (el) => { if (mode !== 'live' || G.reduced() || !el) return; const r = el.getBoundingClientRect(); const [x, y] = toPic({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }); burst(x, y, 0.5, 22, 170, 14, nowT); },
       cam: () => [cx, cy] };
     G.titleGL.cur = api;
     fit();
@@ -16553,17 +16568,20 @@ G.titleBook = (ov, onStart) => {
   const reveal = (b, T) => { if (b.broken) return; const w = b.cv.width, h = b.cv.height; b.c.clearRect(0, 0, w, h); b.c.save(); b.c.beginPath(); b.c.rect(0, 0, w * Math.min(1, T), h); b.c.clip(); b.c.drawImage(b.ink, 0, 0, w, h); b.c.restore(); };
   const showAll = (b) => prep(b).then(() => b.full ? b.c.putImageData(b.full, 0, 0) : reveal(b, 1));
   const openB = G.btn('pill gold tb-open', G.icon('icon_star') + ' 책 펴기', t, () => open(), '책 펴기');
-  // 11/8 선생님(타이틀 입체): [시작하기] 한 개 대신 왼쪽 아래 세로 메뉴 시작하기 · 이어 하기 · 설정. 고르거나 손을 올린 줄 앞에 작은 별
-  G.el('div', 't-mshade', t);
+  // 11/9 선생님(메뉴 결정판 titlemenu2): 아래 가운데 세로 메뉴 새로운 이야기 · 이어서 여행하기 · 설정, 밤하늘 유리 버튼(제미나이 그림 한 장을 세 버튼이 같이 씀)
   const menu = G.el('nav', 't-menu', t); menu.setAttribute('aria-label', '처음 메뉴');
+  const btnUrl = G.asset('assets/ui/' + 'title_depth/btn_glass.webp');
+  menu.style.setProperty('--tmbtn', 'url("' + btnUrl + '")');
+  { const bi = new Image(); bi.decoding = 'async'; bi.src = btnUrl; }   // 책을 펴는 동안 미리 받아 둠(메뉴가 뜰 때 빈 버튼이 안 보이게)
   let anySave = false; try { for (let i = 1, n = G.save.count(); i <= n; i++) if (G.save.load(i)) { anySave = true; break; } } catch (e) { }
   let going = false;
   const go = (mode) => { if (!t.classList.contains('done') || going) return; going = true;
     if (G.titleGL.cur) G.titleGL.cur.dive(); t.classList.add('diving');   // 그림 속으로 들어가는 동안 저장 책 안내 목소리가 나옴
     onStart(mode); };
-  const item = (cls, label, fn, aria) => G.btn('t-mi ' + cls, label, menu, () => fn(), aria || label);
-  const startB = item('t-start', '시작하기', () => go('new'));
-  const contB = item('t-cont', '이어 하기', () => go(anySave ? 'cont' : 'new'), anySave ? '이어 하기' : '이어 하기 (아직 저장된 게임이 없어요)');
+  const spark = (b) => { if (G.titleGL.cur && G.titleGL.cur.spark) G.titleGL.cur.spark(b); };
+  const item = (cls, label, fn, aria) => { const b = G.btn('t-mi ' + cls, label, menu, () => { if (t.classList.contains('done') && !going) spark(b); fn(); }, aria || label); return b; };
+  const startB = item('t-start', '새로운 이야기', () => go('new'));
+  const contB = item('t-cont', '이어서 여행하기', () => go(anySave ? 'cont' : 'new'), anySave ? '이어서 여행하기' : '이어서 여행하기 (아직 저장된 게임이 없어요)');
   if (!anySave) contB.classList.add('off');
   const setB = item('t-set', '설정', () => { if (t.classList.contains('done')) settings(); });
   menu.addEventListener('keydown', (e) => { if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return; e.preventDefault();
@@ -16770,7 +16788,7 @@ G.titleBook = (ov, onStart) => {
 // main.js — 시작과 흐름: 타이틀(U1) → 저장 칸 번호 고르기(U2) → 이름 → 인트로 C1 → 루미 만남 → 마을 지도
 'use strict';
 G.VERSION = '별의 스펙트럼 (2026-11-09)';
-G.BUILT = '2026-11-09 11:11';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
+G.BUILT = '2026-11-09 11:54';   // 10/6 선생님: 최종본 전까지 표지 오른쪽 아래에 최종 수정 일시 (개발자 확인용)   // 10/4: 날짜는 build.py가 만든 날로 바꿈
 G.defaults = { volume: 0.9, volVoice: 1, volMusic: 1, volSfx: 1, voiceOn: true, textBig: false, help: 'normal', choiceOne: false, reduceMotion: false, reduceAuto: true, hideSkip: false, shortStory: false, fast: false, level: 'normal', slotCount: 12, light: false, tapPlace: true, soundLight: true };
 G.applySettings = () => {
   const s = G.settings;

@@ -1509,28 +1509,34 @@ img.st-grey { filter: grayscale(1) brightness(.85); opacity: .7; }
 .tb.done .tb-glint { opacity: 1; transition: opacity 1s 1s; animation: tb-glint 7s ease-in-out 3s infinite; }
 @keyframes tb-glint { 0% { background-position: 120% 0; } 35%, 100% { background-position: -20% 0; } }
 #game.reduce .tb-glint { animation: none; opacity: 0; }
-.t-mshade { position: absolute; left: 0; bottom: 0; width: min(60%, calc(var(--u) * 700)); height: min(55%, calc(var(--u) * 500)); pointer-events: none; opacity: 0; transition: opacity .8s;
-  background: radial-gradient(ellipse at 0% 100%, rgba(12, 14, 38, .6), rgba(12, 14, 38, 0) 70%); }
-.tb.done .t-mshade { opacity: 1; }
-.title-screen.tb .t-menu { position: absolute; left: calc(var(--sal) + max(var(--u) * 40, 4.5%)); bottom: calc(var(--sab) + max(var(--u) * 30, 7%)); z-index: 6;
-  display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--u) * 6); pointer-events: none; }
+/* 11/9 메뉴(결정판 titlemenu2): 아래 가운데 세로, 밤하늘 유리 버튼. 버튼 그림 한 장(title.js --tmbtn)을 9조각으로(양끝 고정, 가운데만 늘임).
+   유리 흐림(backdrop-filter)은 움직이는 그림 위에서 매 프레임 다시 그려 무거워 안 씀. 그림 안쪽만 살짝 비치게 만들어 둠 */
+.title-screen.tb .t-menu { --bh: calc(var(--u) * 80); --mw: calc(var(--u) * 400); position: absolute; left: 50%; width: var(--mw); margin-left: calc(var(--mw) * -.5); bottom: calc(var(--sab) + max(var(--u) * 30, 4%)); z-index: 6;
+  display: flex; flex-direction: column; align-items: stretch; gap: calc(var(--u) * 10); pointer-events: none; }
 .tb.done .t-menu { pointer-events: auto; }
-.title-screen.tb .t-menu .t-mi { position: relative; left: auto; bottom: auto; transform: none; min-width: 0; min-height: max(calc(var(--u) * 78), calc(var(--bu) * 72));
-  font-family: inherit; font-size: calc(var(--u) * 50 * var(--ts, 1)); line-height: 1.2; color: #FFF7E6; background: none; border: 0; box-shadow: none; border-radius: calc(var(--u) * 40);
-  padding: 0 calc(var(--u) * 28) 0 calc(var(--u) * 62); cursor: pointer; opacity: 0; text-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 6) rgba(15, 18, 45, .9), 0 0 calc(var(--u) * 18) rgba(15, 18, 45, .55);
-  transition: transform .25s, color .25s, text-shadow .25s; }
-.tb.done .t-menu .t-mi { animation: t-mIn .8s ease-out forwards; }
+.title-screen.tb .t-menu .t-mi { position: relative; left: auto; bottom: auto; transform: none; min-width: 0; height: var(--bh); min-height: 0; margin: 0;
+  display: flex; align-items: center; justify-content: center; font-family: inherit; font-size: max(calc(var(--u) * 30 * var(--ts, 1)), 15px); line-height: 1.2; white-space: nowrap;
+  color: #FFF4D8; text-shadow: 0 1px 3px rgba(10, 12, 40, .8); background: none; box-shadow: none; border-radius: 0; padding: 0;
+  border: solid transparent; border-width: 0 calc(var(--bh) * .5); border-image: var(--tmbtn) 0 100 fill / 0 calc(var(--bh) * .5) stretch;
+  cursor: pointer; opacity: 0; -webkit-tap-highlight-color: transparent; transition: filter .2s, transform .1s; }
+/* 손가락 닿는 곳은 그림보다 조금 넓게(버튼 사이 틈까지) */
+.title-screen.tb .t-menu .t-mi::before { content: ''; position: absolute; top: calc(var(--u) * -5); bottom: calc(var(--u) * -5); left: calc(var(--bh) * -.5); right: calc(var(--bh) * -.5); }
+.tb.done .t-menu .t-mi { animation: t-mIn .7s ease-out forwards; }
 .tb.done .t-menu .t-mi:nth-child(2) { animation-delay: .15s; } .tb.done .t-menu .t-mi:nth-child(3) { animation-delay: .3s; }
-@keyframes t-mIn { from { opacity: 0; translate: calc(var(--u) * -24) 0; } to { opacity: 1; translate: 0 0; } }   /* transform은 손 올림 몫이라 translate로 */
-.title-screen.tb .t-menu .t-mi::before { content: ''; position: absolute; left: calc(var(--u) * 14); top: 50%; width: calc(var(--u) * 30); height: calc(var(--u) * 30); margin-top: calc(var(--u) * -15);
-  background: no-repeat center / contain url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 4 C54 38 62 46 96 50 C62 54 54 62 50 96 C46 62 38 54 4 50 C38 46 46 38 50 4 Z' fill='%23FFE7A3'/%3E%3C/svg%3E");
-  opacity: 0; transform: scale(.4) rotate(-30deg); transition: opacity .25s, transform .35s; }
-.title-screen.tb .t-menu .t-mi:hover, .title-screen.tb .t-menu .t-mi:focus-visible { color: #FFE7A3; transform: translateX(calc(var(--u) * 10)) scale(1.04); outline: none;
-  text-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 6) rgba(15, 18, 45, .9), 0 0 calc(var(--u) * 22) rgba(255, 214, 120, .85); }
-.title-screen.tb .t-menu .t-mi:hover::before, .title-screen.tb .t-menu .t-mi:focus-visible::before { opacity: 1; transform: scale(1) rotate(0); }
-.title-screen.tb .t-menu .t-mi:active { transform: translateX(calc(var(--u) * 10)) scale(.97); }
-.title-screen.tb .t-menu .t-mi.off { color: #C9C3D8; }
-.tb.diving .tb-stage, .tb.diving .t-menu, .tb.diving .t-mshade { opacity: 0 !important; transition: opacity .8s; pointer-events: none; }
+@keyframes t-mIn { from { opacity: 0; translate: 0 calc(var(--u) * 18); } to { opacity: 1; translate: 0 0; } }   /* transform은 누름 몫이라 translate로 */
+.title-screen.tb .t-menu .t-mi::after { content: ''; position: absolute; right: calc(var(--bh) * -.42); top: calc(var(--u) * -8); width: calc(var(--u) * 26); height: calc(var(--u) * 26);
+  background: no-repeat center / contain url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 4 C54 38 62 46 96 50 C62 54 54 62 50 96 C46 62 38 54 4 50 C38 46 46 38 50 4 Z' fill='%23FFE7A3'/%3E%3C/svg%3E"); filter: drop-shadow(0 0 calc(var(--u) * 4) #FFD67A); opacity: 0; transform: scale(.3) rotate(-40deg); transition: opacity .25s, transform .35s; pointer-events: none; }
+.title-screen.tb .t-menu .t-mi:hover, .title-screen.tb .t-menu .t-mi:focus-visible, .title-screen.tb .t-menu .t-mi:active { outline: none; color: #FFF8E4;
+  filter: brightness(1.15) drop-shadow(0 0 calc(var(--u) * 10) rgba(255, 214, 120, .7)); }
+.title-screen.tb .t-menu .t-mi:hover::after, .title-screen.tb .t-menu .t-mi:focus-visible::after, .title-screen.tb .t-menu .t-mi:active::after { opacity: 1; transform: scale(1) rotate(0); }
+.title-screen.tb .t-menu .t-mi:active { transform: scale(.97); }
+.title-screen.tb .t-menu .t-mi.off { color: #C9C3D8; filter: saturate(.5) brightness(.85); }
+/* 휴대폰 가로(낮은 화면): 버튼을 조금 작게 */
+@media (max-height: 500px) { .title-screen.tb .t-menu { --bh: calc(var(--u) * 68); --mw: calc(var(--u) * 330); gap: calc(var(--u) * 8); }
+  .title-screen.tb .t-menu .t-mi { font-size: max(calc(var(--u) * 26 * var(--ts, 1)), 14px); } }
+/* 휴대폰 세로: 화면 단위가 아주 작아져 버튼이 손가락보다 작아지지 않게 */
+@media (orientation: portrait) { .title-screen.tb .t-menu { --bh: max(calc(var(--u) * 80), 42px); --mw: max(calc(var(--u) * 400), 210px); gap: max(calc(var(--u) * 10), 6px); } }
+.tb.diving .tb-stage, .tb.diving .t-menu { opacity: 0 !important; transition: opacity .8s; pointer-events: none; }
 #game.reduce .tb.done .t-menu .t-mi { animation: none; opacity: 1; }
 .t-setp { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(14, 16, 40, .55); }
 .t-setp[hidden] { display: none; }
@@ -1565,8 +1571,8 @@ img.st-grey { filter: grayscale(1) brightness(.85); opacity: .7; }
   <div>기기를 가로로 돌려 주세요</div>
 </div>
 
-<script src="data.js?v=0884f903"></script>
-<script src="game.js?v=0884f903"></script>
+<script src="data.js?v=5e12e1e2"></script>
+<script src="game.js?v=5e12e1e2"></script>
 <script>if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.type==='sw-new'&&window.G&&G.screen==='title'&&!G.st)location.reload();});</script>
 </body>
 </html>
